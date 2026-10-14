@@ -69,7 +69,7 @@ test("guided authoring uses the configured Foundry service response", async ({ p
   await expect(page.locator(".review-definition")).toContainText("Generated definition from the test fixture.");
 });
 
-test("Templates tab detects both sample projects and returns to the existing studio", async ({ page }) => {
+test("Templates tab detects configured sample variants and returns to the existing studio", async ({ page }) => {
   await page.route("**/api/templates/*/mcp/probe", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -86,20 +86,138 @@ test("Templates tab detects both sample projects and returns to the existing stu
   await expect(page.getByRole("navigation", { name: "Portal pages" })).toBeVisible();
   await page.getByRole("link", { name: "Templates", exact: true }).click();
   await expect(page).toHaveURL(/\/templates$/);
-  await expect(page.getByText("2 available", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Example 1: Finance with Handoff/ })).toBeVisible();
+  await expect(page.getByText("4 available", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Example 1: Finance with Handoff — Realtime/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Example 1: Finance with Handoff — Cascade Luna/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example 2: Finance with OTP and Officer Search/ })).toBeVisible();
-  await expect(page.locator("#detail-name")).toHaveText("Example 1: Finance with Handoff");
+  await expect(page.getByRole("button", { name: /Example 3: Elevator Service with Safety, Zendesk, and Handoff/ })).toBeVisible();
+  await expect(page.locator("#detail-name")).toHaveText("Example 1: Finance with Handoff — Realtime");
   await expect(page.locator("#graph-wrap svg")).toBeVisible();
   await expect(page.locator("#mcp-token-config")).toBeHidden();
   await page.getByRole("link", { name: "Live session", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Voice agent studio" })).toBeVisible();
 });
 
+test("Handoff Graph loads a Portal template, publishes it, and opens the runtime graph", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  await page.goto("/");
+  await page.getByRole("link", { name: "Handoff Graph", exact: true }).click();
+  await expect(page).toHaveURL(/\/handoff\/$/);
+  await expect(page.getByRole("heading", { name: "Working copy" })).toBeVisible();
+
+  await page.getByRole("button", { name: /Load from templates/ }).click();
+  const choices = page.locator(".template-choice");
+  await expect(choices).toHaveCount(4);
+  await page.locator('[data-template-id="elevator-service-example"]').click();
+
+  await expect(page.locator("#agent-title")).toContainText(
+    "local-only-elevator-service-example-",
+  );
+  await expect(page.locator(".node-card")).toHaveCount(10);
+  await page.locator("#node-outline button").first().click();
+  await page.locator('[data-node-component="model"]').click();
+  await expect(page.locator('[data-component-kind="model"]')).toHaveCount(14);
+  await expect(page.locator(".component-table")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sort by Latency" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sort by Cost" })).toBeVisible();
+  await expect(
+    page.locator('[data-component-kind="model"][data-component-value="gpt-realtime"]')
+      .locator("xpath=ancestor::tr"),
+  ).toContainText("~800 ms min");
+  await expect(
+    page.locator('[data-component-kind="model"][data-component-value="gpt-6.1-sol"]')
+      .locator("xpath=ancestor::tr"),
+  ).toContainText("~1.6 s min");
+  await page.getByRole("button", { name: "Sort by Latency" }).click();
+  await expect(
+    page.locator('.component-table tbody [data-component-kind="model"]').first(),
+  ).toHaveAttribute("data-component-value", "gpt-realtime-mini");
+  await page.getByRole("button", { name: "Sort by Latency" }).click();
+  await expect(
+    page.locator('.component-table tbody [data-component-kind="model"]').first(),
+  ).toHaveAttribute("data-component-value", "gpt-6.1-sol");
+
+  await page.locator('[data-component-kind="model"][data-component-value="gpt-5.4"]').click();
+  await page.locator('[data-node-component="stt"]').click();
+  await expect(page.locator('[data-component-kind="stt"]')).toHaveCount(12);
+  await expect(
+    page.locator('[data-component-kind="stt"][data-component-value="mai-transcribe-2"]'),
+  ).toBeEnabled();
+  await expect(
+    page.locator('[data-component-kind="stt"][data-component-value="whisper-1"]'),
+  ).toBeDisabled();
+
+  await page.locator('[data-node-component="model"]').click();
+  await page.locator('[data-component-kind="model"][data-component-value="gpt-realtime-2.1"]').click();
+  await page.locator('[data-node-component="stt"]').click();
+  await expect(page.locator('[data-component-kind="stt"]')).toHaveCount(12);
+  await expect(
+    page.locator('[data-component-kind="stt"][data-component-value="whisper-1"]'),
+  ).toBeEnabled();
+  await page.locator('[data-node-component="voice"]').click();
+  await expect(page.locator(".component-provider", { hasText: "GPT native" }).first()).toBeVisible();
+  await expect(page.locator(".component-provider", { hasText: "Azure Speech" }).first()).toBeVisible();
+  await expect(page.locator(".component-table td:nth-child(4) .component-table-bar").first()).toBeVisible();
+  await expect(page.locator("#node-cost-value")).toContainText("estimated");
+  await expect(page.locator("#node-latency-value")).toContainText("~1.3 s – 3.7 s estimated");
+  await expect(page.locator(".overview-metric .pipeline-segment.model").last()).toHaveAttribute(
+    "title",
+    "Range midpoint used for bar · ~2,463 ms estimated",
+  );
+  await page.locator("#done-node-editor").click();
+
+  await expect(page.locator("#publish-run-action")).toBeEnabled();
+  await page.locator("#publish-run-action").click();
+  const progress = page.getByRole("dialog", { name: "Publish & run" });
+  await expect(progress).toBeVisible();
+  await expect(progress).toContainText("Validate working copy");
+  await expect(progress).toContainText("Refresh MCP connection");
+  await expect(progress).toContainText("Publish Agent version");
+  await expect(progress).toContainText("Verify published version");
+  await expect(progress).toContainText("Open Live session");
+  await expect(progress.locator('[data-publish-step="verify"]')).toHaveAttribute(
+    "data-status",
+    "complete",
+  );
+
+  await expect(page).toHaveURL(/\/demo\/\?agent=local-only-elevator-service-example-[^&]+&view=handoff$/);
+  await expect(page.getByRole("heading", { name: "Voice agent studio" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Agent Debug/ })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  await expect(page.locator(".handoff-graph")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("Handoff Graph progress stops on publication failure and preserves the working copy", async ({ page }) => {
+  await page.goto("/handoff/");
+  await page.getByRole("button", { name: /Load from templates/ }).click();
+  await page.locator('[data-template-id="elevator-service-example"]').click();
+  await page.route("**/agents/*/versions?*", (route) => route.fulfill({
+    status: 502,
+    contentType: "application/json",
+    body: JSON.stringify({ error: { message: "Synthetic publication failure" } }),
+  }));
+
+  await page.locator("#publish-run-action").click();
+  const progress = page.getByRole("dialog", { name: "Publish & run" });
+  await expect(progress.locator('[data-publish-step="publish"]')).toHaveAttribute(
+    "data-status",
+    "failed",
+  );
+  await expect(progress.getByRole("alert")).toContainText("Synthetic publication failure");
+  await expect(progress.getByRole("button", { name: "Close", exact: true })).toBeVisible();
+  await expect(page.locator("#agent-title")).toContainText("local-only-elevator-service-example-");
+  await expect(page).toHaveURL(/\/handoff\/$/);
+});
+
 test("WebRTC uses the Foundry project directly and session logs can be disabled", async ({ page }) => {
   await page.goto("/webrtc");
   await expect(page.getByRole("heading", { name: "Start a voice session" })).toBeVisible();
-  await page.getByRole("combobox", { name: "Agent", exact: true }).selectOption("fixture-agent");
+  await page.getByLabel("Agent", { exact: true }).fill("fixture-agent");
   await expect(page.getByRole("button", { name: "Start WebRTC session" })).toBeEnabled();
   expect(await page.evaluate(() => window.microphoneCalls)).toBe(0);
   await page.getByRole("link", { name: "Return to studio" }).click();

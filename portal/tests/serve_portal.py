@@ -22,6 +22,7 @@ os.environ["PYTHON_DOTENV_DISABLED"] = "1"
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import demo_server as portal
+import template_portal
 
 ENDPOINT = "https://sample.services.ai.azure.com/api/projects/sample-project"
 TOKEN = "integration-fixture-token"
@@ -153,6 +154,7 @@ async def create_test_app():
     patches = (
         patch.object(portal, "_forward_to_service", http_boundary),
         patch.object(portal, "ProjectWebSocketConnect", ws_boundary),
+        patch.object(template_portal, "create_mcp_connection"),
     )
     for item in patches:
         item.start()
