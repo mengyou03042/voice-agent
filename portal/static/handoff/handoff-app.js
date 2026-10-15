@@ -23,7 +23,7 @@ import {
   stableJson,
   uniqueId,
   validateDefinition,
-} from "./handoff-core.mjs?v=20261014-portal-5";
+} from "./handoff-core.mjs?v=20261014-portal-8";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -462,10 +462,16 @@ function selectedPipeline(model, voice, stt) {
   });
 }
 
-function estimatedCost(value) {
-  return value === null || value === undefined
-    ? "Not available"
-    : `~$${value.toFixed(3)}/min estimated`;
+function calculatedCost(value) {
+  if (value === null || value === undefined) return "Not available";
+  const amount = value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
+  return `~$${amount}/normalized min`;
+}
+
+function componentCostLabel(component) {
+  return component?.noAdditionalCost
+    ? "No extra STT cost"
+    : calculatedCost(component?.costPerMinute);
 }
 
 function estimatedLatency(value) {
@@ -513,7 +519,7 @@ function pipelineBar(pipeline, metric) {
     ${["stt", "model", "voice"].map((kind) => {
       const value = pipeline[kind][metric];
       return `<span class="pipeline-segment ${kind}" style="width:${(value / total) * 100}%"
-        title="${escapeHtml(pipeline[kind].label)} · ${estimatedCost(value)}"></span>`;
+        title="${escapeHtml(pipeline[kind].label)} · ${componentCostLabel(pipeline[kind])}"></span>`;
     }).join("")}
   </div>`;
 }
@@ -544,7 +550,7 @@ function metricDistribution(pipeline, metric) {
       <div class="metric-distribution-legend">
         ${["stt", "model", "voice"].map((kind) => `
           <span class="${kind}">
-            <i aria-hidden="true"></i>${labels[kind]} <strong>${estimatedCost(pipeline[kind][metric])}</strong>
+            <i aria-hidden="true"></i>${labels[kind]} <strong>${componentCostLabel(pipeline[kind])}</strong>
           </span>`).join("")}
       </div>
     </div>`;
@@ -1415,10 +1421,10 @@ function renderGraph() {
       <details class="node-metric-details">
         <summary class="node-metrics"
           aria-label="Show cost and latency distribution for ${escapeHtml(node.id)}"
-          title="Estimated from public retail rates and the silent-handoff benchmark. Click for methodology.">
+          title="Calculated from public rates under the normalized workload. Click for methodology.">
           <div class="metric${totals ? "" : " unavailable"}">
-            <span>${pipelineIcon("coin")} Cost</span>
-            <strong>${totals ? `~$${totals.costPerMinute.toFixed(3)}<small>/min estimated</small>` : "N/A"}<i class="metric-caret" aria-hidden="true">⌄</i></strong>
+            <span>${pipelineIcon("coin")} Pipeline total</span>
+            <strong>${totals ? calculatedCost(totals.costPerMinute) : "N/A"}<i class="metric-caret" aria-hidden="true">⌄</i></strong>
           </div>
           <div class="metric${totals ? "" : " unavailable"}">
             <span>${pipelineIcon("clock")} Latency</span>
@@ -1428,7 +1434,7 @@ function renderGraph() {
         <div class="node-metric-breakdown">
           ${metricDistribution(pipeline, "costPerMinute")}
           ${metricDistribution(pipeline, "latencyMs")}
-          <p>Estimated at public retail rates for 30 s user audio, 30 s Agent audio, 1,000 text input tokens and 100 text output tokens. Latency spans Voice Live typical TTFA to no-transfer-message handoff P50; the bar uses their arithmetic midpoint.</p>
+          <p>Calculated from public rates for 30 s user audio, 30 s Agent audio, 1,000 text input tokens and 100 text output tokens. Pipeline total = STT-only + Model-only + TTS-only. Latency spans Voice Live typical TTFA to no-transfer-message handoff P50; the bar uses their arithmetic midpoint.</p>
         </div>
       </details>
       ${nodeSidePorts(node.id)}
@@ -2202,26 +2208,76 @@ function componentDescription(kind, id) {
   return descriptions[id] || `Supported ${kind} option. Availability remains region and model dependent.`;
 }
 
+function componentEvidence(kind, component) {
+  const description = componentDescription(kind, component.id);
+  const evidence = [
+    component.latencySource ? `Latency source: ${component.latencySource}.` : "",
+    component.publicRateLabel ? `Public rate: ${component.publicRateLabel}.` : "",
+    component.costSource ? `Rate source: ${component.costSource}.` : "",
+  ].filter(Boolean).join(" ");
+  return evidence ? `${description} ${evidence}` : description;
+}
+
+function componentHeaderHelp(kind, key) {
+  if (key === "latency") {
+    const descriptions = {
+      stt: "Estimated minimum TTFS proxy. Uses speech-stop to final transcript when available. Values are displayed in seconds.",
+      model: "Estimated minimum model latency. When the source is a range, sorting and display use its lower bound. Values are displayed in seconds.",
+      voice: "Estimated minimum first-audio latency. Native output is included in model latency; Azure Speech uses first-text to first-audio. Values are displayed in seconds.",
+    };
+    return descriptions[kind];
+  }
+  if (key === "cost") {
+    return "Calculated normalized component cost from the row's public rate. Values are displayed in cents per normalized minute (¢/min) for comparison, not as an invoice.";
+  }
+  return "";
+}
+
 function componentSortHeader(kind, key, label) {
   const sort = state.componentSort[kind];
   const active = sort.key === key;
   const arrow = active ? (sort.direction === "asc" ? "↑" : "↓") : "↕";
+  const help = componentHeaderHelp(kind, key);
   return `
-    <button type="button" class="component-sort${active ? " active" : ""}"
-      data-component-sort="${key}" aria-label="Sort by ${label}">
-      ${label}<span aria-hidden="true">${arrow}</span>
-    </button>`;
+    <span class="component-column-heading">
+      <button type="button" class="component-sort${active ? " active" : ""}"
+        data-component-sort="${key}" aria-label="Sort by ${label}">
+        <span class="component-sort-label">${label}</span>
+        <span aria-hidden="true">${arrow}</span>
+      </button>
+      ${help ? `
+        <button type="button" class="component-header-help" data-component-header-help="${key}"
+          aria-label="Explain ${label}" aria-expanded="false">i</button>
+        <span class="component-header-popup" data-component-header-popup="${key}" role="tooltip" hidden>
+          <strong>${escapeHtml(label)}</strong>
+          <span>${escapeHtml(help)}</span>
+        </span>` : ""}
+    </span>`;
 }
 
 function componentMetricTableCell(component, metric, maximum) {
+  if (metric === "latency" && component.latencyIncludedInModel) {
+    return `<span class="component-metric-unavailable">Included <small>in model TTFA</small></span>`;
+  }
   const value = pipelineMetricMinimum(component, metric);
   if (value === null) {
     return `<span class="component-metric-unavailable">—<small>Not available</small></span>`;
   }
   const width = maximum > 0 ? Math.max(6, (value / maximum) * 100) : 0;
-  const label = metric === "latency"
-    ? `~${latencyBoundary(value)} min`
-    : estimatedCost(value);
+  let label;
+  if (metric === "latency") {
+    label = `~${(value / 1000).toLocaleString(undefined, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 3,
+    })} s`;
+  } else {
+    label = component.noAdditionalCost
+      ? "No extra STT cost"
+      : `~${(value * 100).toLocaleString(undefined, {
+        minimumFractionDigits: value * 100 < 1 ? 2 : 1,
+        maximumFractionDigits: 4,
+      })} ¢/min`;
+  }
   return `
     <span class="component-table-metric">
       <span class="component-table-metric-label">${escapeHtml(label)}</span>
@@ -2244,7 +2300,7 @@ function componentTableRow(kind, component, selected, maxima) {
           <span class="component-option-icon">${pipelineIcon(kind === "stt" ? "audio" : kind)}</span>
           <span class="component-option-copy">
             <strong>${escapeHtml(displayName)}</strong>
-            <small>${escapeHtml(component.incompatibility || componentDescription(kind, component.id))}</small>
+            <small>${escapeHtml(component.incompatibility || componentEvidence(kind, component))}</small>
           </span>
           ${selected ? '<span class="component-current">Current</span>' : ""}
         </button>
@@ -2312,15 +2368,19 @@ function renderNodeComponentPanel() {
   const scope = kind === "stt"
     ? "Agent-level · compatible with every model in this graph"
     : `Node-level · ${escapeHtml(state.selected.id)}`;
-  const compatibilitySummary = kind === "voice"
-    ? selection.model === "azure-realtime"
+  let compatibilitySummary = "";
+  if (kind === "voice") {
+    const compatibility = selection.model === "azure-realtime"
       ? "Azure Realtime uses its Azure Realtime native voice family."
       : currentPipeline.architecture === "realtime"
         ? "GPT Realtime supports both GPT native voices and Azure Speech voices."
-        : "Cascaded text models use Azure Speech voices."
-    : kind === "stt" && currentPipeline.architecture === "realtime"
-      ? "Realtime understands audio natively; this independent STT selection controls transcript generation."
-      : "";
+        : "Cascaded text models use Azure Speech voices.";
+    compatibilitySummary = `${compatibility} Native latency is included in model TTFA; Azure Speech rows use first-text-to-first-audio estimates.`;
+  } else if (kind === "stt" && currentPipeline.architecture === "realtime") {
+    compatibilitySummary = "Realtime understands audio natively; auxiliary STT is parallel. TTFS proxy is not added to native model latency.";
+  } else if (kind === "stt") {
+    compatibilitySummary = "TTFS proxy ends at final transcript; the wider input-readiness metric ends at primary response.created.";
+  }
   let advanced = "";
   if (kind === "stt") {
     const realtime = currentPipeline.architecture === "realtime";
@@ -2397,6 +2457,22 @@ function renderNodeComponentPanel() {
         direction: previous.key === key && previous.direction === "asc" ? "desc" : "asc",
       };
       renderNodeComponentPanel();
+    });
+  });
+  $$("[data-component-header-help]", $("#node-component-panel-body")).forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const key = button.dataset.componentHeaderHelp;
+      const popup = $(`[data-component-header-popup="${key}"]`, $("#node-component-panel-body"));
+      const opening = popup.hidden;
+      $$("[data-component-header-popup]", $("#node-component-panel-body")).forEach(
+        (item) => { item.hidden = true; },
+      );
+      $$("[data-component-header-help]", $("#node-component-panel-body")).forEach(
+        (item) => item.setAttribute("aria-expanded", "false"),
+      );
+      popup.hidden = !opening;
+      button.setAttribute("aria-expanded", String(opening));
     });
   });
   $$("[data-component-value]", $("#node-component-panel-body")).forEach((button) => {
@@ -2867,8 +2943,8 @@ function renderNodeEditor() {
   $("#node-editor-body").innerHTML = `
     <section class="pipeline-overview" aria-label="Pipeline estimates">
       <div class="overview-metric">
-        <div class="overview-label">${pipelineIcon("coin")}<span>Cost</span></div>
-        <strong id="node-cost-value">${totals ? `~$${totals.costPerMinute.toFixed(3)}<small>/min estimated</small>` : "Not available"}</strong>
+        <div class="overview-label">${pipelineIcon("coin")}<span>Pipeline total</span></div>
+        <strong id="node-cost-value">${totals ? calculatedCost(totals.costPerMinute) : "Not available"}</strong>
         ${pipelineBar(pipeline, "costPerMinute")}
         <div class="bar-legend"><span class="stt">STT</span><span class="model">Model</span><span class="voice">Voice</span></div>
       </div>
@@ -2924,12 +3000,15 @@ function renderNodeEditor() {
           ${pipelineIcon("sliders")} Configure Agent-level STT
         </button>
         <div class="component-metrics">
-          <span>Latency <b>Included in E2E estimate</b></span>
-          <span>Cost <b>${estimatedCost(stt.costPerMinute)}</b></span>
+          <span>Latency <b>${stt.latencyMs === 0
+            ? "No separate STT stage"
+            : estimatedLatency(stt.latencyMs)}</b></span>
+          <span>STT-only cost <b>${componentCostLabel(stt)}</b></span>
         </div>
         <p>${pipeline.architecture === "realtime"
-          ? "The model reads audio natively; this separate Agent-level STT produces transcripts for every node."
-          : "Agent-level STT feeds every cascaded node, so only graph-wide compatible choices are enabled."}</p>
+          ? "The model reads audio natively; auxiliary STT runs in parallel and is excluded from the serial total."
+          : "Agent-level STT feeds every cascaded node, so only graph-wide compatible choices are enabled."}
+          ${escapeHtml(stt.latencySource ? ` Source: ${stt.latencySource}.` : "")}</p>
       </article>
       <article class="pipeline-card model-card${state.nodeComponentPanel === "model" ? " component-selected" : ""}"
         data-component-card="model" role="button" tabindex="0">
@@ -2943,7 +3022,7 @@ function renderNodeEditor() {
         </button>
         <div class="component-metrics">
           <span>Latency <b>${estimatedLatencyRange(pipeline.model)}</b></span>
-          <span>Cost <b>${estimatedCost(pipeline.model.costPerMinute)}</b></span>
+          <span>Model-only cost <b>${calculatedCost(pipeline.model.costPerMinute)}</b></span>
         </div>
         <p>${escapeHtml(preset?.summary || (totals
           ? `${pipeline.architecture === "realtime" ? "Speech-to-speech" : "Cascaded"} · ${pipeline.tier} retail tier.`
@@ -2960,10 +3039,15 @@ function renderNodeEditor() {
           ${pipelineIcon("sliders")} Configure voice
         </button>
         <div class="component-metrics">
-          <span>Latency <b>Included in E2E estimate</b></span>
-          <span>Cost <b>${estimatedCost(pipeline.voice.costPerMinute)}</b></span>
+          <span>Latency <b>${pipeline.voice.latencyIncludedInModel
+            ? "Included in model TTFA"
+            : estimatedLatency(pipeline.voice.latencyMs)}</b></span>
+          <span>TTS-only cost <b>${calculatedCost(pipeline.voice.costPerMinute)}</b></span>
         </div>
-        <p>Speech output only. It does not control input transcription. Leave empty to inherit the root Agent voice.</p>
+        <p>${pipeline.voice.latencyIncludedInModel
+          ? "Native speech output is already inside the model TTFA and must not be added again."
+          : "Independent Azure Speech TTS first-byte estimate; add it only in a cascaded serial path."}
+          ${escapeHtml(pipeline.voice.latencySource ? ` Source: ${pipeline.voice.latencySource}.` : "")}</p>
       </article>
     </section>
     <div class="pipeline-compatibility-note">
@@ -3106,7 +3190,7 @@ function renderNodeEditor() {
       $("#node-cost-value"),
       previousMetrics.cost,
       totals.costPerMinute,
-      (value) => `~$${Math.max(0, value).toFixed(3)}<small>/min estimated</small>`,
+      (value) => calculatedCost(Math.max(0, value)),
     );
     $("#node-latency-value").innerHTML = estimatedLatencyRangeHtml(totals);
     state.metricDisplay = {

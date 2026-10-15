@@ -13,6 +13,11 @@ This is a Portal-only reliability and UI correction.
   STT/voice options with an explanation, and validate imported definitions
   against the Voice Live capability families. Handoff STT remains Agent-level
   and is restricted to the intersection supported by every node model.
+- Replaced the Handoff right-side STT/model/voice card list with one sortable
+  comparison table. Provider labels distinguish GPT native, Azure Realtime,
+  and Azure Speech voice families; latency and cost use relative bars, latency
+  ranges display and sort by their minimum, and missing component latency stays
+  explicitly unavailable.
 - Template-origin **Publish** and **Publish & run** now refresh the selected
   Project's managed MCP connection before creating the Agent version, so a
   restarted local Dev Tunnel or bearer does not leave the published graph

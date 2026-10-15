@@ -122,14 +122,32 @@ test("Handoff Graph loads a Portal template, publishes it, and opens the runtime
   await expect(page.locator(".component-table")).toBeVisible();
   await expect(page.getByRole("button", { name: "Sort by Latency" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sort by Cost" })).toBeVisible();
+  await page.getByRole("button", { name: "Explain Latency" }).click();
+  await expect(page.locator('[data-component-header-popup="latency"]')).toBeVisible();
+  await expect(page.locator('[data-component-header-popup="latency"]')).toContainText(
+    "Estimated minimum model latency",
+  );
+  await page.getByRole("button", { name: "Explain Cost" }).click();
+  await expect(page.locator('[data-component-header-popup="cost"]')).toBeVisible();
+  await expect(page.locator('[data-component-header-popup="cost"]')).toContainText(
+    "Calculated normalized component cost from the row's public rate",
+  );
   await expect(
     page.locator('[data-component-kind="model"][data-component-value="gpt-realtime"]')
       .locator("xpath=ancestor::tr"),
-  ).toContainText("~800 ms min");
+  ).toContainText("~0.8 s");
   await expect(
     page.locator('[data-component-kind="model"][data-component-value="gpt-6.1-sol"]')
       .locator("xpath=ancestor::tr"),
-  ).toContainText("~1.6 s min");
+  ).toContainText("~1.6 s");
+  await expect(
+    page.locator('[data-component-kind="model"][data-component-value="gpt-realtime"]')
+      .locator("xpath=ancestor::tr"),
+  ).toContainText("~1.52 ¢/min");
+  await expect(
+    page.locator('[data-component-kind="model"][data-component-value="gpt-realtime"]')
+      .locator("xpath=ancestor::tr"),
+  ).toContainText("Public rate: $32 audio input + $4 text input + $16 text output / 1M tokens");
   await page.getByRole("button", { name: "Sort by Latency" }).click();
   await expect(
     page.locator('.component-table tbody [data-component-kind="model"]').first(),
@@ -139,12 +157,42 @@ test("Handoff Graph loads a Portal template, publishes it, and opens the runtime
     page.locator('.component-table tbody [data-component-kind="model"]').first(),
   ).toHaveAttribute("data-component-value", "gpt-6.1-sol");
 
+  await page.locator('[data-component-kind="model"][data-component-value="gpt-6-luna"]').click();
+  await expect(page.locator(".model-card .component-metrics")).toContainText(
+    "~$0.000154/normalized min",
+  );
+  await expect(page.locator("#node-cost-value")).toContainText("~$0.019654/normalized min");
+  await expect(page.locator(".transcriber-card .component-metrics")).toContainText(
+    "~1,016 ms estimated",
+  );
+  await expect(page.locator(".voice-card .component-metrics")).toContainText(
+    "~307 ms estimated",
+  );
+  await page.locator('[data-node-component="model"]').click();
+  await expect(
+    page.locator('[data-component-kind="model"][data-component-value="gpt-6-luna"]')
+      .locator("xpath=ancestor::tr"),
+  ).toContainText("Public rate: $0.11 text input + $0.44 text output / 1M tokens");
+
   await page.locator('[data-component-kind="model"][data-component-value="gpt-5.4"]').click();
   await page.locator('[data-node-component="stt"]').click();
   await expect(page.locator('[data-component-kind="stt"]')).toHaveCount(12);
+  await expect(page.getByRole("button", { name: "Sort by Latency" })).toBeVisible();
+  await expect(
+    page.locator('[data-component-kind="stt"][data-component-value="azure-speech"]')
+      .locator("xpath=ancestor::tr"),
+  ).toContainText("~1.016 s");
   await expect(
     page.locator('[data-component-kind="stt"][data-component-value="mai-transcribe-2"]'),
   ).toBeEnabled();
+  await expect(
+    page.locator('[data-component-kind="stt"][data-component-value="mai-transcribe-2"]')
+      .locator("xpath=ancestor::tr"),
+  ).toContainText("Public rate: $17 / 1M Voice Live speech-input tokens");
+  await expect(
+    page.locator('[data-component-kind="stt"][data-component-value="azure-speech"]')
+      .locator("xpath=ancestor::tr"),
+  ).toContainText("Public rate: $17 / 1M Voice Live speech-input tokens");
   await expect(
     page.locator('[data-component-kind="stt"][data-component-value="whisper-1"]'),
   ).toBeDisabled();
@@ -156,11 +204,50 @@ test("Handoff Graph loads a Portal template, publishes it, and opens the runtime
   await expect(
     page.locator('[data-component-kind="stt"][data-component-value="whisper-1"]'),
   ).toBeEnabled();
+  await expect(
+    page.locator('[data-component-kind="stt"][data-component-value="whisper-1"]')
+      .locator("xpath=ancestor::tr"),
+  ).toContainText("~1.507 s");
+  await expect(
+    page.locator('[data-component-kind="stt"][data-component-value="whisper-1"]')
+      .locator("xpath=ancestor::tr"),
+  ).toContainText("~0.30 ¢/min");
+  await expect(
+    page.locator('[data-component-kind="stt"][data-component-value="whisper-1"]')
+      .locator("xpath=ancestor::tr"),
+  ).toContainText("Public rate: $0.006 / audio minute");
+  await expect(
+    page.locator('[data-component-kind="stt"][data-component-value="native-realtime-audio"]')
+      .locator("xpath=ancestor::tr"),
+  ).toContainText("No extra STT cost");
+  await expect(page.locator(".transcriber-card .component-metrics")).toContainText(
+    "STT-only cost ~$0.0051/normalized min",
+  );
+  await expect(page.locator(".model-card .component-metrics")).toContainText(
+    "Model-only cost ~$0.016/normalized min",
+  );
+  await expect(page.locator(".voice-card .component-metrics")).toContainText(
+    "TTS-only cost ~$0.0186/normalized min",
+  );
+  await expect(page.locator("#node-cost-value")).toContainText("~$0.0397/normalized min");
   await page.locator('[data-node-component="voice"]').click();
+  await expect(page.getByRole("button", { name: "Sort by Latency" })).toBeVisible();
+  await expect(
+    page.locator('[data-component-kind="voice"][data-component-value="alloy"]')
+      .locator("xpath=ancestor::tr"),
+  ).toContainText("Included in model");
+  await expect(
+    page.locator('[data-component-kind="voice"][data-component-value="en-US-Ava:DragonHDLatestNeural"]')
+      .locator("xpath=ancestor::tr"),
+  ).toContainText("~0.307 s");
+  await expect(
+    page.locator('[data-component-kind="voice"][data-component-value="en-US-Ava:DragonHDLatestNeural"]')
+      .locator("xpath=ancestor::tr"),
+  ).toContainText("Public rate: $31 / 1M Voice Live speech-output tokens");
   await expect(page.locator(".component-provider", { hasText: "GPT native" }).first()).toBeVisible();
   await expect(page.locator(".component-provider", { hasText: "Azure Speech" }).first()).toBeVisible();
   await expect(page.locator(".component-table td:nth-child(4) .component-table-bar").first()).toBeVisible();
-  await expect(page.locator("#node-cost-value")).toContainText("estimated");
+  await expect(page.locator("#node-cost-value")).toContainText("normalized min");
   await expect(page.locator("#node-latency-value")).toContainText("~1.3 s – 3.7 s estimated");
   await expect(page.locator(".overview-metric .pipeline-segment.model").last()).toHaveAttribute(
     "title",

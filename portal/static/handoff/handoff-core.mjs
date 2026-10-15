@@ -158,18 +158,112 @@ export const PIPELINE_MODELS = Object.freeze([
 ]);
 
 const TRANSCRIBERS = Object.freeze([
-  { id: "native-realtime-audio", label: "No auxiliary transcript · native audio only" },
-  { id: "azure-speech", label: "Azure Speech" },
-  { id: "mai-transcribe", label: "MAI Transcribe" },
-  { id: "mai-transcribe-2", label: "MAI Transcribe 2" },
-  { id: "mai-transcribe-2-streaming", label: "MAI Transcribe 2 Streaming", preview: true },
-  { id: "gpt-live-transcribe", label: "GPT Live Transcribe", preview: true },
-  { id: "gpt-realtime-whisper", label: "GPT Realtime Whisper", preview: true },
-  { id: "gpt-transcribe", label: "GPT Transcribe", preview: true },
-  { id: "gpt-4o-transcribe", label: "GPT-4o Transcribe" },
-  { id: "gpt-4o-mini-transcribe", label: "GPT-4o Mini Transcribe" },
-  { id: "gpt-4o-transcribe-diarize", label: "GPT-4o Transcribe Diarize" },
-  { id: "whisper-1", label: "Whisper 1" },
+  {
+    id: "native-realtime-audio",
+    label: "No auxiliary transcript · native audio only",
+    latencyMs: 0,
+    latencySource: "No separate STT stage",
+    costSource: "No auxiliary transcription",
+    noAdditionalCost: true,
+  },
+  {
+    id: "azure-speech",
+    label: "Azure Speech",
+    latencyMs: 1016,
+    latencySource: "Pipecat public TTFS median",
+    costSource: "Voice Live Standard Speech audio-input rate",
+  },
+  {
+    id: "mai-transcribe",
+    label: "MAI Transcribe",
+    latencyMs: 525,
+    latencySource: "Voice Live observed family estimate",
+    costSource: "Azure Voice Live public rate via service estimator mapping",
+  },
+  {
+    id: "mai-transcribe-2",
+    label: "MAI Transcribe 2",
+    latencyMs: 525,
+    latencySource: "Voice Live observed family estimate",
+    costSource: "Azure Voice Live public rate via service estimator mapping",
+  },
+  {
+    id: "mai-transcribe-2-streaming",
+    label: "MAI Transcribe 2 Streaming",
+    latencyMs: 130,
+    latencySource: "Microsoft public end-of-speech latency",
+    costSource: "Azure Voice Live public rate via service estimator mapping",
+    preview: true,
+  },
+  {
+    id: "gpt-live-transcribe",
+    label: "GPT Live Transcribe",
+    latencyMs: 740,
+    latencySource: "Realtime transcription family proxy",
+    costPerAudioMinute: .017,
+    publicRateLabel: "$0.017 / audio minute",
+    costSource: "OpenAI public duration rate",
+    preview: true,
+  },
+  {
+    id: "gpt-realtime-whisper",
+    label: "GPT Realtime Whisper",
+    latencyMs: 740,
+    latencySource: "Pipecat public TTFS median",
+    costPerAudioMinute: .017,
+    publicRateLabel: "$0.017 / audio minute",
+    costSource: "OpenAI public duration rate",
+    preview: true,
+  },
+  {
+    id: "gpt-transcribe",
+    label: "GPT Transcribe",
+    latencyMs: 637,
+    latencySource: "GPT-4o transcription family proxy",
+    costPerAudioMinute: .0045,
+    publicRateLabel: "$0.0045 / audio minute",
+    costSource: "OpenAI public duration rate",
+    preview: true,
+  },
+  {
+    id: "gpt-4o-transcribe",
+    label: "GPT-4o Transcribe",
+    latencyMs: 637,
+    latencySource: "Pipecat public TTFS median",
+    audioInputRatePerMillion: 2.5,
+    textOutputRatePerMillion: 10,
+    publicRateLabel: "$2.50 audio input + $10 text output / 1M tokens",
+    costSource: "OpenAI public token rates",
+  },
+  {
+    id: "gpt-4o-mini-transcribe",
+    label: "GPT-4o Mini Transcribe",
+    latencyMs: 637,
+    latencySource: "GPT-4o transcription family proxy",
+    audioInputRatePerMillion: 1.25,
+    textOutputRatePerMillion: 5,
+    publicRateLabel: "$1.25 audio input + $5 text output / 1M tokens",
+    costSource: "OpenAI public token rates",
+  },
+  {
+    id: "gpt-4o-transcribe-diarize",
+    label: "GPT-4o Transcribe Diarize",
+    latencyMs: 637,
+    latencySource: "GPT-4o transcription family proxy",
+    audioInputRatePerMillion: 2.5,
+    textOutputRatePerMillion: 10,
+    publicRateLabel: "$2.50 audio input + $10 text output / 1M tokens",
+    costSource: "OpenAI public token rates",
+  },
+  {
+    id: "whisper-1",
+    label: "Whisper 1",
+    latencyMs: 1507,
+    latencySource: "Public hosted-API median",
+    costPerAudioMinute: .006,
+    publicRateLabel: "$0.006 / audio minute",
+    costSource: "OpenAI public duration rate",
+  },
 ]);
 const CASCADED_TRANSCRIBER_IDS = Object.freeze(TRANSCRIBERS.slice(1, 5).map((item) => item.id));
 const AZURE_REALTIME_TRANSCRIBER_IDS = Object.freeze([
@@ -184,24 +278,42 @@ const GPT_REALTIME_TRANSCRIBER_IDS = Object.freeze(TRANSCRIBERS.map((item) => it
 
 const OPENAI_VOICES = Object.freeze(
   ["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"]
-    .map((id) => ({ id, label: `${id[0].toUpperCase()}${id.slice(1)} · OpenAI native`, type: "openai" })),
+    .map((id) => ({
+      id,
+      label: `${id[0].toUpperCase()}${id.slice(1)} · OpenAI native`,
+      type: "openai",
+      latencyMs: null,
+      latencyIncludedInModel: true,
+      latencySource: "Native model audio output",
+    })),
 );
 const AZURE_REALTIME_VOICES = Object.freeze(
   ["andrew", "emma", "ava", "ryan", "sonia", "william", "natasha", "clara", "liam", "aarti", "diya", "meera",
     "yunxi", "xiaoxiao", "nanami", "keita", "denise", "remy", "thierry", "sylvie", "ximena", "alvaro", "dalia",
     "jorge", "seraphina", "florian", "elsa", "diego", "francisca", "antonio", "sunhi", "hyunsu", "premwadee", "niwat"]
-    .map((id) => ({ id, label: `${id[0].toUpperCase()}${id.slice(1)} · Azure Realtime native`, type: "azure-realtime-native" })),
+    .map((id) => ({
+      id,
+      label: `${id[0].toUpperCase()}${id.slice(1)} · Azure Realtime native`,
+      type: "azure-realtime-native",
+      latencyMs: null,
+      latencyIncludedInModel: true,
+      latencySource: "Native model audio output",
+    })),
 );
 const AZURE_STANDARD_VOICES = Object.freeze([
   {
     id: "en-US-Ava:DragonHDLatestNeural",
     label: "Ava · Azure Dragon HD",
     type: "azure-standard",
+    latencyMs: 307,
+    latencySource: "Voice Live first-text-to-first-audio observation; public Dragon HD proxy is ~356 ms",
   },
   {
     id: "en-IN-Diya:DragonHDLatestNeural",
     label: "Diya · Azure Dragon HD",
     type: "azure-standard",
+    latencyMs: 307,
+    latencySource: "Voice Live first-text-to-first-audio observation; public Dragon HD proxy is ~356 ms",
   },
 ]);
 
@@ -253,20 +365,64 @@ function compatibleVoices(model) {
 function componentCost(model, kind, voiceType = "") {
   const rates = RETAIL_RATES_PER_MILLION[model.tier];
   if (kind === "stt") {
-    const rate = model.architecture === "realtime" ? rates.nativeAudioInput : rates.speechInput;
-    return rate * ESTIMATE_USAGE.userAudioTokens / 1_000_000;
+    return rates.speechInput * ESTIMATE_USAGE.userAudioTokens / 1_000_000;
   }
   if (kind === "model") {
     const outputRate = model.textOutputRate ?? rates.textOutput;
-    return (
+    const textCost = (
       rates.textInput * ESTIMATE_USAGE.textInputTokens
       + outputRate * ESTIMATE_USAGE.textOutputTokens
     ) / 1_000_000;
+    const nativeAudioInputCost = model.architecture === "realtime"
+      ? rates.nativeAudioInput * ESTIMATE_USAGE.userAudioTokens / 1_000_000
+      : 0;
+    return textCost + nativeAudioInputCost;
   }
   const nativeOutput = model.architecture === "realtime"
     && (voiceType === "openai" || voiceType === "azure-realtime-native");
   const rate = nativeOutput ? rates.nativeAudioOutput : rates.speechOutput;
   return rate * ESTIMATE_USAGE.agentAudioTokens / 1_000_000;
+}
+
+function transcriptionCost(transcription, model) {
+  if (transcription.id === "native-realtime-audio") return 0;
+  if (Number.isFinite(transcription.costPerAudioMinute)) {
+    return transcription.costPerAudioMinute * ESTIMATE_USAGE.userAudioTokens / 600;
+  }
+  if (
+    Number.isFinite(transcription.audioInputRatePerMillion)
+    && Number.isFinite(transcription.textOutputRatePerMillion)
+  ) {
+    return (
+      transcription.audioInputRatePerMillion * ESTIMATE_USAGE.userAudioTokens
+      + transcription.textOutputRatePerMillion * ESTIMATE_USAGE.textOutputTokens
+    ) / 1_000_000;
+  }
+  return componentCost(model, "stt");
+}
+
+function transcriptionPublicRateLabel(transcription, model) {
+  if (transcription.publicRateLabel) return transcription.publicRateLabel;
+  if (transcription.id === "native-realtime-audio") return "$0 additional transcription";
+  const rate = RETAIL_RATES_PER_MILLION[model.tier].speechInput;
+  return `$${rate} / 1M Voice Live speech-input tokens`;
+}
+
+function modelPublicRateLabel(model) {
+  const rates = RETAIL_RATES_PER_MILLION[model.tier];
+  const outputRate = model.textOutputRate ?? rates.textOutput;
+  if (model.architecture === "realtime") {
+    return `$${rates.nativeAudioInput} audio input + $${rates.textInput} text input + $${outputRate} text output / 1M tokens`;
+  }
+  return `$${rates.textInput} text input + $${outputRate} text output / 1M tokens`;
+}
+
+function voicePublicRateLabel(model, voiceType) {
+  const rates = RETAIL_RATES_PER_MILLION[model.tier];
+  const nativeOutput = model.architecture === "realtime"
+    && (voiceType === "openai" || voiceType === "azure-realtime-native");
+  const rate = nativeOutput ? rates.nativeAudioOutput : rates.speechOutput;
+  return `$${rate} / 1M ${nativeOutput ? "native audio-output" : "Voice Live speech-output"} tokens`;
 }
 
 function estimatedHandoffLatency(model) {
@@ -293,8 +449,8 @@ function buildPipeline({ model, stt, voice }) {
     estimatedHandoffLatencyMs: handoffLatencyMs,
     stt: {
       ...transcription,
-      latencyMs: null,
-      costPerMinute: componentCost(model, "stt"),
+      costPerMinute: transcriptionCost(transcription, model),
+      publicRateLabel: transcriptionPublicRateLabel(transcription, model),
     },
     model: {
       ...model,
@@ -302,11 +458,14 @@ function buildPipeline({ model, stt, voice }) {
       latencyMaxMs: handoffLatencyMs,
       latencyMs: latencyMidpointMs,
       costPerMinute: componentCost(model, "model"),
+      publicRateLabel: modelPublicRateLabel(model),
+      costSource: "Azure Voice Live public retail rate",
     },
     voice: {
       ...selectedVoice,
-      latencyMs: null,
       costPerMinute: componentCost(model, "voice", selectedVoice.type),
+      publicRateLabel: voicePublicRateLabel(model, selectedVoice.type),
+      costSource: "Azure Voice Live public retail rate",
     },
   };
 }
@@ -486,7 +645,7 @@ export function pipelineComponentOptions(kind, selection = {}) {
 
 export function pipelineComponentProvider(kind, component = {}) {
   if (kind === "model") {
-    return component.id === "azure-realtime" ? "Azure Realtime" : "Azure OpenAI";
+    return component.id === "azure-realtime" ? "Azure Realtime" : "Voice Live managed";
   }
   if (kind === "stt") {
     const id = String(component.id || "");
