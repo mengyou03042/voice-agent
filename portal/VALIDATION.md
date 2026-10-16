@@ -1,5 +1,48 @@
 # Runtime synchronization validation
 
+## Independent PR installation validation
+
+Validated on **October 16, 2026** against the published PR #37 runtime at
+`f1f52b4624cf040c7b01ad5a9049953ae64d4a95`, on Linux with Python **3.12.3**,
+Node.js **24.21.0**, and newly downloaded Playwright Chromium.
+
+The source was exported from the GitHub PR ref, not copied from the developer's
+working directory. The export contained no `.env`, generated MCP configuration,
+virtual environment, `node_modules`, browser cache, Git metadata, or in-progress
+hosted-playground files. No Git worktree or sibling repository was used.
+
+| Check | Result |
+| --- | --- |
+| Fresh Portal dependencies | New venv, installed only `portal/requirements.txt` from public PyPI; resolved `azure-ai-projects 2.8.0` and `azure-identity 1.26.0`; `pip check` passed |
+| Python-only production startup | Started `demo_server.py` from an unrelated empty directory with an isolated HOME and neither Node.js nor Azure CLI on PATH |
+| Production pages and assets | Studio, Templates, Handoff Graph, and WebRTC returned HTTP 200; 11 referenced static assets loaded from the shipped files |
+| Template catalog without local state | All four configured cards and their definitions loaded; MCP configuration remained explicitly required |
+| Missing configuration and credentials | Missing Project stopped startup; missing MCP setup and Azure credentials returned explicit errors, not fabricated results |
+| Owned imports | All Portal modules and `samples/voice_agent_definition.py` resolved inside the exported repository; third-party imports resolved inside the new venv |
+| Fresh frontend tooling | `npm ci` used the public npm registry and lockfile; both bundles rebuilt with zero local hash drift |
+| JavaScript unit suite | **238 passed** |
+| Studio/privacy browser suite | **54 passed**, using a fresh browser installation |
+| Real local Portal browser suite | **10 passed**, including creation, editing, Template publication/readback, runtime graph, WebSocket responses, and explicit microphone startup |
+| Portal Python suite | **69 passed** |
+| Sample SDK/definition suite | **11 passed** |
+| Native shared MCP | New dedicated venv from `shared_mcp/requirements.txt`; **16 passed**, including Streamable HTTP and legacy SSE; `pip check` passed |
+| Real Azure read-only check | The exported production Portal, using only the existing Azure CLI sign-in, listed Agents and read one existing Agent with HTTP 200; no Agent, connection, or voice session was created |
+
+The clean checkout check also reproduced the old setup-directory error.
+[README setup commands](README.md#set-up) now use `cd portal` from the repository
+root, independent of the checkout folder's name.
+
+This proves repository and dependency independence, not offline operation.
+Use a complete checkout: the Portal uses the helpers and templates shipped in
+`samples/` and the guide in `docs/`. A real Foundry Project, preview/model access,
+and an authorized identity remain runtime prerequisites. Template publication
+also requires the documented native MCP and Dev Tunnel setup.
+
+The automated browser suites substitute Azure service boundaries. The separate
+live check was read-only; this validation did not repeat a real microphone-to-
+Azure voice conversation or publish a Template to Azure. Historical live
+conversation checks below must not be confused with this clean-install run.
+
 ## Handoff MCP connection refresh validation
 
 Validated on **October 14, 2026** on Linux with the live Portal, native MCP

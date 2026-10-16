@@ -3,6 +3,20 @@
 This is the downstream port log, not the full upstream repository history.
 Keep the upstream pin and intentional differences in every port entry.
 
+## 2026-10-16 — Verify independent installation
+
+**Upstream pin unchanged:** `e713a37c4cdb3282157cbaf46b6d425bcd984c05`.
+This is a Portal-only setup documentation and verification update.
+
+- Verified the published PR from tracked source with new public-registry
+  Python and npm installations, a fresh browser, and no ignored local state.
+- Confirmed Python-only production startup, all four pages and Template cards,
+  complete regression suites, and read-only access to a real Foundry Project.
+- Corrected repository-root setup commands to `cd portal` and documented that
+  the full repository supplies the shared helpers, samples, and guide.
+- Recorded the evidence and the boundary between independent operation,
+  required Azure/MCP configuration, and fixture-based versus live validation.
+
 ## 2026-10-16 — Clarify node component estimates
 
 **Upstream pin unchanged:** `e713a37c4cdb3282157cbaf46b6d425bcd984c05`.
