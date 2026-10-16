@@ -2365,22 +2365,6 @@ function renderNodeComponentPanel() {
       ...components.map((component) => pipelineMetricMinimum(component, "cost") || 0),
     ),
   };
-  const scope = kind === "stt"
-    ? "Agent-level · compatible with every model in this graph"
-    : `Node-level · ${escapeHtml(state.selected.id)}`;
-  let compatibilitySummary = "";
-  if (kind === "voice") {
-    const compatibility = selection.model === "azure-realtime"
-      ? "Azure Realtime uses its Azure Realtime native voice family."
-      : currentPipeline.architecture === "realtime"
-        ? "GPT Realtime supports both GPT native voices and Azure Speech voices."
-        : "Cascaded text models use Azure Speech voices.";
-    compatibilitySummary = `${compatibility} Native latency is included in model TTFA; Azure Speech rows use first-text-to-first-audio estimates.`;
-  } else if (kind === "stt" && currentPipeline.architecture === "realtime") {
-    compatibilitySummary = "Realtime understands audio natively; auxiliary STT is parallel. TTFS proxy is not added to native model latency.";
-  } else if (kind === "stt") {
-    compatibilitySummary = "TTFS proxy ends at final transcript; the wider input-readiness metric ends at primary response.created.";
-  }
   let advanced = "";
   if (kind === "stt") {
     const realtime = currentPipeline.architecture === "realtime";
@@ -2416,12 +2400,11 @@ function renderNodeComponentPanel() {
       </div>`;
   }
   $("#node-component-panel-body").innerHTML = `
-    <div class="component-panel-context">
-      <span>${pipelineIcon(kind === "stt" ? "audio" : kind)}</span>
+    <div class="component-estimate-disclaimer" role="note" aria-label="Latency and cost disclaimer">
+      <span aria-hidden="true">!</span>
       <div>
-        <strong>${titles[kind]} configuration</strong>
-        <small>${scope}</small>
-        ${compatibilitySummary ? `<p>${escapeHtml(compatibilitySummary)}</p>` : ""}
+        <strong>Latency &amp; cost disclaimer</strong>
+        <p>Latency and pricing are based on internal experiments and vary with usage scenarios, sales discounts, prompt length, and other factors. These figures are estimates only.</p>
       </div>
     </div>
     <div class="component-table-wrap">
@@ -2430,8 +2413,8 @@ function renderNodeComponentPanel() {
           <tr>
             <th>${componentSortHeader(kind, "name", titles[kind])}</th>
             <th>${componentSortHeader(kind, "provider", "Provider")}</th>
-            <th>${componentSortHeader(kind, "latency", "Latency")}</th>
-            <th>${componentSortHeader(kind, "cost", "Cost")}</th>
+            <th>${componentSortHeader(kind, "latency", "Latency (estimated)")}</th>
+            <th>${componentSortHeader(kind, "cost", "Cost (estimated)")}</th>
           </tr>
         </thead>
         <tbody>

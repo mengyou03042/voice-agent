@@ -131,7 +131,7 @@
       "source": "static/handoff-app.js",
       "destination": "static/handoff/handoff-app.js",
       "action": "adapted",
-      "reason": "The Portal opens its explicit-connect runtime with view=handoff, accepts version-only publication readback, and refreshes managed Template MCP connections before publication."
+      "reason": "The Portal opens its explicit-connect runtime with view=handoff, accepts version-only publication readback, refreshes managed Template MCP connections before publication, and labels node comparison estimates with an internal-experiment disclaimer."
     },
     {
       "root": "handoff_view",
@@ -145,7 +145,7 @@
       "source": "static/handoff.css",
       "destination": "static/handoff/handoff.css",
       "action": "adapted",
-      "reason": "The Portal styles disabled compatibility choices and its audio-path explanation."
+      "reason": "The Portal styles disabled compatibility choices and a prominent latency/cost estimate disclaimer."
     },
     {
       "root": "handoff_view",

@@ -98,6 +98,44 @@ test("Templates tab detects configured sample variants and returns to the existi
   await expect(page.getByRole("heading", { name: "Voice agent studio" })).toBeVisible();
 });
 
+for (const [architecture, model] of [
+  ["Realtime", "gpt-realtime-2.1"],
+  ["Cascaded", "gpt-5.4"],
+]) {
+  test(`${architecture} node selectors display the estimate disclaimer and estimated column titles`, async ({ page }) => {
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.goto("/handoff/");
+    await page.getByRole("button", { name: /Load from templates/ }).click();
+    await page.locator('[data-template-id="elevator-service-example"]').click();
+    await page.locator("#node-outline button").first().click();
+    await page.locator('[data-node-component="model"]').click();
+    await page.locator(`[data-component-kind="model"][data-component-value="${model}"]`).click();
+
+    const panel = page.locator("#node-component-panel-body");
+    const disclaimer = panel.getByRole("note", { name: "Latency and cost disclaimer" });
+    for (const kind of ["stt", "voice", "model"]) {
+      await page.locator(`[data-node-component="${kind}"]`).click();
+      await expect(disclaimer).toBeVisible();
+      await expect(panel.locator(":scope > :first-child")).toHaveAttribute("role", "note");
+      await expect(disclaimer.locator("strong")).toHaveText("Latency & cost disclaimer");
+      await expect(disclaimer.locator("p")).toHaveText(
+        "Latency and pricing are based on internal experiments and vary with usage scenarios, sales discounts, prompt length, and other factors. These figures are estimates only.",
+      );
+      await expect(panel.locator(".component-panel-context")).toHaveCount(0);
+      await expect(panel.locator(".component-table th").nth(2).locator(".component-sort-label"))
+        .toHaveText("Latency (estimated)");
+      await expect(panel.locator(".component-table th").nth(3).locator(".component-sort-label"))
+        .toHaveText("Cost (estimated)");
+      await expect(panel.getByRole("button", { name: "Sort by Cost (estimated)", exact: true }))
+        .toBeVisible();
+      await panel.getByRole("button", { name: "Sort by Latency (estimated)", exact: true }).click();
+      await expect(disclaimer).toBeVisible();
+    }
+    expect(errors).toEqual([]);
+  });
+}
+
 test("Handoff Graph loads a Portal template, publishes it, and opens the runtime graph", async ({ page }) => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -120,14 +158,14 @@ test("Handoff Graph loads a Portal template, publishes it, and opens the runtime
   await page.locator('[data-node-component="model"]').click();
   await expect(page.locator('[data-component-kind="model"]')).toHaveCount(14);
   await expect(page.locator(".component-table")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sort by Latency" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sort by Cost" })).toBeVisible();
-  await page.getByRole("button", { name: "Explain Latency" }).click();
+  await expect(page.getByRole("button", { name: "Sort by Latency (estimated)" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sort by Cost (estimated)" })).toBeVisible();
+  await page.getByRole("button", { name: "Explain Latency (estimated)" }).click();
   await expect(page.locator('[data-component-header-popup="latency"]')).toBeVisible();
   await expect(page.locator('[data-component-header-popup="latency"]')).toContainText(
     "Estimated minimum model latency",
   );
-  await page.getByRole("button", { name: "Explain Cost" }).click();
+  await page.getByRole("button", { name: "Explain Cost (estimated)" }).click();
   await expect(page.locator('[data-component-header-popup="cost"]')).toBeVisible();
   await expect(page.locator('[data-component-header-popup="cost"]')).toContainText(
     "Calculated normalized component cost from the row's public rate",
@@ -148,11 +186,11 @@ test("Handoff Graph loads a Portal template, publishes it, and opens the runtime
     page.locator('[data-component-kind="model"][data-component-value="gpt-realtime"]')
       .locator("xpath=ancestor::tr"),
   ).toContainText("Public rate: $32 audio input + $4 text input + $16 text output / 1M tokens");
-  await page.getByRole("button", { name: "Sort by Latency" }).click();
+  await page.getByRole("button", { name: "Sort by Latency (estimated)" }).click();
   await expect(
     page.locator('.component-table tbody [data-component-kind="model"]').first(),
   ).toHaveAttribute("data-component-value", "gpt-realtime-mini");
-  await page.getByRole("button", { name: "Sort by Latency" }).click();
+  await page.getByRole("button", { name: "Sort by Latency (estimated)" }).click();
   await expect(
     page.locator('.component-table tbody [data-component-kind="model"]').first(),
   ).toHaveAttribute("data-component-value", "gpt-6.1-sol");
@@ -177,7 +215,7 @@ test("Handoff Graph loads a Portal template, publishes it, and opens the runtime
   await page.locator('[data-component-kind="model"][data-component-value="gpt-5.4"]').click();
   await page.locator('[data-node-component="stt"]').click();
   await expect(page.locator('[data-component-kind="stt"]')).toHaveCount(12);
-  await expect(page.getByRole("button", { name: "Sort by Latency" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sort by Latency (estimated)" })).toBeVisible();
   await expect(
     page.locator('[data-component-kind="stt"][data-component-value="azure-speech"]')
       .locator("xpath=ancestor::tr"),
@@ -231,7 +269,7 @@ test("Handoff Graph loads a Portal template, publishes it, and opens the runtime
   );
   await expect(page.locator("#node-cost-value")).toContainText("~$0.0397/normalized min");
   await page.locator('[data-node-component="voice"]').click();
-  await expect(page.getByRole("button", { name: "Sort by Latency" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sort by Latency (estimated)" })).toBeVisible();
   await expect(
     page.locator('[data-component-kind="voice"][data-component-value="alloy"]')
       .locator("xpath=ancestor::tr"),

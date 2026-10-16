@@ -131,6 +131,11 @@ operations.
   the local working copy.
   The Portal intentionally preserves its explicit-connect policy: select
   **Connect & start session** when you are ready to use microphone/audio.
+- In **Edit node**, the Transcriber, Model, and Voice comparison tables show a
+  highlighted disclaimer and label their columns **Latency (estimated)** and
+  **Cost (estimated)**. The figures are based on internal experiments and are
+  for estimation only; usage scenarios, sales discounts, prompt length, and
+  other factors affect actual latency and pricing.
 - Live session renders the runtime handoff topology with the same layered
   cards, pipeline badges, route curves, and active-node treatment as Handoff
   Graph authoring. Every node accumulates **Dwell** wall-clock time while it is
@@ -293,6 +298,8 @@ Azure credential and upstream transport with test fixtures. It drives creation,
 YAML edits, WebSocket responses, persisted-data retrieval, and microphone startup
 through a synthetic browser device. The application has no test/offline runtime
 mode. These tests do not prove a real Azure conversation.
+The browser fixture supplies synthetic MCP configuration and a temporary bearer
+file; it does not require a running Dev Tunnel or local MCP credentials.
 
 The static UI fixture uses `8098`. Both test servers are stopped by Playwright;
 neither test helper is used by `demo_server.py`.

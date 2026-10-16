@@ -3,6 +3,22 @@
 This is the downstream port log, not the full upstream repository history.
 Keep the upstream pin and intentional differences in every port entry.
 
+## 2026-10-16 — Clarify node component estimates
+
+**Upstream pin unchanged:** `e713a37c4cdb3282157cbaf46b6d425bcd984c05`.
+This is a Portal-only copy and presentation change.
+
+- Replaced the STT, Model, and Voice selector introductions in **Edit node**
+  with a highlighted disclaimer: latency and pricing are estimates from
+  internal experiments and vary with usage scenarios, sales discounts, prompt
+  length, and other factors.
+- Renamed the comparison columns to **Latency (estimated)** and **Cost
+  (estimated)** without changing calculations, compatibility, or sorting.
+- Added browser coverage for all three selectors in Realtime and cascaded
+  pipelines and refreshed static asset cache versions.
+- Made browser MCP fixtures self-contained so publication tests do not depend
+  on ignored local Dev Tunnel configuration or bearer files.
+
 ## 2026-10-14 — Refresh Handoff MCP connections before publication
 
 **Upstream pin unchanged:** `e713a37c4cdb3282157cbaf46b6d425bcd984c05`.
