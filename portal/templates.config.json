@@ -74,6 +74,15 @@
         "source_label": "Public no-auth MCP",
         "source_reference": "Hosted Front Desk MCP"
       }
+    },
+    {
+      "id": "customer-support-example",
+      "folder": "../samples/example5_customer_support",
+      "name": "Example 5: Customer Support",
+      "category": "Customer support",
+      "summary": "Classify technical and account questions, troubleshoot one step at a time, and prepare an unsubmitted follow-up summary without business tools.",
+      "accent_color": "#2563eb",
+      "lock_runtime": true
     }
   ]
 }

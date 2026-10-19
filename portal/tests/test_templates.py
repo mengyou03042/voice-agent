@@ -27,13 +27,22 @@ from template_portal import (
 
 ROOT = Path(__file__).resolve().parents[1]
 ENDPOINT = "https://sample.services.ai.azure.com/api/projects/sample-project"
-EXPECTED_TEMPLATES = [
+MCP_TEMPLATES = [
     "finance-example-realtime",
     "finance-example-cascade-luna",
     "finance-with-otp-and-officer-search",
     "elevator-service-example",
     "frontdesk-receptionist-example",
 ]
+# Tool-free handoff examples: (template ID, sample folder, graph nodes, graph edges).
+TOOL_FREE_TEMPLATES = [
+    ("customer-support-example", "example5_customer_support", 5, 9),
+]
+EXPECTED_TEMPLATES = [
+    *MCP_TEMPLATES,
+    *(template_id for template_id, *_ in TOOL_FREE_TEMPLATES),
+]
+END_CONVERSATION_TOOL = {"type": "system", "name": "end_conversation"}
 MCP_BASE_URL = (
     "https://voice-agent-noauth-mcp"
     ".lemonsky-36682081.westus2.azurecontainerapps.io"
@@ -48,6 +57,28 @@ MCP_ROUTES = {
 
 
 class TemplateCatalogTests(unittest.TestCase):
+    def test_tool_free_handoff_examples_need_no_mcp(self) -> None:
+        catalog = TemplateCatalog()
+
+        for template_id, folder, node_count, edge_count in TOOL_FREE_TEMPLATES:
+            with self.subTest(template_id=template_id):
+                detail = catalog.detail(template_id)
+                assert detail is not None
+                self.assertFalse(detail["requires_mcp"])
+                self.assertTrue(detail["runtime_locked"])
+                self.assertEqual(node_count, detail["node_count"])
+                self.assertEqual(edge_count, detail["edge_count"])
+                agent = json.loads(
+                    (ROOT.parent / "samples" / folder / "agent.json").read_text(encoding="utf-8")
+                )
+                handoff = agent["definition"]["handoff"]
+                self.assertEqual(template_id, agent["name"])
+                self.assertEqual("end", handoff["nodes"][-1]["id"])
+                self.assertEqual(
+                    [END_CONVERSATION_TOOL],
+                    handoff["nodes"][-1]["config"]["tools"],
+                )
+
     def test_frontdesk_preserves_fluency_prompt_and_complete_workflow(self) -> None:
         catalog = TemplateCatalog()
         document = catalog.document("frontdesk-receptionist-example")
@@ -175,7 +206,7 @@ class TemplateCatalogTests(unittest.TestCase):
         self.assertTrue(cascade["requires_mcp"])
         self.assertTrue(second["requires_mcp"])
         self.assertTrue(third["requires_mcp"])
-        for template_id in EXPECTED_TEMPLATES:
+        for template_id in MCP_TEMPLATES:
             with self.subTest(template_id=template_id):
                 source = catalog.source(template_id)
                 detail = catalog.detail(template_id)
@@ -299,7 +330,7 @@ class TemplateCatalogTests(unittest.TestCase):
 
     def test_public_materialization_removes_credentials_from_every_node(self) -> None:
         catalog = TemplateCatalog()
-        for template_id in EXPECTED_TEMPLATES:
+        for template_id in MCP_TEMPLATES:
             with self.subTest(template_id=template_id):
                 document = catalog.document(template_id)
                 assert document is not None
@@ -461,7 +492,7 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
             detail_payload["suggested_agent_name"],
             r"^local-only-finance-example-realtime-[0-9a-f]{8}$",
         )
-        for template_id in EXPECTED_TEMPLATES:
+        for template_id in MCP_TEMPLATES:
             detail_payload = await (
                 await self.client.get(f"/api/templates/{template_id}")
             ).json()
@@ -477,7 +508,7 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_public_templates_probe_without_bearer_or_local_files(self) -> None:
         catalog = self.client.server.app[template_portal.CATALOG_KEY]
-        for template_id in EXPECTED_TEMPLATES:
+        for template_id in MCP_TEMPLATES:
             with self.subTest(template_id=template_id):
                 document = catalog.document(template_id)
                 assert document is not None
@@ -554,7 +585,7 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
             create_connection.assert_not_called()
 
     async def test_public_templates_configure_and_publish_without_connections(self) -> None:
-        for template_id in EXPECTED_TEMPLATES:
+        for template_id in MCP_TEMPLATES:
             with (
                 self.subTest(template_id=template_id),
                 patch("template_portal.validate_mcp_probe_url") as validate_url,
