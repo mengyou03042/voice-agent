@@ -83,6 +83,15 @@
       "summary": "Classify technical and account questions, troubleshoot one step at a time, and prepare an unsubmitted follow-up summary without business tools.",
       "accent_color": "#2563eb",
       "lock_runtime": true
+    },
+    {
+      "id": "appointment-setter-example",
+      "folder": "../samples/example6_appointment_setter",
+      "name": "Example 6: Appointment Setter",
+      "category": "Sales",
+      "summary": "Qualify interest, collect proposed meeting times, and read back a meeting request for the team to confirm, without calendar, mail, or CRM tools.",
+      "accent_color": "#db2777",
+      "lock_runtime": true
     }
   ]
 }

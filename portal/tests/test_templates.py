@@ -37,6 +37,7 @@ MCP_TEMPLATES = [
 # Tool-free handoff examples: (template ID, sample folder, graph nodes, graph edges).
 TOOL_FREE_TEMPLATES = [
     ("customer-support-example", "example5_customer_support", 5, 9),
+    ("appointment-setter-example", "example6_appointment_setter", 7, 12),
 ]
 EXPECTED_TEMPLATES = [
     *MCP_TEMPLATES,
