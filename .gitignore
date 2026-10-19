@@ -1,5 +1,6 @@
 .venv/
 .local-mcp-and-ui/
+.local-tools/
 DevTunnels/
 samples/.env
 samples/.env.tip

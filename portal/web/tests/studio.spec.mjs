@@ -2,8 +2,29 @@
 // Browser-level regression coverage; no Azure credentials or live agent creation.
 import { test, expect } from "@playwright/test";
 import {
-  mountStudio, selectSessionAgent, selectTab, CONFIG,
+  mockWebRtcPeer, mountStudio, resource, selectSessionAgent, selectTab, CONFIG,
 } from "./studio-fixtures.mjs";
+
+test("keeps auxiliary notice links behind Debug mode without hiding the notice or licenses", async ({ page }) => {
+  await mountStudio(page, { notice: "Synthetic evaluation notice." });
+  const notice = page.getByRole("status").filter({ hasText: "Synthetic evaluation notice." });
+  const debug = page.getByRole("checkbox", { name: "Debug mode", exact: true });
+  const webrtc = page.getByRole("link", { name: "WebRTC", exact: true });
+  const logs = page.getByRole("link", { name: "Local session logs", exact: true });
+
+  await expect(notice).toBeVisible();
+  await expect(page.getByRole("link", { name: "Licenses", exact: true })).toBeVisible();
+  await expect(webrtc).toHaveCount(0);
+  await expect(logs).toHaveCount(0);
+  await debug.check();
+  await expect(webrtc).toHaveAttribute("href", "/webrtc");
+  await expect(logs).toHaveAttribute("href", "/static/demo/sessions.html");
+  await debug.uncheck();
+  await expect(webrtc).toHaveCount(0);
+  await expect(logs).toHaveCount(0);
+  await expect(notice).toBeVisible();
+  await expect(page.getByRole("link", { name: "Licenses", exact: true })).toBeVisible();
+});
 
 test("shows backend configuration failures with their request ID", async ({ page }) => {
   await mountStudio(page, {}, "/demo/", {
@@ -41,17 +62,120 @@ test("keeps a backend voice bridge failure visible after the socket closes", asy
 test("loads the agent catalog one page at a time", async ({ page }) => {
   const api = await mountStudio(page, {}, "/demo/", { extraVoiceAgents: 30 });
   const picker = page.getByLabel("Session agent", { exact: true });
+  const suggestions = page.getByRole("listbox", { name: "Session agents", exact: true });
 
-  await expect(page.locator("datalist option")).toHaveCount(25);
+  await picker.click();
+  await expect(suggestions.getByRole("option")).toHaveCount(25);
   expect(api.agentListQueries).toEqual(["?api-version=v1&kind=voice&limit=25"]);
 
   await page.getByRole("button", { name: "Load more agents" }).click();
 
-  await expect(page.locator("datalist option")).toHaveCount(34);
+  await picker.click();
+  await expect(suggestions.getByRole("option")).toHaveCount(34);
   await expect(page.getByRole("button", { name: "Load more agents" })).toHaveCount(0);
   expect(api.agentListQueries).toHaveLength(2);
   expect(api.agentListQueries[1]).toContain("limit=25");
   expect(api.agentListQueries[1]).toContain("after=");
+});
+
+test("Session agent dropdown filters cards and selects with the keyboard", async ({ page }) => {
+  const api = await mountStudio(page);
+  const picker = page.getByRole("combobox", { name: "Session agent", exact: true });
+  const suggestions = page.getByRole("listbox", { name: "Session agents", exact: true });
+  await picker.click();
+  await expect(picker).toHaveAttribute("aria-expanded", "true");
+  await expect(picker).not.toHaveAttribute("list");
+  await expect(suggestions.getByRole("option")).toHaveCount(4);
+  await picker.fill("CASCADE");
+  const option = suggestions.getByRole("option", { name: "cascaded-agent", exact: true });
+  await expect(suggestions.getByRole("option")).toHaveCount(1);
+  await expect(option).toContainText("gpt-4.1");
+  await expect(option).toContainText("v1");
+  await picker.press("ArrowDown");
+  await expect(picker).toHaveAttribute("aria-activedescendant", await option.getAttribute("id"));
+  await expect(picker).toBeFocused();
+  await picker.press("Enter");
+  await expect(picker).toHaveValue("cascaded-agent");
+  await expect(picker).toHaveAttribute("aria-expanded", "false");
+  await expect(suggestions).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Connect & start session" })).toBeEnabled();
+  expect(new URL(page.url()).searchParams.get("agent")).toBe("cascaded-agent");
+  expect(api.sockets).toEqual([]);
+  expect(api.errors).toEqual([]);
+});
+
+for (const [width, height] of [[1440, 1000], [390, 844], [1280, 420]]) {
+  test(`Session agent dropdown preserves long identifiers and fits ${width}x${height}`, async ({ page }) => {
+    const name = "pg-0123456789abcdef01234567-local-only-elevator-service-with-safety-zendesk-and-handoff-01234567";
+    await page.setViewportSize({ width, height });
+    const api = await mountStudio(page, {}, "/demo/", { extraAgents: [
+      resource(name, {
+        kind: "voice", model_type: "managed", model: "gpt-realtime",
+        instructions: "Answer concisely.",
+        audio: { output: { voice: "en-US-AvaNeural" } },
+      }),
+    ] });
+    const picker = page.getByRole("combobox", { name: "Session agent", exact: true });
+    await picker.click();
+    const menu = page.locator(".session-agent-menu");
+    await expect(menu).toBeVisible();
+    await expect.poll(async () => {
+      const box = await menu.boundingBox();
+      return box.x >= 0 && box.y >= 0
+        && box.x + box.width <= width && box.y + box.height <= height;
+    }).toBe(true);
+    const option = page.getByRole("option", { name, exact: true });
+    await expect(option).toHaveAttribute("title", name);
+    await expect(option.locator("strong")).toHaveCSS("-webkit-line-clamp", "2");
+    await option.click();
+    await expect(picker).toHaveValue(name);
+    await expect(picker).toHaveAttribute("title", name);
+    expect(new URL(page.url()).searchParams.get("agent")).toBe(name);
+    await picker.click();
+    await expect(option).toHaveAttribute("aria-selected", "true");
+    await expect(option).toContainText("Selected");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(api.sockets).toEqual([]);
+    expect(api.errors).toEqual([]);
+  });
+}
+
+test("Session agent dropdown dismisses without switching and locks during a call", async ({ page }) => {
+  const api = await mountStudio(page, {}, "/demo/?agent=realtime-agent");
+  const picker = page.getByRole("combobox", { name: "Session agent", exact: true });
+  await picker.click();
+  await picker.fill("cascade");
+  await picker.press("ArrowDown");
+  await picker.press("Escape");
+  await expect(picker).toHaveValue("realtime-agent");
+  await expect(picker).toHaveAttribute("aria-expanded", "false");
+  await page.getByRole("button", { name: "Show Agent suggestions" }).click();
+  await expect(picker).toHaveAttribute("aria-expanded", "true");
+  await page.getByRole("heading", { name: "Playground", exact: true }).click();
+  await expect(picker).toHaveAttribute("aria-expanded", "false");
+  await picker.click();
+  await picker.press("Tab");
+  await expect(picker).toHaveAttribute("aria-expanded", "false");
+  await api.start();
+  await expect(picker).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Show Agent suggestions" })).toBeDisabled();
+  await expect(page.locator(".session-agent-menu")).toHaveCount(0);
+  expect(api.errors).toEqual([]);
+});
+
+test("Session agent dropdown reports a missing exact name and allows another selection", async ({ page }) => {
+  await mountStudio(page);
+  const picker = page.getByRole("combobox", { name: "Session agent", exact: true });
+  await picker.fill("missing-session-agent");
+  await expect(page.locator(".session-agent-empty")).toContainText("Press Enter to look up the exact name.");
+  await picker.press("Enter");
+  await expect(page.getByRole("alert")).toContainText(/missing-session-agent|not found|404/i);
+  await expect(page.getByRole("button", { name: "Connect & start session" })).toBeDisabled();
+  await picker.fill("realtime-agent");
+  await page.getByRole("button", { name: "Search agent", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(picker).toHaveValue("realtime-agent");
+  await expect(page.getByRole("button", { name: "Connect & start session" })).toBeEnabled();
 });
 
 test("direct URLs select an agent outside the first catalog page", async ({ page }) => {
@@ -360,9 +484,7 @@ test("workflow remains visible beside the session without unmounting conversatio
   await expect(page.getByRole("region", { name: "Agent debug" })).toBeVisible();
   await expect(page.locator(".review-session audio")).toHaveCount(1);
   await expect(page.locator(".review-session")).toBeVisible();
-  await page.getByText("Session settings", { exact: true }).click();
-  await page.getByRole("checkbox", { name: /^Developer mode/ }).check();
-  await page.getByText("Session settings", { exact: true }).click();
+  await page.getByRole("checkbox", { name: "Debug mode", exact: true }).check();
   await expect(page.locator(".timeline.developer-events")).toBeVisible();
   await expect(page.locator(".event-type").filter({ hasText: "session.created" })).toBeVisible();
   await page.getByLabel("Filter protocol frames").fill("no-match");
@@ -399,6 +521,7 @@ test("desktop Agent Debug and Live conversation columns resize from their shared
   const sideBefore = await side.boundingBox();
   const playgroundBefore = await playground.boundingBox();
   const handle = await separator.boundingBox();
+  expect(Math.abs(sideBefore.width - playgroundBefore.width)).toBeLessThan(1);
 
   await page.mouse.move(handle.x + handle.width / 2, handle.y + 120);
   await page.mouse.down();
@@ -416,7 +539,22 @@ test("desktop Agent Debug and Live conversation columns resize from their shared
   expect(sideAfterKeyboard.width).toBeLessThan(sideAfterDrag.width);
 
   await separator.dblclick();
-  await expect(separator).toHaveAttribute("aria-valuenow", "720");
+  await expect.poll(async () => Math.abs(
+    (await side.boundingBox()).width - (await playground.boundingBox()).width,
+  )).toBeLessThan(1);
+  await expect(separator).toHaveAttribute("aria-valuenow", String(Math.round((await side.boundingBox()).width)));
+});
+
+test("runtime defaults stay half graph and half conversation across desktop window sizes", async ({ page }) => {
+  await mountStudio(page, {}, "/demo/?view=handoff");
+  await page.getByRole("separator", { name: "Resize Agent Debug and Live conversation panels" }).click();
+  for (const width of [1200, 1600, 2240, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await expect.poll(async () => Math.abs(
+      (await page.locator(".studio-side-column").boundingBox()).width
+        - (await page.locator(".playground-column").boundingBox()).width,
+    )).toBeLessThan(1);
+  }
 });
 
 test("agent URLs select without automatically starting a credentialed session", async ({ page }) => {
@@ -425,6 +563,133 @@ test("agent URLs select without automatically starting a credentialed session", 
   await page.waitForLoadState("networkidle");
   expect(api.sockets).toHaveLength(0);
   await expect(page.getByRole("button", { name: "Connect & start session" })).toBeEnabled();
+  expect(api.errors).toEqual([]);
+});
+
+for (const transport of ["websocket", "webrtc"]) {
+  test(`transport URLs select ${transport} and use it only after explicit Connect`, async ({ page }) => {
+    await mockWebRtcPeer(page);
+    const api = await mountStudio(
+      page, {}, `/demo/?agent=realtime-agent&view=handoff&transport=${transport}#session`,
+    );
+    await expect(page.getByLabel("Session agent", { exact: true })).toHaveValue("realtime-agent");
+    await page.getByText("Session settings", { exact: true }).click();
+    await expect(page.getByLabel("Transport", { exact: true })).toHaveValue(transport);
+    await page.waitForLoadState("networkidle");
+    expect(api.sockets).toHaveLength(0);
+    await page.getByText("Session settings", { exact: true }).click();
+
+    await page.getByRole("button", { name: "Connect & start session" }).click();
+    await expect.poll(() => api.sockets.length).toBe(1);
+    expect(new URL(api.sockets[0].url()).searchParams.get("transport"))
+      .toBe(transport === "webrtc" ? "webrtc" : null);
+    if (transport === "webrtc") {
+      await expect.poll(() => api.messages).toContainEqual({
+        type: "rtc.call.sdp.create", sdp_offer: "synthetic-test-sdp",
+      });
+    }
+    await page.getByRole("button", { name: "Stop session" }).click();
+    expect(api.errors).toEqual([]);
+  });
+}
+
+test("transport selection updates copied URLs and survives agent changes and reloads", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const api = await mountStudio(page, {}, "/demo/?agent=realtime-agent&view=handoff#session");
+  await page.getByText("Session settings", { exact: true }).click();
+  const transport = page.getByLabel("Transport", { exact: true });
+  await expect(transport).toHaveValue("websocket");
+  await page.getByText("Session settings", { exact: true }).click();
+  await page.getByRole("button", { name: "Copy URL to this agent" }).click();
+  expect(new URL(await page.evaluate(() => navigator.clipboard.readText())).searchParams.get("transport"))
+    .toBe("websocket");
+
+  await page.getByText("Session settings", { exact: true }).click();
+  await transport.selectOption("webrtc");
+  await expect(page.locator(".copy-agent-url-status")).toHaveCount(0);
+  await page.getByText("Session settings", { exact: true }).click();
+  await selectSessionAgent(page, "cascaded-agent");
+  await page.getByRole("button", { name: "Copy URL to this agent" }).click();
+  const copied = new URL(await page.evaluate(() => navigator.clipboard.readText()));
+  expect(copied.searchParams.get("agent")).toBe("cascaded-agent");
+  expect(copied.searchParams.get("transport")).toBe("webrtc");
+  expect(copied.searchParams.get("view")).toBe("handoff");
+  expect(copied.hash).toBe("#session");
+  expect(copied.href).toBe(page.url());
+
+  await page.reload();
+  await expect(page.getByLabel("Session agent", { exact: true })).toHaveValue("cascaded-agent");
+  await page.getByText("Session settings", { exact: true }).click();
+  await expect(transport).toHaveValue("webrtc");
+  await transport.selectOption("websocket");
+  expect(new URL(page.url()).searchParams.get("transport")).toBe("websocket");
+  await page.waitForLoadState("networkidle");
+  expect(api.sockets).toHaveLength(0);
+  expect(api.errors).toEqual([]);
+});
+
+for (const transport of ["quic", ""]) {
+  test(`transport URLs reject unsupported value '${transport}' until explicitly corrected`, async ({ page }) => {
+    const api = await mountStudio(page, {}, `/demo/?agent=realtime-agent&transport=${transport}`);
+    await expect(page.getByRole("alert")).toContainText("Unsupported transport");
+    await expect(page.getByRole("button", { name: "Connect & start session" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Copy URL to this agent" })).toBeDisabled();
+    await page.getByText("Session settings", { exact: true }).click();
+    await expect(page.getByLabel("Transport", { exact: true })).toHaveAttribute("aria-invalid", "true");
+    await page.getByLabel("Transport", { exact: true }).selectOption("websocket");
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Connect & start session" })).toBeEnabled();
+    expect(new URL(page.url()).searchParams.get("transport")).toBe("websocket");
+    expect(api.sockets).toHaveLength(0);
+    expect(api.errors).toEqual([]);
+  });
+}
+
+test("transport URLs keep echo-reference fallback explicit and reflected in the URL", async ({ page }) => {
+  const api = await mountStudio(page, {}, "/demo/?agent=echo-agent&transport=webrtc");
+  await expect(page.getByRole("status").filter({ hasText: "Transport changed to WebSocket" })).toBeVisible();
+  await page.getByText("Session settings", { exact: true }).click();
+  await expect(page.getByLabel("Transport", { exact: true })).toHaveValue("websocket");
+  await expect(page.getByLabel("Transport", { exact: true }).locator("option[value=webrtc]")).toBeDisabled();
+  expect(new URL(page.url()).searchParams.get("transport")).toBe("websocket");
+  await page.getByText("Session settings", { exact: true }).click();
+  await selectSessionAgent(page, "realtime-agent");
+  await expect(page.getByRole("status").filter({ hasText: "Transport changed to WebSocket" })).toHaveCount(0);
+  expect(api.sockets).toHaveLength(0);
+  expect(api.errors).toEqual([]);
+});
+
+for (const [name, transport] of [["realtime-agent", "webrtc"], ["echo-agent", "websocket"]]) {
+  test(`transport URLs use ${transport} for the one-shot Editor start of ${name}`, async ({ page }) => {
+    await mockWebRtcPeer(page);
+    await page.addInitScript((agentName) => {
+      window.sessionStorage.setItem("voice-agent-editor-run", agentName);
+    }, name);
+    const api = await mountStudio(page, {}, `/demo/?agent=${name}&transport=webrtc`);
+    await expect.poll(() => api.sockets.length).toBe(1);
+    expect(new URL(api.sockets[0].url()).searchParams.get("transport"))
+      .toBe(transport === "webrtc" ? "webrtc" : null);
+    if (transport === "webrtc") {
+      await expect.poll(() => api.messages).toContainEqual({
+        type: "rtc.call.sdp.create", sdp_offer: "synthetic-test-sdp",
+      });
+    }
+    await expect(page.getByLabel("Transport", { exact: true })).toHaveValue(transport);
+    expect(await page.evaluate(() => window.sessionStorage.getItem("voice-agent-editor-run"))).toBeNull();
+    await page.getByRole("button", { name: "Stop session" }).click();
+    expect(api.errors).toEqual([]);
+  });
+}
+
+test("transport URLs do not let an Editor start bypass invalid transport validation", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.sessionStorage.setItem("voice-agent-editor-run", "realtime-agent");
+  });
+  const api = await mountStudio(page, {}, "/demo/?agent=realtime-agent&transport=quic");
+  await expect(page.getByRole("alert")).toContainText("Unsupported transport");
+  await page.waitForLoadState("networkidle");
+  expect(api.sockets).toHaveLength(0);
+  expect(await page.evaluate(() => window.sessionStorage.getItem("voice-agent-editor-run"))).toBeNull();
   expect(api.errors).toEqual([]);
 });
 
@@ -539,6 +804,7 @@ test("session overrides affect only the WebSocket and controls lock while connec
 });
 
 test("echo-reference modes and WebRTC restrictions remain available", async ({ page }) => {
+  await mockWebRtcPeer(page);
   const api = await mountStudio(page);
   await selectSessionAgent(page, "echo-agent");
   await page.getByText("Session settings", { exact: true }).click();
@@ -647,8 +913,13 @@ test("connecting while Create is pending does not relabel the active session", a
   await expect.poll(() => api.creates.length).toBe(1);
   await api.start();
   release();
-  await expect(page.locator("datalist option[value=late-agent]")).toHaveCount(1);
-  await expect(page.getByLabel("Session agent", { exact: true })).toHaveValue("realtime-agent");
+  await expect(page.locator(".editor-footer")).toContainText("Agent created. Ready in the playground.");
+  const picker = page.getByLabel("Session agent", { exact: true });
+  await expect(picker).toHaveValue("realtime-agent");
+  await page.getByRole("button", { name: "Stop session", exact: true }).click();
+  await picker.click();
+  await expect(page.getByRole("option", { name: "late-agent", exact: true })).toHaveCount(1);
+  await expect(picker).toHaveValue("realtime-agent");
 });
 
 test("session settings closes on Escape and restores keyboard focus", async ({ page }) => {
@@ -683,7 +954,7 @@ test("a spoken handoff transfer and target answer remain one user turn", async (
   api.send({
     type: "response.output_text.delta",
     response_id: "response-transfer",
-    delta: "One moment while I transfer you. ",
+    delta: "One moment while I transfer you.",
   });
   api.send({
     type: "session.handoff.started",
@@ -719,6 +990,59 @@ test("a spoken handoff transfer and target answer remain one user turn", async (
   await expect(replies).toContainText(
     "One moment while I transfer you. The specialist is ready.",
   );
+  expect(api.errors).toEqual([]);
+});
+
+test("assistant transcripts separate output items without splitting streamed words", async ({ page }) => {
+  const api = await mountStudio(page, {}, "/demo/?agent=cascaded-agent&view=handoff");
+  await api.start("cascaded-agent");
+  const first = "Before I share the details, please hold while I confirm who I'm speaking with.";
+  const second = "Am I speaking with Mengyou?";
+  const reply = page.locator(".msg.assistant .text");
+  const part = (itemId, outputIndex, contentIndex = 0) => ({
+    response_id: "response-transcript",
+    item_id: itemId,
+    output_index: outputIndex,
+    content_index: contentIndex,
+  });
+
+  api.send({ type: "response.created", response: { id: "response-transcript" } });
+  api.send({
+    ...part("preface", 0),
+    type: "response.output_audio_transcript.delta",
+    delta: first,
+  });
+  api.send({
+    ...part("preface", 0),
+    type: "response.output_audio_transcript.done",
+    transcript: first,
+  });
+  await expect(reply).toHaveText(first);
+
+  for (const delta of ["Am I speak", "ing with Meng", "you?"]) {
+    api.send({
+      ...part("question", 1),
+      type: "response.output_audio_transcript.delta",
+      delta,
+    });
+  }
+  await expect(reply).toHaveText(`${first} ${second}`);
+  api.send({
+    ...part("question", 1),
+    type: "response.output_audio_transcript.done",
+    transcript: second,
+  });
+  api.send({
+    ...part("question", 1, 1),
+    type: "response.output_audio_transcript.done",
+    transcript: "Take your time.",
+  });
+  api.send({
+    type: "response.done",
+    response: { id: "response-transcript", status: "completed", output: [] },
+  });
+  await expect(reply).toHaveText(`${first} ${second} Take your time.`);
+  await expect(page.locator(".msg.assistant")).toHaveCount(1);
   expect(api.errors).toEqual([]);
 });
 
@@ -763,7 +1087,151 @@ test("workflow MCP cards test reachability and show response scheduling", async 
   await expect(dialog.locator(".probe-status")).toHaveAttribute("title", "fixture-mcp 1");
 });
 
-test("runtime handoff cards show live dwell time and completed user turns per node", async ({ page }) => {
+test("greeting sentences do not overlap when microphone startup finishes during playback", async ({ page }) => {
+  await page.addInitScript(() => {
+    const playback = { segments: [], releaseMic: null, stopped: 0 };
+    window.__greetingPlayback = playback;
+    const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = async (...args) => {
+      const stream = await getUserMedia(...args);
+      await new Promise((resolve) => { playback.releaseMic = resolve; });
+      return stream;
+    };
+    const createBufferSource = AudioContext.prototype.createBufferSource;
+    AudioContext.prototype.createBufferSource = function (...args) {
+      const source = createBufferSource.apply(this, args);
+      const start = source.start.bind(source);
+      const stop = source.stop.bind(source);
+      const context = this;
+      source.start = (when = 0, ...rest) => {
+        playback.segments.push({
+          start: when,
+          duration: source.buffer.duration,
+          contextTime: context.currentTime,
+        });
+        return start(when, ...rest);
+      };
+      source.stop = (...rest) => {
+        playback.stopped += 1;
+        return stop(...rest);
+      };
+      return source;
+    };
+  });
+  const api = await mountStudio(page);
+  await api.start();
+  await page.waitForFunction(() => Boolean(window.__greetingPlayback.releaseMic));
+  api.send({ type: "response.created", response: { id: "greeting-response" } });
+  api.send({
+    type: "response.output_audio_transcript.delta",
+    response_id: "greeting-response",
+    item_id: "greeting-item", output_index: 0, content_index: 0,
+    delta: "Hello, thank you for taking the call. ",
+  });
+  api.send({
+    type: "response.audio.delta",
+    response_id: "greeting-response",
+    item_id: "greeting-item", output_index: 0, content_index: 0,
+    delta: Buffer.alloc(24000 * 2 * 4).toString("base64"),
+  });
+  await expect.poll(() => page.evaluate(() => window.__greetingPlayback.segments.length)).toBe(1);
+
+  await page.evaluate(() => window.__greetingPlayback.releaseMic());
+  await expect(page.locator(".connection-status")).toContainText("listening (server VAD)");
+  api.send({
+    type: "response.output_audio_transcript.delta",
+    response_id: "greeting-response",
+    item_id: "greeting-item", output_index: 0, content_index: 0,
+    delta: "This is Virtual Finance calling.",
+  });
+  api.send({
+    type: "response.audio.delta",
+    response_id: "greeting-response",
+    item_id: "greeting-item", output_index: 0, content_index: 0,
+    delta: Buffer.alloc(24000 * 2).toString("base64"),
+  });
+  api.send({
+    type: "response.audio.done", response_id: "greeting-response",
+    item_id: "greeting-item", output_index: 0, content_index: 0,
+  });
+  api.send({
+    type: "response.done",
+    response: { id: "greeting-response", status: "completed", output: [] },
+  });
+  await expect.poll(() => page.evaluate(() => window.__greetingPlayback.segments.length)).toBe(2);
+  const [first, second] = await page.evaluate(() => window.__greetingPlayback.segments);
+  expect(second.contextTime).toBeLessThan(first.start + first.duration);
+  expect(second.start).toBeGreaterThanOrEqual(first.start + first.duration);
+  await expect(page.locator(".msg.assistant")).toHaveCount(1);
+  await expect(page.locator(".msg.assistant")).toContainText(
+    "Hello, thank you for taking the call. This is Virtual Finance calling.",
+  );
+
+  api.send({ type: "input_audio_buffer.speech_started", item_id: "interrupt-greeting" });
+  await expect.poll(() => page.evaluate(() => window.__greetingPlayback.stopped)).toBe(2);
+  expect(api.errors).toEqual([]);
+});
+
+test("Debug mode reveals collected turn latency and hides open analysis when disabled", async ({ page }) => {
+  const api = await mountStudio(page);
+  const debug = page.getByRole("checkbox", { name: "Debug mode", exact: true });
+  await expect(debug).not.toBeChecked();
+  await api.start();
+  api.send({ type: "input_audio_buffer.speech_started", item_id: "debug-user" });
+  api.send({ type: "input_audio_buffer.speech_stopped", item_id: "debug-user" });
+  api.send({
+    type: "conversation.item.input_audio_transcription.completed",
+    item_id: "debug-user",
+    transcript: "A synthetic spoken question.",
+  });
+  api.send({ type: "response.created", response: { id: "debug-answer" } });
+  const pcm = new Int16Array(2400).fill(4000);
+  api.send({
+    type: "response.audio.delta",
+    response_id: "debug-answer",
+    item_id: "debug-answer-item", output_index: 0, content_index: 0,
+    delta: Buffer.from(pcm.buffer).toString("base64"),
+  });
+  api.send({
+    type: "response.output_audio_transcript.done",
+    response_id: "debug-answer",
+    transcript: "A synthetic spoken answer.",
+  });
+  api.send({ type: "response.done", response: {
+    id: "debug-answer", status: "completed", output: [],
+  } });
+
+  await expect(page.locator(".msg.user")).toContainText("A synthetic spoken question.");
+  await expect(page.locator(".msg.assistant")).toContainText("A synthetic spoken answer.");
+  await expect(page.locator(".turn-metrics, .compact-latency-trigger, .latency-dialog")).toHaveCount(0);
+  await expect(page.locator(".timeline.developer-events")).toHaveCount(0);
+
+  await debug.check();
+  await expect(page.getByLabel("User transcription metrics")).toContainText("STT");
+  await expect(page.getByLabel("Agent turn metrics")).toBeVisible();
+  const latency = page.getByRole("button", { name: /User→Agent/ });
+  await expect(latency).toBeVisible();
+  const measuredLatency = await latency.innerText();
+  await latency.click();
+  await expect(page.getByRole("dialog", { name: "Turn latency analysis" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await debug.uncheck();
+  await expect(page.locator(".turn-metrics, .latency-dialog")).toHaveCount(0);
+  await expect(page.locator(".msg.assistant")).toContainText("A synthetic spoken answer.");
+
+  await debug.check();
+  await expect(latency).toHaveText(measuredLatency, { useInnerText: true });
+  await latency.click();
+  // The dialog is a portal; changing the mode must unmount it, not merely hide the bubble.
+  await debug.evaluate((element) => element.click());
+  await expect(page.getByRole("dialog", { name: "Turn latency analysis" })).toHaveCount(0);
+  await expect(page.locator(".turn-metrics")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Stop session" })).toBeVisible();
+  expect(api.sockets).toHaveLength(1);
+  expect(api.errors).toEqual([]);
+});
+
+test("runtime handoff cards show live dwell time and completed user turns per node", async ({ page }, testInfo) => {
   const api = await mountStudio(page);
   await api.start("mcp-handoff-agent");
   api.send({
@@ -823,13 +1291,32 @@ test("runtime handoff cards show live dwell time and completed user turns per no
   await expect(tools).not.toHaveClass(/unvisited/);
   await expect.poll(() => tools.evaluate((element) => (
     getComputedStyle(element).borderTopWidth
-  ))).toBe("3px");
-  await expect.poll(async () => (await tools.boundingBox()).width).toBeGreaterThan(
-    unvisitedWidth + 15,
-  );
+  ))).toBe("2px");
+  await expect.poll(() => tools.evaluate((element) => (
+    getComputedStyle(element).animationName
+  ))).toBe("runtime-node-rainbow-ring");
+  await expect.poll(() => tools.evaluate((element) => (
+    getComputedStyle(element).backgroundImage
+  ))).toContain("conic-gradient");
+  await expect.poll(async () => (await tools.boundingBox()).width).toBe(unvisitedWidth);
   await expect(entry).not.toHaveClass(/active/);
   await expect(entry).toHaveClass(/visited/);
-  await expect(entry.locator(".runtime-node-state")).toContainText("VISITED");
+  await expect(entry).toHaveClass(/completed/);
+  await expect(entry.locator(".runtime-node-state")).toContainText("COMPLETED");
+  await expect(entry.locator(".runtime-node-state.completed")).toHaveCSS("background-color", "rgb(8, 118, 92)");
+  await expect(entry.locator(".runtime-node-state.completed")).toHaveCSS("font-size", "12px");
+  await expect(entry.locator(".runtime-node-icon")).toHaveText("✓");
+  await page.screenshot({ path: testInfo.outputPath("runtime-completed.png"), fullPage: true });
+  await expect.poll(() => entry.evaluate((element) => (
+    getComputedStyle(element).borderTopWidth
+  ))).toBe("2px");
+  await expect.poll(() => entry.evaluate((element) => (
+    getComputedStyle(element).transform
+  ))).toBe("none");
+  await expect.poll(() => entry.evaluate((element) => (
+    getComputedStyle(element, "::after").content
+  ))).toBe("none");
+  await expect.poll(async () => (await entry.boundingBox()).width).toBe(unvisitedWidth);
 
   api.send({ type: "input_audio_buffer.speech_started", item_id: "tools-turn" });
   api.send({ type: "input_audio_buffer.speech_stopped", item_id: "tools-turn" });
@@ -839,25 +1326,76 @@ test("runtime handoff cards show live dwell time and completed user turns per no
     transcript: "Run the lookup.",
   });
   api.answer("Done.");
+  await expect(tools.locator(".runtime-node-state")).toContainText("LIVE");
+  await expect(tools).not.toHaveClass(/completed/);
   await expect(tools.locator(".runtime-node-metrics")).toContainText("Turns 1");
   await page.waitForTimeout(2100);
   await expect(tools.locator(".runtime-node-metrics")).not.toContainText("Dwell 0.0s");
   await expect(entry.locator(".runtime-node-metrics")).toContainText("%");
   await expect(tools.locator(".runtime-node-metrics")).toContainText("%");
 
+  await expect(tools.locator(".runtime-node-metrics")).toBeDisabled();
+  await expect(page.locator(".runtime-node-breakdown")).toHaveCount(0);
+  await page.getByRole("checkbox", { name: "Debug mode", exact: true }).check();
   await tools.locator(".runtime-node-metrics").click();
   const breakdown = tools.locator(".runtime-node-breakdown");
   await expect(breakdown).toContainText("Observed turn latency");
   await expect(breakdown).toContainText("Average");
-  await expect(breakdown).toContainText("Pipeline estimate");
+  await expect(breakdown).toContainText("Pipeline");
+  await expect(breakdown).toContainText("Disclaimer:");
+  await expect(breakdown).not.toContainText("$");
   await expect(breakdown).toContainText("Not available");
+  await page.getByRole("checkbox", { name: "Debug mode", exact: true }).uncheck();
+  await expect(breakdown).toHaveCount(0);
+  await expect(tools.locator(".runtime-node-metrics")).toContainText("Turns 1");
+
+  api.send({
+    type: "session.handoff.completed",
+    handoff_id: "handoff-2",
+    edge_id: "tools-entry",
+    from_node_id: "tools",
+    to_node_id: "$entrypoint",
+  });
+  await expect(entry.locator(".runtime-node-state")).toContainText("LIVE");
+  await expect(entry).not.toHaveClass(/completed/);
+  await expect(tools.locator(".runtime-node-state")).toContainText("COMPLETED");
+  await api.close(1011, "Synthetic interrupted visit");
+  await expect(entry.locator(".runtime-node-state")).toContainText("STOPPED");
+  await expect(entry).not.toHaveClass(/completed/);
+  await expect(entry).toHaveClass(/stopped/);
+  await expect(tools.locator(".runtime-node-state")).toContainText("COMPLETED");
 });
+
+for (const normalCompletion of [true, false]) {
+  test(`the final node is ${normalCompletion ? "completed on normal session end" : "stopped on manual cancellation"}`, async ({ page }) => {
+    const api = await mountStudio(page);
+    await api.start("mcp-handoff-agent");
+    api.send({
+      type: "session.handoff.completed",
+      handoff_id: "handoff-final",
+      edge_id: "entry-tools",
+      from_node_id: "$entrypoint",
+      to_node_id: "tools",
+    });
+    const node = page.locator('.runtime-node-card[data-node-id="tools"]');
+    await expect(node.locator(".runtime-node-state")).toContainText("LIVE");
+    if (normalCompletion) await api.close(1000, "Agent session finished");
+    else await page.getByRole("button", { name: "Stop session", exact: true }).click();
+    await expect(node.locator(".runtime-node-state")).toContainText(normalCompletion ? "COMPLETED" : "STOPPED");
+    await expect(node).not.toHaveClass(/active/);
+  });
+}
 
 test("the standalone WebRTC page keeps its independent layout", async ({ page }) => {
   const api = await mountStudio(page);
   await page.goto("/static/demo/webrtc.html");
   await expect(page.locator(".wrtc-shell")).toBeVisible();
   await expect(page.locator(".studio")).toHaveCount(0);
+  const debug = page.getByRole("checkbox", { name: "Debug mode", exact: true });
+  await expect(debug).not.toBeChecked();
+  await debug.check();
+  await page.reload();
+  await expect(debug).not.toBeChecked();
   await expect(page.getByLabel("Agent", { exact: true })).toHaveAttribute(
     "placeholder",
     "Select or enter an exact agent name…",

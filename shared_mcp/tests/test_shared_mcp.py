@@ -589,6 +589,10 @@ class SharedMcpTests(unittest.TestCase):
                 "call-test-001",
                 "command-start-001",
             )
+            observed = service.get_call_state(
+                "call-test-001",
+                started["call_token"],
+            )
             recorded = service.record_issue(
                 "call-test-001",
                 started["call_token"],
@@ -648,6 +652,10 @@ class SharedMcpTests(unittest.TestCase):
             persisted,
         ):
             self.assertNotIn("state_version", result)
+        self.assertTrue(observed["ok"])
+        self.assertEqual("call-test-001", observed["state"]["call_id"])
+        self.assertNotIn("call_token_hash", observed["state"])
+        self.assertNotIn("operations", observed["state"])
         self.assertEqual(safety["action"], "clear")
         self.assertEqual(created["command"], "handoff_to_next_request")
         self.assertNotIn("ticket", created)

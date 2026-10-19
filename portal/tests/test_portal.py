@@ -272,7 +272,7 @@ class LiveProxyTests(unittest.IsolatedAsyncioTestCase):
             "/",
             "/demo/",
             "/webrtc",
-            "/handoff/",
+            "/editor/",
             "/static/demo/sessions.html",
             "/static/demo/persisted.html",
         ):

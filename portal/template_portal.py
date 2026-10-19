@@ -291,6 +291,7 @@ def materialize_template(
     voice: str,
     mcp_server_url: str,
     mcp_connection_id: str,
+    mcp_public: bool = False,
 ) -> dict[str, Any]:
     definition = copy.deepcopy(document["definition"])
     if model.strip():
@@ -303,11 +304,14 @@ def materialize_template(
     if mcp_tools:
         server_url = validate_https_url(mcp_server_url, "MCP server URL")
         connection_id = mcp_connection_id.strip()
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", connection_id):
+        if not mcp_public and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", connection_id):
             raise ValueError("MCP connection ID is required and has an invalid format.")
         for tool in mcp_tools:
             tool["server_url"] = server_url
-            tool["project_connection_id"] = connection_id
+            if mcp_public:
+                tool.pop("project_connection_id", None)
+            else:
+                tool["project_connection_id"] = connection_id
             tool.pop("authorization", None)
             tool.pop("headers", None)
     materialize_handoff_instruction_inheritance(definition)
@@ -536,9 +540,9 @@ class TemplateCatalog:
                 connection_mode = str(
                     mcp_config.get("connection_mode") or "managed"
                 ).strip()
-                if connection_mode not in {"managed", "existing"}:
+                if connection_mode not in {"managed", "existing", "public"}:
                     raise ValueError(
-                        "mcp.connection_mode must be 'managed' or 'existing'"
+                        "mcp.connection_mode must be 'managed', 'existing', or 'public'"
                     )
                 allowed_backends_value = (
                     mcp_config.get("allowed_backends") or []
@@ -619,7 +623,7 @@ class TemplateCatalog:
                         and source.mcp_config_path.is_file()
                         and not (
                             source.mcp_server_url
-                            and source.mcp_connection_id
+                            and (source.mcp_connection_id or source.connection_mode == "public")
                         )
                     ):
                         raise ValueError(
@@ -680,9 +684,9 @@ class TemplateCatalog:
         mcp_tools = list(iter_mcp_tools(definition))
         connection_configured = bool(
             source.mcp_server_url
-            and source.mcp_connection_id
+            and (source.mcp_connection_id or source.connection_mode == "public")
             and (
-                source.connection_mode == "existing"
+                source.connection_mode in {"existing", "public"}
                 or (
                     source.mcp_token_file
                     and source.mcp_token_file.is_file()
@@ -1043,10 +1047,13 @@ async def get_template(request: web.Request) -> web.Response:
             tool["server_url"] = source.mcp_server_url
         if source.mcp_connection_id:
             tool["project_connection_id"] = source.mcp_connection_id
+        if source.connection_mode == "public":
+            tool.pop("project_connection_id", None)
         tool.pop("authorization", None)
         tool.pop("headers", None)
     materialize_handoff_instruction_inheritance(definition)
     detail["definition"] = definition
+    detail["yaml"] = json.dumps({**document, "definition": definition}, indent=2)
     detail["suggested_agent_name"] = template_agent_name("", template_id)
     return web.json_response(detail)
 
@@ -1058,7 +1065,10 @@ def _probe_report(source: TemplateSource) -> dict[str, Any]:
         "server_url": source.mcp_server_url,
         "project_connection_id": source.mcp_connection_id,
         "guide_url": "/guide/run-samples",
-        "start_command": "cd VoiceAgent/shared_mcp && ./scripts/e2e-local.sh",
+        "start_command": (
+            "" if source.connection_mode == "public"
+            else "cd VoiceAgent/shared_mcp && ./scripts/e2e-local.sh"
+        ),
         "checked_at": time.strftime("%H:%M:%S", time.localtime()),
     }
 
@@ -1079,7 +1089,7 @@ async def probe_template_mcp(request: web.Request) -> web.Response:
         return web.json_response({**report, "error": str(error)})
     if (
         not source.mcp_server_url
-        or not source.mcp_connection_id
+        or (not source.mcp_connection_id and source.connection_mode != "public")
         or (
             source.connection_mode == "managed"
             and (
@@ -1098,7 +1108,7 @@ async def probe_template_mcp(request: web.Request) -> web.Response:
     try:
         bearer_token = (
             ""
-            if source.connection_mode == "existing"
+            if source.connection_mode in {"existing", "public"}
             else normalize_bearer_token(
                 source.mcp_token_file.read_text(encoding="utf-8")
             )
@@ -1279,6 +1289,9 @@ async def ensure_template_mcp_connection(
 ) -> str:
     if not list(iter_mcp_tools(definition)):
         return ""
+    if source.connection_mode == "public":
+        validate_mcp_probe_url(source.mcp_server_url)
+        return ""
     if (
         not source.mcp_server_url
         or not source.mcp_connection_id
@@ -1322,7 +1335,7 @@ async def configure_template_mcp(request: web.Request) -> web.Response:
         if "token" in body:
             raise web.HTTPConflict(
                 text=(
-                    "Portal Templates use the managed Local Dev Tunnel connection; "
+                    "Portal Templates use server-configured MCP settings; "
                     "browser-provided MCP tokens are disabled."
                 )
             )
@@ -1353,7 +1366,7 @@ async def configure_template_mcp(request: web.Request) -> web.Response:
             status=502,
         )
     return web.json_response({
-        "configured": bool(connection_name),
+        "configured": bool(connection_name or source.connection_mode == "public"),
         "connection_name": connection_name,
         "backend": cfg.backend,
     })
@@ -1388,6 +1401,7 @@ async def publish_template(request: web.Request) -> web.Response:
             voice="" if source.lock_runtime else str(body.get("voice") or ""),
             mcp_server_url=source.mcp_server_url,
             mcp_connection_id=connection_name,
+            mcp_public=source.connection_mode == "public",
         )
         result = await asyncio.to_thread(
             publish_agent,

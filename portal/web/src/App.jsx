@@ -26,7 +26,7 @@ import {
 } from "./lib/agentCatalog.mjs";
 import { useVoiceSession } from "./hooks/useVoiceSession.js";
 import { buildHandoffGraph } from "./lib/handoffGraph.mjs";
-import { withSelectedAgent } from "./lib/agentUrl.mjs";
+import { withSelectedAgent, withSessionTransport } from "./lib/agentUrl.mjs";
 import { AgentDefinitionDialog } from "./components/AgentDefinitionDialog.jsx";
 import { Icon } from "./components/ConfigControls.jsx";
 import { Sidebar, MODE_CREATE, MODE_GENERATE } from "./components/Sidebar.jsx";
@@ -64,6 +64,13 @@ export function App() {
   const [cfg, setCfg] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [agent, setAgent] = useState(null); // { name, model, voice, cascaded }
+  const [transport, setTransport] = useState(
+    () => new URLSearchParams(window.location.search).get("transport") ?? "websocket",
+  );
+  const [transportNotice, setTransportNotice] = useState("");
+  const transportError = transport === "websocket" || transport === "webrtc"
+    ? ""
+    : `Unsupported transport '${transport}'. Choose WebSocket or WebRTC in Session settings.`;
   const [agents, setAgents] = useState([]);
   const [agentListState, setAgentListState] = useState({
     loading: true,
@@ -76,10 +83,11 @@ export function App() {
   const [authorMode, setAuthorMode] = useState(MODE_CREATE);
   const [configurationCollapsed, setConfigurationCollapsed] = useState(showRuntimeGraph);
   const [debugCollapsed, setDebugCollapsed] = useState(!showRuntimeGraph);
-  const [sideColumnWidth, setSideColumnWidth] = useState(showRuntimeGraph ? 720 : 560);
+  const [sideColumnWidth, setSideColumnWidth] = useState(window.innerWidth / 2);
   const [resizingWorkspace, setResizingWorkspace] = useState(false);
   const shellRef = useRef(null);
   const splitDragRef = useRef(null);
+  const workspaceResizedRef = useRef(false);
   // What the last generate returned, kept so the review stage has something
   // to show. Cleared when the caller switches away from generating, because a
   // definition left on screen would describe an agent they are no longer making.
@@ -95,6 +103,28 @@ export function App() {
   const { setClientFunctions } = session;
   const connectedRef = useRef(session.isConnected);
   connectedRef.current = session.isConnected;
+  const editorRunHandled = useRef(false);
+
+  useEffect(() => {
+    if (!agent?.clientReferenceEc) {
+      setTransportNotice("");
+      return;
+    }
+    if (transport !== "webrtc") return;
+    setTransport("websocket");
+    setTransportNotice("Transport changed to WebSocket: live-reference echo cancellation requires WebSocket.");
+    window.history.replaceState(
+      window.history.state, "", withSessionTransport(window.location.href, "websocket"),
+    );
+  }, [agent?.clientReferenceEc, transport]);
+
+  const onTransportChange = (value) => {
+    window.history.replaceState(
+      window.history.state, "", withSessionTransport(window.location.href, value),
+    );
+    setTransport(value);
+    setTransportNotice("");
+  };
 
   const sideWidthBounds = () => {
     const shell = shellRef.current;
@@ -105,6 +135,7 @@ export function App() {
       : 0;
     return {
       min: WORKSPACE_MIN_SIDE_WIDTH,
+      balanced: (shellWidth - horizontalPadding - WORKSPACE_SPLITTER_WIDTH) / 2,
       max: Math.max(
         WORKSPACE_MIN_SIDE_WIDTH,
         shellWidth - horizontalPadding - WORKSPACE_MIN_PLAYGROUND_WIDTH - WORKSPACE_SPLITTER_WIDTH,
@@ -138,6 +169,7 @@ export function App() {
   const moveWorkspaceResize = (event) => {
     const drag = splitDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    if (event.clientX !== drag.startX) workspaceResizedRef.current = true;
     setClampedSideColumnWidth(drag.startWidth + event.clientX - drag.startX);
   };
 
@@ -155,12 +187,18 @@ export function App() {
     if (!["ArrowLeft", "ArrowRight", "Home"].includes(event.key)) return;
     event.preventDefault();
     if (event.key === "Home") {
-      setClampedSideColumnWidth(showRuntimeGraph ? 720 : 560);
+      resetWorkspaceSplit();
       return;
     }
+    workspaceResizedRef.current = true;
     setClampedSideColumnWidth(
       (current) => current + (event.key === "ArrowRight" ? 32 : -32),
     );
+  };
+
+  const resetWorkspaceSplit = () => {
+    workspaceResizedRef.current = false;
+    setClampedSideColumnWidth(sideWidthBounds().balanced);
   };
 
   const toggleConfigurationPanel = () => {
@@ -189,14 +227,18 @@ export function App() {
   }, [session.isConnected]);
 
   useEffect(() => {
+    if (!cfg || !shellRef.current) return undefined;
     const fitWorkspace = () => {
-      const { min, max } = sideWidthBounds();
-      setSideColumnWidth((current) => Math.min(max, Math.max(min, current)));
+      const { min, max, balanced } = sideWidthBounds();
+      setSideColumnWidth((current) => Math.min(
+        max, Math.max(min, workspaceResizedRef.current ? current : balanced),
+      ));
     };
+    const observer = new ResizeObserver(fitWorkspace);
+    observer.observe(shellRef.current);
     fitWorkspace();
-    window.addEventListener("resize", fitWorkspace);
-    return () => window.removeEventListener("resize", fitWorkspace);
-  }, []);
+    return () => observer.disconnect();
+  }, [cfg]);
 
   /* Client-executed `function` tools are fulfilled by this page, not by Voice Live, so the
    * handlers have to be installed before a session can call one. The digit-accuracy demo is the
@@ -237,8 +279,8 @@ export function App() {
           let portalAgents = page.agents.map(
             (item) => forPortal(cfg, item, generatedSessionStores.current),
           );
-          // The Templates tab runs a template by opening this page with the agent it was
-          // published as, so an agent named in the URL is a selection, not a filter.
+          // Template publishing opens AgentRuntime with the new agent selected, so an
+          // agent named in the URL is a selection, not a filter.
           const requested = new URLSearchParams(window.location.search).get("agent");
           let selected = portalAgents[0] || null;
           if (requested) {
@@ -416,8 +458,32 @@ export function App() {
     }
   };
 
-  // Agent URLs select only. Starting a credentialed/microphone session always
-  // requires the local operator to press Connect; ignore legacy autostart links.
+  // Only Editor's one-shot Try it now request starts a session; shared URLs still select only.
+  useEffect(() => {
+    if (!cfg || agentListState.loading || editorRunHandled.current) return;
+    if (agent?.clientReferenceEc && transport === "webrtc") return;
+    editorRunHandled.current = true;
+    let requested;
+    try {
+      requested = window.sessionStorage.getItem("voice-agent-editor-run");
+      window.sessionStorage.removeItem("voice-agent-editor-run");
+    } catch (error) {
+      session.logError(`Could not read the Editor session request: ${error.message}`);
+      return;
+    }
+    if (!requested) return;
+    if (transportError) {
+      session.logError(transportError);
+      return;
+    }
+    if (agent?.name !== requested) {
+      session.logError(`Could not start Editor Agent '${requested}': it is not available in this Project.`);
+      return;
+    }
+    session.connect(
+      agent.name, "", "", cfg.apiVersion, transport, Boolean(agent.clientReferenceEc),
+    );
+  }, [cfg, agent, agentListState.loading, transport, transportError, session.connect, session.logError]);
 
   const onCreateAgent = async ({
     name: requestedName, model, voice, tools, subagents, inferenceMode, store, avatar,
@@ -564,11 +630,14 @@ export function App() {
 
   return (
     <div className="studio">
-      <StudioHeader cfg={cfg} disabled={session.isConnected} />
+      <StudioHeader cfg={cfg} disabled={session.isConnected}
+        debugMode={session.verbose} onDebugModeChange={session.setVerbose} />
       <div
         ref={shellRef}
         className={`shell${resizingWorkspace ? " is-resizing" : ""}`}
-        style={{ "--studio-side-width": `${sideColumnWidth}px` }}
+        style={{ "--studio-side-width": workspaceResizedRef.current
+          ? `${sideColumnWidth}px`
+          : `calc((100% - ${WORKSPACE_SPLITTER_WIDTH}px) / 2)` }}
       >
         <aside className="studio-side-column" aria-label="Agent creation and debugging">
           <section className={`studio-panel studio-config-panel${configurationCollapsed ? " is-collapsed" : ""}`}>
@@ -645,6 +714,7 @@ export function App() {
                   takenEdgeIds={session.takenEdgeIds}
                   trail={session.handoffTrail}
                   runtimeMetrics={session.handoffRuntimeMetrics}
+                  debugMode={session.verbose}
                   agentName={agent?.name || ""}
                 />
               ) : (
@@ -669,13 +739,15 @@ export function App() {
           onPointerUp={finishWorkspaceResize}
           onPointerCancel={finishWorkspaceResize}
           onKeyDown={resizeWorkspaceWithKeyboard}
-          onDoubleClick={() => setClampedSideColumnWidth(showRuntimeGraph ? 720 : 560)}
-          title="Drag to resize. Use Left/Right arrows for precise adjustment; double-click to reset."
+          onDoubleClick={resetWorkspaceSplit}
+          title="Drag to resize. Use Left/Right arrows for precise adjustment; double-click or press Home for equal widths."
         >
           <span aria-hidden="true" />
         </div>
         <section className="playground-column" aria-label="Agent playground">
           <SessionControls cfg={cfg} session={session} agent={agent} agents={agents}
+            transport={transport} transportError={transportError} transportNotice={transportNotice}
+            onTransportChange={onTransportChange}
             agentListState={agentListState} onSelectAgent={onSelectAgent} onRefreshAgents={onRefreshAgents}
             onLoadMoreAgents={onLoadMoreAgents}
             onEditAgent={() => setEditingAgentName(agent?.name || "")} />

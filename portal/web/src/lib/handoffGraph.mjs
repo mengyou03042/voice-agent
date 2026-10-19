@@ -70,9 +70,12 @@ function authoredNodeIndex(definition) {
   const rootTools = asArray(definition?.tools);
   const rootVoice = asText(definition?.audio?.output?.voice?.name)
     || asText(definition?.audio?.output?.voice);
+  const rootVoiceType = asText(definition?.audio?.output?.voice?.type)
+    || asText(definition?.audio?.output?.voice_type);
   const rootModel = asText(definition?.model);
   const rootStt = asText(definition?.audio?.input?.transcription?.model)
     || "native-realtime-audio";
+  const customSpeech = Boolean(definition?.audio?.input?.transcription?.custom_speech);
   const index = new Map([
     [ENTRYPOINT_NODE_ID, {
       description: "Top-level session configuration.",
@@ -81,8 +84,10 @@ function authoredNodeIndex(definition) {
       toolSpecs: toolSpecs(rootTools),
       toolChoice: definition?.tool_choice || "auto",
       voice: rootVoice,
+      voiceType: rootVoiceType,
       model: rootModel,
       stt: rootStt,
+      customSpeech,
     }],
   ]);
   for (const node of asArray(definition?.handoff?.nodes)) {
@@ -96,8 +101,10 @@ function authoredNodeIndex(definition) {
       toolSpecs: toolSpecs(tools),
       toolChoice: config.tool_choice || definition?.tool_choice || "auto",
       voice: asText(config.voice?.name) || asText(config.voice) || rootVoice,
+      voiceType: asText(config.voice?.type) || asText(config.voice_type) || (config.voice ? "" : rootVoiceType),
       model: asText(config.model) || rootModel,
       stt: rootStt,
+      customSpeech,
     });
   }
   return index;
@@ -223,8 +230,10 @@ export function buildHandoffGraph({ definition = null, handoffState = null } = {
       toolSpecs: prompt.toolSpecs || [],
       toolChoice: prompt.toolChoice || "auto",
       voice: asText(prompt.voice),
+      voiceType: asText(prompt.voiceType),
       model: asText(prompt.model),
       stt: asText(prompt.stt),
+      customSpeech: Boolean(prompt.customSpeech),
       implicit: Boolean(runtime.implicit),
       // A node the session compiled but the definition never described has no prompt to show.
       authored: prompts.has(id),

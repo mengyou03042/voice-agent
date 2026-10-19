@@ -2,16 +2,20 @@
 
 ## Conclusion
 
+The normal Portal Template workflow uses public no-auth MCP and needs no
+local MCP setup. Follow the [Portal guide](../portal/README.md) for that path.
+The CLI samples below still use customer-managed MCP connections.
+
 This is the executable local setup and validation sequence. Start with the
 [architecture and documentation index](./README.md) when choosing a
 component or looking for a specific guide.
 
 After completing the one-time prerequisites, run
-`VoiceAgent/shared_mcp/scripts/e2e-local.sh` before publishing or opening either Finance
-example in the portal. The command starts the MCP implementation as a native Python process,
-exposes it to Microsoft Foundry through a persistent named Dev Tunnel, creates
-the required Foundry connections, generates the shared local config, and
-verifies both public MCP route contracts. Each sample CLI or the portal then
+`VoiceAgent/shared_mcp/scripts/e2e-local.sh` before publishing either Finance
+example with its CLI. The command starts the MCP implementation as a native
+Python process, exposes it to Microsoft Foundry through a persistent named Dev
+Tunnel, creates the required Foundry connections, generates the shared local
+config, and verifies both public MCP route contracts. Each sample CLI then
 publishes the selected Agent independently.
 
 The complete local path is:
@@ -31,8 +35,6 @@ two Foundry RemoteTool connections
 generated example1.local.env / example2.local.env
        |
        +--> sample.py publish / check / run
-       |
-       +--> portal Templates / Try it now
 ```
 
 Do not put `localhost` in a published Voice Agent. MCP calls are made from
@@ -105,7 +107,7 @@ If `devtunnel` is missing or authentication fails, follow the install and
 device-code steps in
 [02: MCP settings and E2E](./02_mcp_settings.md#install-dev-tunnel-cli-on-linux-or-wsl).
 
-## Create the two sample and portal Python environments
+## Create the sample and Portal Python environments
 
 The two Finance scenarios and portal have separate requirements and separate
 virtual environments. Setup also creates `shared_mcp/.venv` for the native MCP
@@ -119,19 +121,18 @@ cd "$VOICE_AGENT_ROOT"
   --project-endpoint "$AZURE_AI_PROJECT_ENDPOINT"
 ```
 
-`setup-local-examples.sh` checks required command-line tools, installs
-repository-local Node.js 22 and Dev Tunnel CLIs when missing, creates or reuses
-the component Python environments,
-installs the portal Node dependencies, runs/builds the browser code, and
-creates the three local `.env` files. On the first normal setup it also
-generates `shared_mcp/state/local/devtunnel-id`; later setup, E2E, and manager
-runs reuse that fixed local ID. The file is ignored by Git. Use `--check` to
+`setup-local-examples.sh` checks required command-line tools, installs a
+repository-local Dev Tunnel CLI when missing, creates or reuses the CLI and MCP
+Python environments, and creates the three sample `.env` files. On the first
+normal setup it also
+generates `shared_mcp/state/local/devtunnel-id`; later setup and E2E runs reuse
+that fixed local ID. The file is ignored by Git. Use `--check` to
 inspect readiness without installing, generating the ID, or changing
 environments.
 
-Repository-local tools live under ignored `.local-mcp-and-ui/tools/`; setup and
-`manage-local-mcp-and-ui.sh` add them to their own `PATH`, so later lifecycle
-commands work in a fresh shell. On minimal Debian/Ubuntu Python installations
+Repository-local tools live under ignored `.local-tools/`; setup and
+the MCP E2E script add them to their own `PATH`, so later lifecycle commands
+work in a fresh shell. On minimal Debian/Ubuntu Python installations
 where `venv` exists but `ensurepip` does not, setup creates each `.venv` with
 `--without-pip` and bootstraps `pip` inside that environment. Do not install
 `python3.12-venv` with `sudo` merely to run this workflow.
@@ -252,34 +253,10 @@ VOICE_AGENT_MCP_CONFIG=../../shared_mcp/config/generated/example2.local.env
 
 These generated files do not exist until the local MCP E2E starts.
 
-## Start the complete local MCP path
+## Start the local MCP path for CLI samples
 
-The recommended entry point starts both MCP and portal, replacing stale
-processes from earlier runs:
-
-```bash
-cd "$VOICE_AGENT_ROOT"
-PIP_INDEX_URL="${PIP_INDEX_URL}" \
-  ./scripts/manage-local-mcp-and-ui.sh restart
-```
-
-`manage-local-mcp-and-ui.sh` owns the local runtime lifecycle. It
-stops stale repository-owned MCP, Dev Tunnel, and portal processes; starts
-the MCP E2E and portal; waits for both health endpoints; reloads the template
-catalog; and requires successful MCP probes for both templates before reporting
-`local_mcp_and_portal=ready`.
-
-Runtime PID and log files are stored under ignored
-`.local-mcp-and-ui/` state. Use:
-
-```bash
-./scripts/manage-local-mcp-and-ui.sh status
-./scripts/manage-local-mcp-and-ui.sh stop
-```
-
-To run only MCP without the portal, use the lower-level command below.
-
-Run:
+This path is only for the CLI samples. It does not start or configure the
+Portal, whose default Templates use the public no-auth MCP.
 
 ```bash
 cd "$VOICE_AGENT_ROOT/shared_mcp"
@@ -300,15 +277,15 @@ The command performs all of the following:
 8. Writes the two non-secret `config/generated/*.local.env` files.
 9. Runs authenticated `initialize` and `tools/list` against both public routes
    and verifies the tool inventory against both `agent.json` contracts.
-10. Keeps the native MCP process and Dev Tunnel host running for sample or UI
+10. Keeps the native MCP process and Dev Tunnel host running for CLI sample
     publication.
 
 The named tunnel, local port, token, connection names, and generated config are
 reused on later runs. This gives the local MCP a stable Foundry-facing URL
 instead of a new temporary URL on every invocation.
 
-Leave this command running while using either Agent or the portal. Pressing
-`Ctrl+C` stops the local Python server and tunnel host process. The named tunnel,
+Leave this command running while using either CLI sample. Pressing `Ctrl+C`
+stops the local Python server and tunnel host process. The named tunnel,
 generated config, Foundry connections, and published Agent versions remain,
 but MCP calls cannot succeed until the local host starts again.
 
@@ -330,11 +307,10 @@ For CI, run the same E2E without keeping the runtime alive:
 SHARED_MCP_E2E_KEEP_RUNNING=0 ./scripts/e2e-local.sh
 ```
 
-Do not start the UI from Templates before E2E reaches the final success lines.
 The optional `package.sh` only creates a Docker image. It does not generate the
 Project connections, `state/local/token`, or `config/generated/*.local.env`.
-The sample CLIs and portal publish Agents only after this MCP process is
-ready; their model or Agent validation failures do not stop MCP hosting.
+The sample CLIs publish Agents only after this MCP process is ready; their
+model or Agent validation failures do not stop MCP hosting.
 
 ## Authentication model
 
@@ -348,7 +324,7 @@ The local workflow makes this transparent:
    state.
 2. The token is stored in the two Foundry connections.
 3. Generated example configs contain only the MCP URL and connection name.
-4. `agent.json`, the browser, and the portal never receive the token.
+4. `agent.json` and the CLI never receive the token.
 
 An unauthenticated HTTP 401 is expected and proves that the public endpoint is
 gated. Do not disable the bearer gate merely because the implementation runs
@@ -424,65 +400,32 @@ VOICE_AGENT_MCP_CONFIG=../../shared_mcp/config/generated/example1.local.env \
   .venv/bin/python sample.py publish
 ```
 
-## Load and publish the examples from the portal
+## Load and publish the examples from the local Portal
 
-The manager has already started the portal and MCP together. Do not run
-`demo_server.py` in another terminal. Open:
+The Portal is an independent local UI and does not use the local MCP E2E above.
+Start it from another terminal:
 
-```text
-http://localhost:18098
+```bash
+cd "$VOICE_AGENT_ROOT/portal"
+.venv/bin/python demo_server.py
 ```
 
-If it runs in a VS Code Remote-SSH host:
-
-1. Verify `curl -sS http://127.0.0.1:18098/healthz` in the remote terminal.
-2. Open the VS Code **PORTS** view in that same Remote-SSH window.
-3. Forward remote port `18098`.
-4. Open the exact **Forwarded Address** shown by VS Code; the local port may
-  differ if `18098` is already occupied.
-
-Use `localhost` or the forwarded HTTPS address so browser microphone access
-has a secure context.
+Open `http://127.0.0.1:9527`. If it runs on a VS Code Remote-SSH host, forward
+remote port `9527` and open the exact forwarded address shown by VS Code.
 
 The default [`portal/templates.config.json`](../portal/templates.config.json)
-maps each template to:
+maps each Template to its sibling `agent.json` and a fixed public no-auth MCP
+route. On **Try it now**, the UI:
 
-- its sibling `agent.json`;
-- the same generated `*.local.env` used by the CLI.
+1. probes the public MCP with no bearer token;
+2. verifies every tool declared by the Template;
+3. materializes the public MCP URL without a Project connection;
+4. publishes a new independent Agent in the selected Foundry Project;
+5. opens that Agent in the Live session page.
 
-On **Try it now**, the UI:
-
-1. Loads the MCP route and fixed connection name from the generated config.
-2. Reads the ignored local token file on the server, never in the browser.
-3. Runs an authenticated MCP `initialize` and `tools/list`, then verifies every
-   tool allowed by the template. HTTP 401/403 fails this readiness check.
-4. Creates or updates the fixed connection in the currently selected Foundry
-   Project/account.
-5. Materializes and publishes a new independent Agent.
-6. Opens that Agent in the Live session page.
-
-Every Agent created from Templates is named with the `local-only-` prefix. If
-no name is supplied, the result follows
-`local-only-<template-id>-<unique-suffix>`. This deliberately warns that the
-Agent's MCP connection targets this machine's Dev Tunnel and will be
-unavailable when its native MCP runtime and tunnel are not running.
-
-If the UI started before `e2e-local.sh`, open Templates and select **Reload**
-after the E2E config has been generated. If the config is still unavailable,
-publication remains disabled with an instruction to start the local MCP E2E.
-
-The Project selected in the UI must be the same Project for which
-`e2e-local.sh` created the two connections. To use another Project, update
-`AZURE_AI_PROJECT_ENDPOINT` in both example `.env` files, rerun E2E so the
-connections are created there, select that Project in the UI, and reload the
-templates.
-
-The portal initially uses `AZURE_VOICE_AGENTS_ENDPOINT` from `portal/.env`. To
-change it, type a Project name in the **Foundry project** text box, choose a
-suggestion, and press Enter or **Switch**. Search matches only the Project name;
-the account is displayed only to distinguish suggestions. You may also paste
-the full endpoint. Choose the Project whose name matches the endpoint configured
-in both examples.
+The Portal initially uses `AZURE_VOICE_AGENTS_ENDPOINT` from `portal/.env`.
+Project selection, local startup, and Remote-SSH guidance are maintained in
+the [Portal README](../portal/README.md).
 
 ## Verify the closed loop
 
@@ -503,7 +446,6 @@ Inspect the persistent tunnel:
 
 ```bash
 ./scripts/setup-local-examples.sh --check
-./scripts/manage-local-mcp-and-ui.sh status
 ```
 
 ### Generated config
@@ -531,7 +473,7 @@ development tunnel.
 
 ### Portal
 
-The Templates page should:
+The independently started local Templates page should:
 
 - show both Finance examples;
 - show a successful MCP reachability check;
@@ -540,9 +482,9 @@ The Templates page should:
 - allow **Try it now**;
 - open the newly published Agent in Live session.
 
-The portal caches the template catalog. If E2E started after the portal,
-select **Reload** before **Test MCP** or **Try it now**. Readiness is complete
-only when both template probes report HTTP 200 and list the expected tools.
+The Portal does not depend on local E2E or generated MCP config. Readiness is
+complete only when the public no-auth probes report HTTP 200 and list the
+expected tools.
 
 ## Troubleshooting
 
@@ -551,14 +493,12 @@ For cross-layer diagnosis, use the shared
 
 ```bash
 cd VoiceAgent
-./scripts/manage-local-mcp-and-ui.sh status
 python skills/debug-local-session/scripts/analyze_session.py --list
 python skills/debug-local-session/scripts/analyze_session.py <session-id>
 ```
 
 It covers setup, Project/model deployment, Agent publication/version,
-RemoteTool connection, MCP route/auth/tools, portal bridge, and session
-recordings.
+MCP route/tools, Portal bridge, and session recordings.
 
 | Symptom | Cause | Resolution |
 | --- | --- | --- |
@@ -571,9 +511,7 @@ recordings.
 | Published Agent cannot list MCP tools | Local Python server or tunnel host stopped | Restart `shared_mcp/scripts/e2e-local.sh` and leave it running |
 | Tool returns `unknown_call` after a runtime replacement | The call started before state persistence was enabled, or `state/local/runtime` was removed | End that Voice Agent session and reconnect; retain the native state directory |
 | HTTP 401 from a direct MCP request | Request omitted the bearer token | Expected for unauthenticated probes; Foundry supplies it from the connection |
-| Generated config is missing | Local E2E has not completed connection setup | Run `e2e-local.sh` to its final success lines; in an already open UI, select Templates **Reload** |
-| UI Build says `The local MCP config is not ready` | One of the generated config files or `state/local/token` is missing, or the portal cached its catalog before E2E completed | Keep a successful E2E process running, verify all three files, then select Templates **Reload** |
-| UI publish says connection not found | UI selected a different Foundry Project | Select the same Project configured in the examples and rerun/reload |
+| Generated config is missing | Local E2E has not completed CLI connection setup | Run `e2e-local.sh` to its final success lines |
 | UI publish reports Agent write permission denied | UI used the wrong Azure identity | Set `AZURE_CREDENTIAL_MODE=cli`, run `az login` with the intended identity, and restart UI |
 | Port 18003 is already allocated | An older E2E/native process is still running | Stop the older owning script, then start the canonical E2E |
 | Agent check fingerprints differ | Active Agent was published with another tunnel/config | Republish using the current canonical `*.local.env` |

@@ -1,5 +1,5 @@
 # Copyright (c) Microsoft. All rights reserved.
-"""Handoff Graph portal routes and customer-facing static contracts."""
+"""Editor portal routes and customer-facing static contracts."""
 
 from __future__ import annotations
 
@@ -29,13 +29,15 @@ class HandoffPortalRouteTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self) -> None:
         await self.client.close()
 
-    async def test_handoff_page_and_allowlisted_assets_are_served(self) -> None:
-        response = await self.client.get("/handoff/")
+    async def test_editor_page_and_allowlisted_assets_are_served(self) -> None:
+        response = await self.client.get("/editor/")
         self.assertEqual(200, response.status)
         self.assertEqual("DENY", response.headers["X-Frame-Options"])
         markup = await response.text()
-        self.assertIn("Handoff Graph · Voice Agents", markup)
+        self.assertIn("Editor · Voice Agents", markup)
         self.assertIn('aria-label="Portal pages"', markup)
+        self.assertIn(">AgentRuntime<", markup)
+        self.assertNotIn('href="/templates/"', markup)
         self.assertNotIn(">Dashboard<", markup)
 
         for asset in ("handoff-app.js", "handoff-core.mjs", "handoff.css"):
@@ -47,6 +49,31 @@ class HandoffPortalRouteTests(unittest.IsolatedAsyncioTestCase):
             404,
             (await self.client.get("/static/handoff/handoff.html")).status,
         )
+
+    async def test_home_opens_editor_and_preserves_runtime_deep_links(self) -> None:
+        for source, target in (
+            ("/", "/editor/"),
+            ("/?backend=sample", "/editor/?backend=sample"),
+            ("/?agent=existing&view=handoff", "/demo/?agent=existing&view=handoff"),
+        ):
+            with self.subTest(source=source):
+                response = await self.client.get(source, allow_redirects=False)
+                self.assertEqual(302, response.status)
+                self.assertEqual(target, response.headers["Location"])
+        response = await self.client.get("/demo/")
+        self.assertEqual(200, response.status)
+        self.assertIn("/static/demo/bundle.js", await response.text())
+
+    async def test_legacy_handoff_url_redirects_to_editor(self) -> None:
+        for source, target in (
+            ("/handoff", "/editor/"),
+            ("/handoff/", "/editor/"),
+            ("/handoff/?backend=sample", "/editor/?backend=sample"),
+        ):
+            with self.subTest(source=source):
+                response = await self.client.get(source, allow_redirects=False)
+                self.assertEqual(308, response.status)
+                self.assertEqual(target, response.headers["Location"])
 
     async def test_template_detail_supports_handoff_working_copies(self) -> None:
         response = await self.client.get(
@@ -92,7 +119,10 @@ class HandoffPortalStaticContractTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("Load from templates", html)
-        self.assertIn("Publish &amp; run", html)
+        self.assertIn("Try it now", html)
+        self.assertNotIn('id="validate-action"', html)
+        self.assertIn('id="create-blank-action"', html)
+        self.assertIn("Format view", html)
         self.assertEqual(1, html.count('id="publish-run-action"'))
         self.assertNotIn('id="publish-action"', html)
         self.assertIn('id="publish-progress"', html)
@@ -107,8 +137,14 @@ class HandoffPortalStaticContractTests(unittest.TestCase):
         self.assertNotIn("publishDefinition(true)", app)
         self.assertIn("view=handoff", app)
         self.assertIn('get("view") === "handoff"', studio)
-        self.assertIn('href="/handoff/"', studio_header)
-        self.assertIn('href="/handoff/"', templates)
+        self.assertIn('<span aria-current="page">AgentRuntime</span>', studio_header)
+        self.assertNotIn('href="/templates"', studio_header)
+        self.assertIn('href="/editor/"', studio_header)
+        self.assertIn(">Editor</a>", studio_header)
+        self.assertIn(">AgentRuntime</a>", templates)
+        self.assertNotIn('href="/templates/"', templates)
+        self.assertIn('href="/editor/"', templates)
+        self.assertIn('href="/demo/"', templates)
 
 
 if __name__ == "__main__":

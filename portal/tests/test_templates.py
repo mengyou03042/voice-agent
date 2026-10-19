@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -30,10 +32,128 @@ EXPECTED_TEMPLATES = [
     "finance-example-cascade-luna",
     "finance-with-otp-and-officer-search",
     "elevator-service-example",
+    "frontdesk-receptionist-example",
 ]
+MCP_BASE_URL = (
+    "https://voice-agent-noauth-mcp"
+    ".lemonsky-36682081.westus2.azurecontainerapps.io"
+)
+MCP_ROUTES = {
+    "finance-example-realtime": "/mcp/finance-handoff",
+    "finance-example-cascade-luna": "/mcp/finance-handoff",
+    "finance-with-otp-and-officer-search": "/mcp/finance-otp-officer",
+    "elevator-service-example": "/mcp/elevator-service",
+    "frontdesk-receptionist-example": "/mcp/frontdesk",
+}
 
 
 class TemplateCatalogTests(unittest.TestCase):
+    def test_frontdesk_preserves_fluency_prompt_and_complete_workflow(self) -> None:
+        catalog = TemplateCatalog()
+        document = catalog.document("frontdesk-receptionist-example")
+        detail = catalog.detail("frontdesk-receptionist-example")
+        assert document is not None and detail is not None
+        self.assertEqual(document["name"], "frontdesk-receptionist-example")
+        self.assertEqual(len(detail["graph"]["nodes"]), 9)
+        self.assertEqual(detail["graph"]["nodes"][0]["id"], "$entrypoint")
+        self.assertEqual(len(detail["graph"]["edges"]), 16)
+        self.assertEqual(detail["mcp"]["source_reference"], "Hosted Front Desk MCP")
+        definition = document["definition"]
+        self.assertEqual(definition["model_type"], "managed")
+        self.assertEqual(definition["model"], "gpt-realtime")
+        self.assertFalse(definition["store"])
+        self.assertNotIn("structured_inputs", definition)
+        self.assertNotIn("interim_response", definition)
+        self.assertNotIn("echo_cancellation", definition["audio"]["input"])
+        self.assertEqual(
+            definition["audio"]["input"]["turn_detection"]["profile"], "eager",
+        )
+        self.assertEqual(definition["tools"], [])
+        self.assertEqual(definition["tool_choice"], "required")
+        self.assertEqual(definition["greeting"]["tool_choice"], "none")
+        handoff = definition["handoff"]
+        nodes = {node["id"]: node["config"] for node in handoff["nodes"]}
+        self.assertEqual(set(nodes), {
+            "identify_intent", "company_info", "zendesk_search", "transfer",
+            "collect_message", "save_message", "next_request", "end",
+        })
+        self.assertEqual(handoff["max_transfers"], 24)
+        self.assertEqual(handoff["max_attempts"], 24)
+        separator = "\n\n## CURRENT WORKFLOW STAGE\n"
+        base, entrypoint = definition["instructions"].split(separator)
+        self.assertEqual(
+            hashlib.sha256(base.encode()).hexdigest(),
+            "fc89fd8aa4729b17d4a61c956de435798ca3fd77098e6b715378a7b3b74ad90c",
+        )
+        self.assertIn("Handoff immediately to identify_intent without speaking.", entrypoint)
+        expected_tools = {
+            "zendesk_search": ["frontdesk_search_zendesk_articles"],
+            "save_message": ["frontdesk_record_message"],
+        }
+        for node_id, config in nodes.items():
+            with self.subTest(node_id=node_id):
+                shared, stage = config["instructions"].split(separator)
+                self.assertEqual(shared, base)
+                self.assertNotIn("inherit_from_base_instructions", config)
+                self.assertIn("Objective\n", stage)
+                self.assertIn("Complete when\n", stage)
+                mcp_tools = list(template_portal.iter_mcp_tools(config))
+                self.assertEqual(
+                    [name for tool in mcp_tools for name in tool["allowed_tools"]],
+                    expected_tools.get(node_id, []),
+                )
+                for tool in mcp_tools:
+                    self.assertEqual(tool["server_url"], "")
+                    for key in ("project_connection_id", "authorization", "headers"):
+                        self.assertNotIn(key, tool)
+        self.assertEqual(nodes["company_info"]["tool_choice"], "required")
+        self.assertIn(
+            "Do not answer a company or support question in this stage",
+            nodes["identify_intent"]["instructions"],
+        )
+        self.assertIn(
+            "If transfer_call is absent or fails, be honest and offer a message.",
+            nodes["transfer"]["instructions"],
+        )
+        self.assertIn(
+            "Read the complete message back and ask for explicit confirmation.",
+            nodes["collect_message"]["instructions"],
+        )
+        self.assertIn(
+            "Never call MCP from this collection stage.",
+            nodes["collect_message"]["instructions"],
+        )
+        self.assertIn("caller_confirmed=true", nodes["save_message"]["instructions"])
+        self.assertIn(
+            "Do not repeat the callback number or full message.",
+            nodes["save_message"]["instructions"],
+        )
+        self.assertEqual(
+            [(tool["type"], tool["name"]) for tool in nodes["end"]["tools"]],
+            [("system", "end_conversation")],
+        )
+        edges = handoff["edges"]
+        self.assertEqual(len({edge["id"] for edge in edges}), 16)
+        known = {"$entrypoint", *nodes}
+        for edge in edges:
+            self.assertIn(edge["source"], known)
+            self.assertIn(edge["target"], known)
+            self.assertEqual(edge["target_response"], "auto")
+        self.assertEqual(
+            [edge["target"] for edge in edges if edge["source"] == "$entrypoint"],
+            ["identify_intent"],
+        )
+        self.assertEqual(
+            [(edge["source"], edge["target"]) for edge in edges
+             if edge["target"] == "save_message"],
+            [("collect_message", "save_message")],
+        )
+        self.assertIn(
+            "explicitly confirmed the complete message readback",
+            next(edge["description"] for edge in edges
+                 if edge["id"] == "collect_message_to_save"),
+        )
+
     def test_default_catalog_detects_sample_projects(self) -> None:
         catalog = TemplateCatalog()
 
@@ -55,16 +175,24 @@ class TemplateCatalogTests(unittest.TestCase):
         self.assertTrue(cascade["requires_mcp"])
         self.assertTrue(second["requires_mcp"])
         self.assertTrue(third["requires_mcp"])
-        self.assertEqual("managed", realtime["mcp"]["connection_mode"])
-        self.assertEqual("managed", cascade["mcp"]["connection_mode"])
-        self.assertEqual("managed", second["mcp"]["connection_mode"])
-        self.assertEqual("managed", third["mcp"]["connection_mode"])
+        for template_id in EXPECTED_TEMPLATES:
+            with self.subTest(template_id=template_id):
+                source = catalog.source(template_id)
+                detail = catalog.detail(template_id)
+                assert source is not None and detail is not None
+                self.assertEqual("public", source.connection_mode)
+                self.assertEqual(MCP_BASE_URL + MCP_ROUTES[template_id], source.mcp_server_url)
+                self.assertEqual("", source.mcp_connection_id)
+                self.assertIsNone(source.mcp_config_path)
+                self.assertIsNone(source.mcp_token_file)
+                self.assertTrue(detail["mcp"]["connection_configured"])
+                self.assertFalse(detail["mcp"]["configuration_required"])
         self.assertFalse(realtime["mcp"]["allow_user_token"])
         self.assertFalse(cascade["mcp"]["allow_user_token"])
         self.assertFalse(second["mcp"]["allow_user_token"])
         self.assertFalse(third["mcp"]["allow_user_token"])
         self.assertEqual(
-            "Local shared_mcp Dev Tunnel",
+            "Public no-auth MCP",
             realtime["mcp"]["source_label"],
         )
         self.assertEqual(
@@ -112,7 +240,7 @@ class TemplateCatalogTests(unittest.TestCase):
         self.assertEqual(len(third["graph"]["nodes"]), 10)
         self.assertEqual(len(third["graph"]["edges"]), 17)
         self.assertEqual(
-            "Local shared_mcp Dev Tunnel",
+            "Public no-auth MCP",
             third["mcp"]["source_label"],
         )
         self.assertEqual(
@@ -169,6 +297,45 @@ class TemplateCatalogTests(unittest.TestCase):
             self.assertTrue(config["instructions"].startswith("## GLOBAL POLICY\n"))
             self.assertIn("\n\n## CURRENT NODE\n", config["instructions"])
 
+    def test_public_materialization_removes_credentials_from_every_node(self) -> None:
+        catalog = TemplateCatalog()
+        for template_id in EXPECTED_TEMPLATES:
+            with self.subTest(template_id=template_id):
+                document = catalog.document(template_id)
+                assert document is not None
+                for tool in template_portal.iter_mcp_tools(document["definition"]):
+                    tool.update({
+                        "project_connection_id": "stale-local-connection",
+                        "authorization": "synthetic-token",
+                        "headers": {"Authorization": "synthetic-token"},
+                    })
+                original = copy.deepcopy(document)
+                definition = materialize_template(
+                    document,
+                    model="",
+                    voice="",
+                    mcp_server_url=MCP_BASE_URL + MCP_ROUTES[template_id],
+                    mcp_connection_id="",
+                    mcp_public=True,
+                )
+                tools = list(template_portal.iter_mcp_tools(definition))
+                self.assertTrue(tools)
+                for tool in tools:
+                    self.assertEqual(MCP_BASE_URL + MCP_ROUTES[template_id], tool["server_url"])
+                    for key in ("project_connection_id", "authorization", "headers"):
+                        self.assertNotIn(key, tool)
+                self.assertEqual(original, document)
+
+    def test_managed_materialization_still_requires_a_connection(self) -> None:
+        document = TemplateCatalog().document("finance-example-realtime")
+        assert document is not None
+        with self.assertRaisesRegex(ValueError, "MCP connection ID is required"):
+            materialize_template(
+                document, model="", voice="",
+                mcp_server_url="https://tools.example/mcp",
+                mcp_connection_id="",
+            )
+
     def test_template_agent_names_are_limited_to_63_characters(self) -> None:
         self.assertEqual(
             63,
@@ -223,8 +390,11 @@ class TemplateCatalogTests(unittest.TestCase):
         self.assertIn("VoiceAgent/portal/templates.config.json", html)
         self.assertIn('id="mcp-token"', html)
         self.assertIn('type="password"', html)
+        self.assertIn(">AgentRuntime</a>", html)
+        self.assertNotIn('href="/templates/"', html)
         self.assertNotIn('classList.toggle("embedded"', app_js)
         self.assertNotIn(".embedded .local-template-header", styles)
+        self.assertIn(".mcp-start-guide[hidden] { display: none; }", styles)
         for name in (
             "components/HandoffGraphPanel.jsx",
             "lib/projectPicker.mjs",
@@ -291,6 +461,138 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
             detail_payload["suggested_agent_name"],
             r"^local-only-finance-example-realtime-[0-9a-f]{8}$",
         )
+        for template_id in EXPECTED_TEMPLATES:
+            detail_payload = await (
+                await self.client.get(f"/api/templates/{template_id}")
+            ).json()
+            tools = list(template_portal.iter_mcp_tools(detail_payload["definition"]))
+            self.assertTrue(tools)
+            self.assertEqual(
+                detail_payload["definition"],
+                json.loads(detail_payload["yaml"])["definition"],
+            )
+            for tool in tools:
+                self.assertEqual(MCP_BASE_URL + MCP_ROUTES[template_id], tool["server_url"])
+                self.assertNotIn("project_connection_id", tool)
+
+    async def test_public_templates_probe_without_bearer_or_local_files(self) -> None:
+        catalog = self.client.server.app[template_portal.CATALOG_KEY]
+        for template_id in EXPECTED_TEMPLATES:
+            with self.subTest(template_id=template_id):
+                document = catalog.document(template_id)
+                assert document is not None
+                names = {
+                    name
+                    for tool in template_portal.iter_mcp_tools(document["definition"])
+                    for name in tool.get("allowed_tools") or []
+                }
+                with patch(
+                    "template_portal.mcp_handshake",
+                    return_value={"reached": True, "tools": sorted(names)},
+                ) as handshake:
+                    response = await self.client.get(f"/api/templates/{template_id}/mcp/probe")
+                self.assertEqual(200, response.status)
+                payload = await response.json()
+                self.assertTrue(payload["ok"])
+                self.assertEqual("", payload["start_command"])
+                handshake.assert_called_once_with(MCP_BASE_URL + MCP_ROUTES[template_id], "")
+
+    async def test_public_probe_does_not_accept_auth_gate_as_ready(self) -> None:
+        for status in (401, 403):
+            with self.subTest(status=status), patch(
+                "template_portal.mcp_handshake",
+                side_effect=McpProbeError("Authentication rejected", http_status=status),
+            ):
+                response = await self.client.get(
+                    "/api/templates/finance-example-realtime/mcp/probe"
+                )
+                payload = await response.json()
+                self.assertFalse(payload["ok"])
+                self.assertEqual(status, payload["http_status"])
+
+    async def test_public_probe_rejects_incomplete_tool_inventory(self) -> None:
+        with patch(
+            "template_portal.mcp_handshake",
+            return_value={"reached": True, "tools": []},
+        ):
+            response = await self.client.get(
+                "/api/templates/finance-example-realtime/mcp/probe"
+            )
+        payload = await response.json()
+        self.assertFalse(payload["ok"])
+        self.assertIn("missing expected tools", payload["error"])
+
+    async def test_existing_connection_probe_preserves_auth_gate_behavior(self) -> None:
+        catalog = self.client.server.app[template_portal.CATALOG_KEY]
+        source = catalog.source("finance-example-realtime")
+        assert source is not None
+        existing = replace(
+            source, connection_mode="existing",
+            mcp_connection_id="customer-owned-connection",
+        )
+        with (
+            patch.object(catalog, "source", return_value=existing),
+            patch(
+                "template_portal.mcp_handshake",
+                side_effect=McpProbeError("Authentication required", http_status=401),
+            ),
+            patch("template_portal.create_mcp_connection") as create_connection,
+        ):
+            response = await self.client.get(
+                "/api/templates/finance-example-realtime/mcp/probe"
+            )
+            payload = await response.json()
+            self.assertTrue(payload["ok"])
+            self.assertTrue(payload["project_connection_auth"])
+            response = await self.client.post(
+                "/api/templates/finance-example-realtime/mcp/configure", json={}
+            )
+            self.assertEqual(200, response.status)
+            self.assertEqual(
+                "customer-owned-connection", (await response.json())["connection_name"]
+            )
+            create_connection.assert_not_called()
+
+    async def test_public_templates_configure_and_publish_without_connections(self) -> None:
+        for template_id in EXPECTED_TEMPLATES:
+            with (
+                self.subTest(template_id=template_id),
+                patch("template_portal.validate_mcp_probe_url") as validate_url,
+                patch("template_portal.create_mcp_connection") as create_connection,
+                patch(
+                    "template_portal.publish_agent",
+                    return_value={"name": "local-only-synthetic", "version": "1"},
+                ) as publish,
+            ):
+                configured = await self.client.post(
+                    f"/api/templates/{template_id}/mcp/configure", json={}
+                )
+                self.assertEqual(200, configured.status)
+                self.assertTrue((await configured.json())["configured"])
+                response = await self.client.post(
+                    f"/api/templates/{template_id}/publish", json={"name": "synthetic"}
+                )
+                self.assertEqual(201, response.status, await response.text())
+                self.assertEqual("", (await response.json())["mcp_connection_name"])
+                create_connection.assert_not_called()
+                publish.assert_called_once()
+                self.assertEqual(2, validate_url.call_count)
+                validate_url.assert_called_with(MCP_BASE_URL + MCP_ROUTES[template_id])
+                for tool in template_portal.iter_mcp_tools(publish.call_args.kwargs["definition"]):
+                    self.assertEqual(MCP_BASE_URL + MCP_ROUTES[template_id], tool["server_url"])
+                    self.assertNotIn("project_connection_id", tool)
+
+    async def test_public_template_configuration_keeps_private_address_guard(self) -> None:
+        with patch(
+            "template_portal.validate_mcp_probe_url",
+            side_effect=McpProbeError("MCP probes cannot target private addresses"),
+        ), patch("template_portal.create_mcp_connection") as create_connection:
+            response = await self.client.post(
+                "/api/templates/finance-example-realtime/mcp/configure", json={}
+            )
+        self.assertEqual(502, response.status)
+        self.assertIn("cannot target private", (await response.json())["error"])
+        create_connection.assert_not_called()
 
     async def test_template_assets_are_served_without_azure_credentials(self) -> None:
         for name in (
@@ -424,6 +726,7 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
             token_file.write_text("synthetic-server-token\n", encoding="utf-8")
             managed_source = replace(
                 source,
+                connection_mode="managed",
                 mcp_server_url="https://example.com/mcp/elevator-service",
                 mcp_connection_id="elevator-service-local-e2e",
                 mcp_token_file=token_file,

@@ -3,11 +3,17 @@ import test from "node:test";
 
 import {
   ENTRYPOINT_ID,
+  PIPELINE_COMPONENTS,
+  PIPELINE_COST_USAGE,
+  PIPELINE_LLM_ESTIMATE_DIVISOR,
+  PIPELINE_RETAIL_RATES_PER_MILLION,
   createSampleDefinition,
   deterministicYaml,
   estimatePipeline,
   ensureEditableDefinition,
   extractLatestAgent,
+  formatPipelineCost,
+  formatPipelineLatency,
   layoutHandoffGraph,
   mergeServiceProblems,
   matchesAgentSearch,
@@ -26,6 +32,121 @@ import {
   validateDefinition,
 } from "../../../static/handoff/handoff-core.mjs";
 
+test("pipeline metrics show compact cents and complete latency ranges", () => {
+  assert.equal(formatPipelineCost(.019654), "1.97¢/min");
+  assert.equal(formatPipelineCost(.000154), "0.02¢/min");
+  assert.equal(formatPipelineCost(.00001), "0.01¢/min");
+  assert.equal(formatPipelineCost(.019651), "1.97¢/min");
+  assert.equal(formatPipelineCost(.019701), "1.98¢/min");
+  assert.equal(formatPipelineCost(.0102), "1.02¢/min");
+  assert.equal(formatPipelineCost(Number.MIN_VALUE), "0.01¢/min");
+  assert.equal(formatPipelineCost(0), "0¢/min");
+  for (const value of [null, undefined, NaN, Infinity, Number.MAX_VALUE, -1]) {
+    assert.equal(formatPipelineCost(value), "Not available");
+  }
+  assert.equal(
+    formatPipelineLatency({ latencyMinMs: 800, latencyMaxMs: 3200 }),
+    "800 ms – 3.2 s",
+  );
+  assert.equal(
+    formatPipelineLatency({ latencyMinMs: 1300, latencyMaxMs: 3625 }),
+    "1.3 s – 3.7 s",
+  );
+  assert.equal(formatPipelineLatency({ latencyMs: 307 }), "307 ms");
+  assert.equal(formatPipelineLatency({ latencyMinMs: 800 }), "Not available");
+  assert.equal(formatPipelineLatency(null), "Not available");
+});
+
+test("displayed cost never rounds a positive budget down or to zero", () => {
+  for (let millionths = 1; millionths <= 100_000; millionths += 17) {
+    const usd = millionths / 1_000_000;
+    const displayed = Number(formatPipelineCost(usd).replaceAll(",", "").replace("¢/min", ""));
+    assert.ok(displayed > 0);
+    assert.ok(displayed + 1e-12 >= usd * 100, `${usd} rounded down to ${displayed} cents`);
+    assert.ok(displayed - usd * 100 < .010000000001);
+  }
+});
+
+test("uses full audio minutes and budgets for repeated history and reasoning without cache discounts", () => {
+  assert.deepEqual(PIPELINE_COST_USAGE, {
+    userAudioSeconds: 60,
+    agentAudioSeconds: 60,
+    inputAudioTokensPerSecond: 10,
+    outputAudioTokensPerSecond: 20,
+    modelRequestsPerMinute: 10,
+    textInputTokensPerRequest: 64_000,
+    textOutputTokensPerRequest: 2_000,
+    nativeAudioInputTokensPerRequest: 6_000,
+    nativeAudioInputTokens: 60_000,
+    textInputTokens: 640_000,
+    textOutputTokens: 20_000,
+  });
+  assert.equal(PIPELINE_RETAIL_RATES_PER_MILLION.lite.nativeAudioOutput, 12);
+  assert.deepEqual(
+    ["pro", "standard", "lite"].map((tier) => {
+      const rates = PIPELINE_RETAIL_RATES_PER_MILLION[tier];
+      return [
+        rates.textInput, rates.textOutput, rates.nativeAudioInput, rates.nativeAudioOutput,
+        rates.speechInput, rates.speechOutput, rates.customSpeechInput, rates.customSpeechOutput,
+      ];
+    }),
+    [
+      [4, 16, 32, 64, 17, 31, 40, 55],
+      [.66, 2.64, 11, 22, 15, 26, 39, 50],
+      [.11, .44, 4, 12, 15, 25, 38, 50],
+    ],
+  );
+});
+
+test("divides only the prior model budget by the approved factor and preserves full speech minutes", () => {
+  assert.equal(PIPELINE_LLM_ESTIMATE_DIVISOR, 150);
+  const usage = PIPELINE_COST_USAGE;
+  assert.equal(usage.textInputTokens, usage.modelRequestsPerMinute * usage.textInputTokensPerRequest);
+  assert.equal(usage.textOutputTokens, usage.modelRequestsPerMinute * usage.textOutputTokensPerRequest);
+  assert.equal(usage.nativeAudioInputTokens, usage.modelRequestsPerMinute * usage.nativeAudioInputTokensPerRequest);
+  const realtime = estimatePipeline({ model: "gpt-realtime", stt: "azure-speech", voice: "alloy" }).pipeline;
+  const rates = PIPELINE_RETAIL_RATES_PER_MILLION.pro;
+  const perRequest = (
+    64_000 * rates.textInput + 2_000 * rates.textOutput + 6_000 * rates.nativeAudioInput
+  ) / 1_000_000;
+  assert.ok(Math.abs(realtime.model.costPerMinute - 10 * perRequest / 150) < 1e-12);
+  assert.match(realtime.model.costSource, /Temporary model budget \/150; workload revision pending approval/);
+  assert.equal(realtime.stt.costPerMinute, 60 * 10 * rates.speechInput / 1_000_000);
+  assert.equal(realtime.voice.costPerMinute, 60 * 20 * rates.nativeAudioOutput / 1_000_000);
+});
+
+test("reduces every model budget exactly 150-fold without changing its retail-rate certainty", () => {
+  const expected = {
+    "gpt-realtime-2.1": [4.96, false],
+    "azure-realtime": [4.96, true],
+    "gpt-realtime-1.5": [4.96, true],
+    "gpt-realtime-2.1-mini": [1.1352, false],
+    "gpt-realtime": [4.8, false],
+    "gpt-realtime-mini": [1.1352, false],
+    "gpt-realtime-2": [4.96, false],
+    "gpt-5.4": [3.04, true],
+    "gpt-5.6-terra": [3.04, true],
+    "gpt-5.6-luna": [.4752, false],
+    "gpt-6-sol": [4.44, true],
+    "gpt-6.1-sol": [4.44, true],
+    "gpt-6-luna": [4.44, true],
+    "gpt-oss-120b": [4.44, true],
+  };
+  const models = pipelineComponentOptions("model");
+  assert.equal(models.length, Object.keys(expected).length);
+  for (const model of models) {
+    const [amount, allowance] = expected[model.id];
+    assert.ok(Math.abs(model.costPerMinute * 150 - amount) < 1e-12, model.id);
+    assert.equal(model.costIsAllowance, allowance, model.id);
+    if (allowance) {
+      assert.equal(model.publicRateLabel, "");
+      assert.match(model.costSource, /Conservative/);
+    } else {
+      assert.match(model.publicRateLabel, /1M tokens/);
+    }
+  }
+});
+
 test("shares pipeline estimates between authoring and runtime cards", () => {
   const { preset, pipeline } = estimatePipeline({
     model: "gpt-realtime-2.1",
@@ -34,7 +155,7 @@ test("shares pipeline estimates between authoring and runtime cards", () => {
   });
   assert.equal(preset.id, "balanced");
   const balancedTotals = pipelineTotals(pipeline);
-  assert.ok(Math.abs(balancedTotals.costPerMinute - 0.0574) < 1e-12);
+  assert.ok(Math.abs(balancedTotals.costPerMinute - (.02 + 4.96 / 150 + .0768)) < 1e-12);
   assert.deepEqual({
     latencyMinMs: balancedTotals.latencyMinMs,
     latencyMaxMs: balancedTotals.latencyMaxMs,
@@ -63,7 +184,7 @@ test("keeps current Realtime versions distinct and couples compatible speech sta
   assert.equal(realtime.model.id, "gpt-realtime");
   assert.equal(realtime.stt.id, "whisper-1");
   const realtimeTotals = pipelineTotals(realtime);
-  assert.ok(Math.abs(realtimeTotals.costPerMinute - 0.0566) < 1e-12);
+  assert.ok(Math.abs(realtimeTotals.costPerMinute - .1288) < 1e-12);
   assert.deepEqual({
     latencyMinMs: realtimeTotals.latencyMinMs,
     latencyMaxMs: realtimeTotals.latencyMaxMs,
@@ -143,7 +264,7 @@ test("offers current cascaded models and Voice Live transcription choices", () =
   assert.ok(transcribers.some((item) => item.id === "whisper-1" && !item.compatible));
 });
 
-test("publishes sourced STT and TTS estimates without double-counting native voice", () => {
+test("separates verified speech meters from unverified auxiliary transcription allowances", () => {
   const realtimeStt = pipelineComponentOptions("stt", {
     model: "gpt-realtime",
     voice: "alloy",
@@ -154,22 +275,30 @@ test("publishes sourced STT and TTS estimates without double-counting native voi
   assert.equal(realtimeStt.find((item) => item.id === "gpt-realtime-whisper").latencyMs, 740);
   assert.equal(realtimeStt.find((item) => item.id === "gpt-4o-transcribe").latencyMs, 637);
   assert.equal(realtimeStt.find((item) => item.id === "whisper-1").latencyMs, 1507);
-  assert.equal(realtimeStt.find((item) => item.id === "whisper-1").costPerMinute, 0.003);
-  assert.equal(realtimeStt.find((item) => item.id === "gpt-realtime-whisper").costPerMinute, 0.0085);
-  assert.equal(realtimeStt.find((item) => item.id === "gpt-transcribe").costPerMinute, 0.00225);
-  assert.equal(realtimeStt.find((item) => item.id === "gpt-4o-transcribe").costPerMinute, 0.00175);
-  assert.equal(realtimeStt.find((item) => item.id === "gpt-4o-mini-transcribe").costPerMinute, 0.000875);
-  assert.equal(
-    realtimeStt.find((item) => item.id === "whisper-1").publicRateLabel,
-    "$0.006 / audio minute",
-  );
+  for (const model of ["gpt-realtime", "gpt-realtime-mini"]) {
+    const choices = pipelineComponentOptions("stt", { model, voice: "alloy" });
+    assert.equal(choices.length, 12);
+    for (const choice of choices) {
+      if (choice.id === "native-realtime-audio") {
+        assert.equal(choice.costPerMinute, 0);
+      } else if (["azure-speech", "mai-transcribe", "mai-transcribe-2", "mai-transcribe-2-streaming"].includes(choice.id)) {
+        assert.equal(choice.costPerMinute, model === "gpt-realtime" ? .0102 : .009);
+        assert.equal(choice.costIsAllowance, false);
+      } else {
+        assert.equal(choice.costPerMinute, .02, choice.id);
+        assert.equal(choice.costIsAllowance, true);
+        assert.equal(choice.publicRateLabel, "");
+        assert.match(choice.costSource, /unverified/);
+      }
+    }
+  }
   assert.equal(
     realtimeStt.find((item) => item.id === "mai-transcribe-2-streaming").publicRateLabel,
     "$17 / 1M Voice Live speech-input tokens",
   );
   assert.equal(
     realtimeStt.find((item) => item.id === "mai-transcribe-2").costPerMinute,
-    0.0051,
+    0.0102,
   );
 
   const realtimeVoices = pipelineComponentOptions("voice", {
@@ -189,19 +318,19 @@ test("publishes sourced STT and TTS estimates without double-counting native voi
     stt: "whisper-1",
     voice: "alloy",
   }).pipeline;
-  assert.equal(realtime.stt.costPerMinute, 0.003);
+  assert.equal(realtime.stt.costPerMinute, 0.02);
   assert.equal(realtime.stt.noAdditionalCost, undefined);
-  assert.ok(Math.abs(realtime.model.costPerMinute - 0.0152) < 1e-12);
+  assert.ok(Math.abs(realtime.model.costPerMinute - .032) < 1e-12);
   assert.equal(
     realtime.model.publicRateLabel,
     "$32 audio input + $4 text input + $16 text output / 1M tokens",
   );
-  assert.equal(realtime.voice.costPerMinute, 0.0384);
+  assert.equal(realtime.voice.costPerMinute, 0.0768);
   assert.equal(
     realtime.voice.publicRateLabel,
     "$64 / 1M native audio-output tokens",
   );
-  assert.ok(Math.abs(pipelineTotals(realtime).costPerMinute - 0.0566) < 1e-12);
+  assert.ok(Math.abs(pipelineTotals(realtime).costPerMinute - .1288) < 1e-12);
 
   const noTranscript = estimatePipeline({
     model: "gpt-realtime",
@@ -210,10 +339,10 @@ test("publishes sourced STT and TTS estimates without double-counting native voi
   }).pipeline;
   assert.equal(noTranscript.stt.costPerMinute, 0);
   assert.equal(noTranscript.stt.noAdditionalCost, true);
-  assert.ok(Math.abs(pipelineTotals(noTranscript).costPerMinute - 0.0536) < 1e-12);
+  assert.ok(Math.abs(pipelineTotals(noTranscript).costPerMinute - .1088) < 1e-12);
 });
 
-test("keeps nonzero Luna component costs visible at full precision", () => {
+test("does not assign publicly unverified models bargain rates based on their names", () => {
   const standard = estimatePipeline({
     model: "gpt-5.6-luna",
     stt: "azure-speech",
@@ -221,9 +350,9 @@ test("keeps nonzero Luna component costs visible at full precision", () => {
   }).pipeline;
   assert.deepEqual(
     [standard.stt.costPerMinute, standard.model.costPerMinute, standard.voice.costPerMinute],
-    [0.0045, 0.000924, 0.0156],
+    [0.009, 0.4752 / 150, 0.0312],
   );
-  assert.equal(pipelineTotals(standard).costPerMinute, 0.021024);
+  assert.ok(Math.abs(pipelineTotals(standard).costPerMinute - .043368) < 1e-12);
 
   const lite = estimatePipeline({
     model: "gpt-6-luna",
@@ -232,22 +361,94 @@ test("keeps nonzero Luna component costs visible at full precision", () => {
   }).pipeline;
   assert.deepEqual(
     [lite.stt.costPerMinute, lite.model.costPerMinute, lite.voice.costPerMinute],
-    [0.0045, 0.000154, 0.015],
+    [0.0102, 4.44 / 150, 0.0372],
   );
-  assert.equal(lite.stt.publicRateLabel, "$15 / 1M Voice Live speech-input tokens");
-  assert.equal(
-    lite.model.publicRateLabel,
-    "$0.11 text input + $0.44 text output / 1M tokens",
-  );
-  assert.equal(
-    lite.voice.publicRateLabel,
-    "$25 / 1M Voice Live speech-output tokens",
-  );
-  assert.ok(Math.abs(pipelineTotals(lite).costPerMinute - 0.019654) < 1e-12);
+  for (const component of [lite.stt, lite.model, lite.voice]) {
+    assert.equal(component.publicRateLabel, "");
+    assert.equal(component.costIsAllowance, true);
+  }
+  assert.ok(Math.abs(pipelineTotals(lite).costPerMinute - .077) < 1e-12);
   assert.ok(Math.abs(
     pipelineTotals(lite).costPerMinute
       - (lite.stt.costPerMinute + lite.model.costPerMinute + lite.voice.costPerMinute),
   ) < 1e-12);
+});
+
+test("prices every compatible catalog combination without omitting or double-counting components", () => {
+  assert.equal(PIPELINE_COMPONENTS.model.length, 14);
+  assert.equal(PIPELINE_COMPONENTS.stt.length, 12);
+  assert.equal(PIPELINE_COMPONENTS.voice.length, 46);
+  let checked = 0;
+  for (const model of PIPELINE_COMPONENTS.model) {
+    for (const voice of pipelineComponentOptions("voice", { model: model.id }).filter((item) => item.compatible)) {
+      for (const stt of pipelineComponentOptions("stt", { model: model.id, voice: voice.id }).filter((item) => item.compatible)) {
+        const pipeline = estimatePipeline({ model: model.id, voice: voice.id, stt: stt.id }).pipeline;
+        const components = [pipeline.stt, pipeline.model, pipeline.voice];
+        assert.ok(components.every((component) => Number.isFinite(component.costPerMinute)));
+        assert.ok(pipeline.model.costPerMinute > 0);
+        assert.ok(pipeline.voice.costPerMinute > 0);
+        if (stt.id !== "native-realtime-audio") assert.ok(pipeline.stt.costPerMinute > 0);
+        assert.ok(Math.abs(
+          pipelineTotals(pipeline).costPerMinute
+            - components.reduce((total, component) => total + component.costPerMinute, 0),
+        ) < 1e-12);
+        checked += 1;
+      }
+    }
+  }
+  assert.ok(checked > 1_000);
+});
+
+test("does not price configured Custom Speech recognition at the lower Standard Speech rate", () => {
+  for (const [model, expected] of [
+    ["gpt-5.4", .024],
+    ["gpt-5.6-luna", .0234],
+    ["gpt-6-luna", .024],
+  ]) {
+    const selection = {
+      model, stt: "azure-speech", voice: "en-US-Ava:DragonHDLatestNeural", customSpeech: true,
+    };
+    const pipeline = estimatePipeline(selection).pipeline;
+    assert.equal(pipeline.stt.costPerMinute, expected);
+    assert.match(pipeline.stt.costSource, /Custom Speech|Conservative/);
+    const row = pipelineComponentOptions("stt", selection).find((item) => item.id === "azure-speech");
+    assert.equal(row.costPerMinute, expected);
+    assert.equal(row.costSource, pipeline.stt.costSource);
+  }
+});
+
+test("uses the declared voice family for standard, custom and personal output costs", () => {
+  const selection = { model: "gpt-realtime", stt: "native-realtime-audio" };
+  for (const [voice, voiceType, amount, allowance] of [
+    ["en-US-AvaNeural", "azure-standard", .0372, false],
+    ["customer-voice", "azure-custom", .066, false],
+    ["customer-voice", "azure-personal", .066, true],
+    ["en-US-Ava:DragonHDLatestNeural", "azure-custom", .066, false],
+  ]) {
+    const pipeline = estimatePipeline({ ...selection, voice, voiceType }).pipeline;
+    assert.equal(pipeline.voice.type, voiceType);
+    assert.equal(pipeline.voice.costPerMinute, amount);
+    assert.equal(pipeline.voice.costIsAllowance, allowance);
+    assert.ok(pipelineTotals(pipeline));
+  }
+  assert.equal(
+    estimatePipeline({ ...selection, voice: "en-US-AvaNeural" }).pipeline.voice.costPerMinute,
+    .0372,
+  );
+  assert.equal(
+    pipelineTotals(estimatePipeline({ ...selection, voice: "unknown-voice" }).pipeline),
+    null,
+  );
+});
+
+test("does not report a partial or nonfinite pipeline cost as a valid total", () => {
+  for (const costPerMinute of [null, undefined, NaN, Infinity, -1]) {
+    assert.equal(pipelineTotals({
+      stt: { costPerMinute: .01 },
+      model: { costPerMinute },
+      voice: { costPerMinute: .03 },
+    }), null);
+  }
 });
 
 test("labels providers and sorts table metrics by the minimum estimate", () => {

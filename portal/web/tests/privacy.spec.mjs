@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft. All rights reserved.
 // All service, socket, and WebRTC boundaries below are synthetic/local only.
 import { test, expect } from "@playwright/test";
-import { CONFIG, mountStudio, resource, selectSessionAgent } from "./studio-fixtures.mjs";
+import { CONFIG, mockWebRtcPeer, mountStudio, resource, selectSessionAgent } from "./studio-fixtures.mjs";
 
 async function generate(page, { store = false, draft = false } = {}) {
   const api = await mountStudio(page, { defaultStore: false });
@@ -68,25 +68,7 @@ const otherId = "synthetic-other-newer";
 async function reviewFixture(page, { capturedId = null, failList = false } = {}) {
   const calls = [];
   const sockets = [];
-  // A test-owned peer prevents STUN/TURN/media network traffic. The actual
-  // production session hook, review components, HTML, and bundles still run.
-  await page.addInitScript(() => {
-    window.RTCPeerConnection = class extends EventTarget {
-      iceGatheringState = "complete";
-      connectionState = "new";
-      signalingState = "stable";
-      localDescription = null;
-      addTrack() { return {}; }
-      addTransceiver() { return {}; }
-      getSenders() { return []; }
-      createDataChannel() { return Object.assign(new EventTarget(), { readyState: "open", close() {} }); }
-      async createOffer() { return { type: "offer", sdp: "synthetic-test-sdp" }; }
-      async setLocalDescription(value) { this.localDescription = value; }
-      async setRemoteDescription() {}
-      async addIceCandidate() {}
-      close() { this.connectionState = "closed"; }
-    };
-  });
+  await mockWebRtcPeer(page);
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (url.hostname !== "127.0.0.1") return route.abort();
@@ -112,6 +94,7 @@ async function reviewFixture(page, { capturedId = null, failList = false } = {})
         { id: "user-item", type: "message", role: "user",
           content: [{ type: "input_text", text: `SYNTHETIC_TRANSCRIPT_${id}` }] },
         { id: "agent-item", type: "message", role: "assistant",
+          voice_metrics: { stt_ms: 180, ttft_ms: 240, ttfa_ms: 340, duration_ms: 1100, cost: 0.25 },
           content: [{ type: "output_text", text: "Synthetic response" }] },
       ], has_more: false });
       if (url.pathname.endsWith("/audio")) return json({
@@ -187,7 +170,7 @@ test("WebRTC review requires selection when no live conversation ID was captured
   await picker.getByRole("combobox", { name: "Conversation ID", exact: true }).fill(ownId);
   await picker.getByRole("button", { name: "Open conversation", exact: true }).click();
   await expect(page.locator(".mp-conv")).toHaveText(ownId);
-  await page.getByRole("button", { name: "User view", exact: true }).click();
+  await expect(page.locator(".mp-tabs, .mp-detail")).toHaveCount(0);
   await expect(page.locator(".mp")).toContainText(`SYNTHETIC_TRANSCRIPT_${ownId}`);
   expect(api.calls).not.toContain(`${base}/${otherId}/items`);
   await page.getByRole("button", { name: "Choose conversation", exact: true }).click();
@@ -204,4 +187,26 @@ test("WebRTC captured conversation and recording controls still work directly", 
   expect(api.calls).not.toContain(base);
   await page.getByRole("button", { name: "Load recording", exact: true }).click();
   await expect(page.locator(".wrtc-recording audio")).toHaveAttribute("src", `${base}/${ownId}/audio/content?api-version=v1`);
+});
+
+test("WebRTC review hides latency and raw cost metadata until Debug mode is enabled", async ({ page }) => {
+  const api = await reviewFixture(page, { capturedId: ownId });
+  await endWebRtc(page, api, ownId);
+  const debug = page.getByRole("checkbox", { name: "Debug mode", exact: true });
+  await expect(debug).not.toBeChecked();
+  await expect(page.locator(".mp-chat")).toContainText(`SYNTHETIC_TRANSCRIPT_${ownId}`);
+  await expect(page.locator(".mp-tabs, .mp-row, .mp-detail")).toHaveCount(0);
+  await expect(page.locator(".mp-topbar")).not.toContainText("1.10s");
+  await debug.check();
+  await expect(page.getByRole("button", { name: "Trajectories", exact: true })).toBeVisible();
+  await page.locator(".mp-row").filter({ hasText: "Speech_to_text" }).click();
+  await expect(page.locator(".mp-detail")).toContainText("STT latency");
+  await expect(page.locator(".mp-detail")).toContainText("180ms");
+  await page.getByRole("button", { name: "User view", exact: true }).click();
+  await page.locator(".mp-bubble.assistant").click();
+  await expect(page.locator(".mp-json")).toContainText('"cost": 0.25');
+  await debug.uncheck();
+  await expect(page.locator(".mp-tabs, .mp-row, .mp-detail")).toHaveCount(0);
+  await expect(page.locator(".mp-chat")).toContainText("Synthetic response");
+  expect(api.calls).not.toContain(base);
 });

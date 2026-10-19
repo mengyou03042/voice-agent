@@ -142,13 +142,18 @@ export function WebRtcApp() {
       <header className="wrtc-header">
         <div className="wrtc-title">Voice Agent <span className="wrtc-chip">WebRTC</span></div>
         <div className="wrtc-header-right">
+          <label>
+            <input type="checkbox" checked={session.verbose}
+              onChange={(event) => session.setVerbose(event.target.checked)} />
+            Debug mode
+          </label>
           {agent ? <span className="wrtc-agent">{agent.name}</span> : null}
           <span className={"wrtc-badge wrtc-" + (session.webrtcStatus || "off")}>
             webrtc: {session.webrtcStatus || "off"}
           </span>
         </div>
       </header>
-      <p className="info-note">{cfg.notice} <a href="/">Return to studio</a></p>
+      <p className="info-note">{cfg.notice} <a href="/demo/">Return to studio</a></p>
 
       <main className="wrtc-body">
         {phase === "setup" ? (
@@ -168,6 +173,7 @@ export function WebRtcApp() {
             cfg={cfg}
             agent={agent}
             conversationId={reviewConversationId}
+            debugMode={session.verbose}
             onRestart={restart}
           />
         ) : null}

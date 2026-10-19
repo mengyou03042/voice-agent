@@ -1,6 +1,6 @@
-// Templates tab from the standalone Local UI. The server-side allowlist loads
+// Internal Templates page from the standalone Local UI. The server-side allowlist loads
 // local agent.json definitions, validates MCP readiness, and publishes a new
-// independent Agent before handing it to the Live session page.
+// independent Agent before handing it to AgentRuntime.
 
 import { WorkflowGraph } from "./template-graph.js?v=20260915-1";
 
@@ -517,7 +517,7 @@ async function selectTemplate(templateId) {
     "tpl-result",
     state.projectConfigured
       ? "Ready to publish a new independent Agent."
-      : "Choose a Foundry project on Live session, then return to Templates.",
+      : "Choose a Foundry project on AgentRuntime, then return to Templates.",
     state.projectConfigured ? "" : "warn",
   );
   if (detail.requires_mcp) await testTemplateMcp();
@@ -685,7 +685,7 @@ async function testTemplateMcp() {
     $("mcp-start-command").textContent = recovery?.start_command
       || "cd VoiceAgent/shared_mcp && ./scripts/e2e-local.sh";
     $("mcp-guide-link").href = recovery?.guide_url || "/guide/run-samples";
-    if (!template.mcp?.allow_user_token) {
+    if (!template.mcp?.allow_user_token && template.mcp?.connection_mode !== "public") {
       $("mcp-start-guide").hidden = false;
     }
   } finally {
@@ -763,7 +763,7 @@ async function publishMyAgent(autoOpen = false) {
     setBuildProgress(
       100,
       "Your agent is ready",
-      `${published.agent_name}${version} is ready to open in Live session.`,
+      `${published.agent_name}${version} is ready to open in AgentRuntime.`,
     );
     state.publishedAgent = published.agent_name;
     toast(`built ${published.agent_name}`);

@@ -12,15 +12,16 @@ import { useCallback, useRef, useState } from "react";
 import {
   AudioHandler,
   base64ToUint8,
-  shouldRenderPcmOutput,
   uint8ToBase64,
 } from "../lib/audio.js";
 import { isWebRtcAvatar, toRtcIceServers } from "../lib/avatar.mjs";
+import { ResponseAudioQueue } from "../lib/responseAudio.mjs";
 import { WEBRTC_DATA_CHANNEL, defaultIceServers, isTerminalRtcError, waitForIceGatheringComplete } from "../lib/webrtcPeer.mjs";
 import {
   describeSessionClose,
   insertBeforeMessage,
   shouldDrainSessionAudio,
+  updateAssistantTranscript,
 } from "../lib/chatMessages.mjs";
 import { activeHandoffNode, handoffMessage, shouldStartSessionResources } from "../lib/handoff.mjs";
 import {
@@ -141,6 +142,9 @@ export function useVoiceSession() {
   const webrtcStartedRef = useRef(false);
   const isUserSpeaking = useRef(false);
   const currentAssistantId = useRef(null);
+  const assistantTranscriptRef = useRef(null);
+  const assistantResponsesRef = useRef(new Map());
+  const responseAudioRef = useRef(new ResponseAudioQueue());
   const turnTrackerRef = useRef(createTurnTracker());
   const sessionToolIndexRef = useRef({});
   const transcriptionTimingRef = useRef(new Map());
@@ -230,6 +234,7 @@ export function useVoiceSession() {
     turnTrackerRef.current = createTurnTracker(startedAtMs, startSource);
     turnNodeIdRef.current = activeHandoffNodeRef.current;
     currentAssistantId.current = null;
+    assistantTranscriptRef.current = null;
   }, []);
 
   const attachTurnMetrics = useCallback(() => {
@@ -259,6 +264,7 @@ export function useVoiceSession() {
     turnTrackerRef.current = createTurnTracker();
     turnNodeIdRef.current = null;
     currentAssistantId.current = null;
+    assistantTranscriptRef.current = null;
   }, []);
 
   // ---- MCP tool helpers: surface tool listing, calls, and approval in the chat ----
@@ -834,8 +840,50 @@ export function useVoiceSession() {
     }
   }, [logError, logStatus]);
 
+  const handleAudioOutput = useCallback((event) => {
+    if (transportRef.current === "webrtc" || avatarAudioAvailableRef.current) return;
+    const responseId = event.response_id || event.response?.id;
+    if (event.type === "response.done" && ["cancelled", "failed"].includes(event.response?.status)) {
+      audioRef.current?.stopResponsePlayback(responseId);
+    }
+    try {
+      const ready = responseAudioRef.current.handleEvent({ ...event, receivedAtMs: monotonicNow() });
+      if (isUserSpeaking.current) {
+        responseAudioRef.current.interrupt();
+        return;
+      }
+      for (const packet of ready) {
+        const response = assistantResponsesRef.current.get(packet.response_id);
+        if (!response) throw new Error("Audio has no matching response context");
+        const bytes = base64ToUint8(packet.delta);
+        const voice = pcmVoiceOffsetsMs(bytes);
+        if (voice.firstVoicedMs != null) markFirstSpeech(response.turn, packet.receivedAtMs + voice.firstVoicedMs);
+        const audio = ensureAudio();
+        if (!audio.isPlaying) audio.startStreamingPlayback();
+        const playbackAtMs = audio.playChunk(
+          bytes, voice.firstVoicedMs,
+          voice.lastVoicedMs == null ? null : voice.lastVoicedMs + 20,
+          packet.response_id,
+        );
+        if (voice.firstVoicedMs != null) markFirstPlayback(response.turn, playbackAtMs);
+        upsertById(response.id, "assistant", (content) => content, snapshotTurnMetrics(response.turn));
+        const speechEnd = audio.getLastScheduledSpeechEndAtMs();
+        if (Number.isFinite(speechEnd)) lastAssistantSpeechEndAtRef.current = speechEnd;
+      }
+      for (const [id, response] of assistantResponsesRef.current) {
+        if (response.done && !responseAudioRef.current.hasResponse(id)) assistantResponsesRef.current.delete(id);
+      }
+    } catch (error) {
+      responseAudioRef.current.interrupt();
+      audioRef.current?.stopStreamingPlayback();
+      logError("Audio playback ordering failed: " + error.message);
+      setStatus({ text: "audio playback error", kind: "err" });
+    }
+  }, [logError, upsertById]);
+
   const handleEvent = useCallback((evt) => {
     const t = evt.type || "(none)";
+    handleAudioOutput(evt);
     // Capture OUR conversation id from any event that carries it (conversation.created is canonical,
     // but keep this robust across transports where its delivery to the client isn't guaranteed). The
     // first-seen id lets "View persisted" reference THIS session, not the shared agent's latest.
@@ -964,6 +1012,7 @@ export function useVoiceSession() {
         const now = monotonicNow();
         const userItemId = evt.item_id || null;
         isUserSpeaking.current = true;
+        responseAudioRef.current.interrupt();
         lastAssistantSpeechEndAtRef.current = null;
         activeUserItemIdRef.current = userItemId;
         const turnNodeId = activeHandoffNodeRef.current;
@@ -1082,7 +1131,7 @@ export function useVoiceSession() {
           if (activeUserItemIdRef.current === evt.item_id) activeUserItemIdRef.current = null;
         }
         break;
-      case "response.created":
+      case "response.created": {
         activeResponseCountRef.current += 1;
         if (
           turnTrackerRef.current.startedAtMs == null
@@ -1096,11 +1145,24 @@ export function useVoiceSession() {
           (evt.response && evt.response.id) || nextLocalId(),
           monotonicNow(),
         );
+        assistantTranscriptRef.current = {
+          id: currentAssistantId.current,
+          responseId: evt.response?.id || currentAssistantId.current,
+          parts: assistantTranscriptRef.current?.id === currentAssistantId.current
+            ? assistantTranscriptRef.current.parts : new Map(),
+          turn: turnTrackerRef.current,
+          done: false,
+        };
+        assistantResponsesRef.current.set(
+          assistantTranscriptRef.current.responseId,
+          assistantTranscriptRef.current,
+        );
         // Do not insert the response bubble yet. A tool-only response emits its tool item first;
         // creating the bubble lazily on first text/audio keeps the visible order tool -> answer.
         // Tool follow-up responses still reuse this one per-turn assistant id.
         logEvent("response.created");
         break;
+      }
       case "response.server_timing": {
         if (applyResponseServerTiming(turnTrackerRef.current, evt)) {
           const assistantId = turnTrackerRef.current.assistantId || currentAssistantId.current;
@@ -1121,80 +1183,63 @@ export function useVoiceSession() {
       case "response.audio_transcript.delta":
       case "response.output_audio_transcript.delta":
       case "response.text.delta":
-      case "response.output_text.delta":
-        if (evt.delta && currentAssistantId.current) {
-          const first = markFirstToken(turnTrackerRef.current, monotonicNow());
-          const metrics = first ? snapshotTurnMetrics(turnTrackerRef.current) : null;
+      case "response.output_text.delta": {
+        const transcript = evt.response_id
+          ? assistantResponsesRef.current.get(evt.response_id) : assistantTranscriptRef.current;
+        if (evt.delta && transcript) {
+          const first = markFirstToken(transcript.turn, monotonicNow());
+          const metrics = first ? snapshotTurnMetrics(transcript.turn) : null;
+          const content = updateAssistantTranscript(transcript.parts, evt, transcript.responseId);
           upsertById(
-            currentAssistantId.current,
+            transcript.id,
             "assistant",
-            (c) => c + evt.delta,
+            () => content,
             first ? { ttftMs: metrics.ttftMs } : null,
           );
         }
         break;
+      }
       case "response.audio_transcript.done":
       case "response.output_audio_transcript.done":
       case "response.text.done":
       case "response.output_text.done": {
         const text = evt.transcript || evt.text || "";
-        if (text && currentAssistantId.current) {
+        const transcript = evt.response_id
+          ? assistantResponsesRef.current.get(evt.response_id) : assistantTranscriptRef.current;
+        if (text && transcript) {
           // The terminal event repeats the completed transcript. Count it as the first token only
           // when no delta/audio content was observed for this response; otherwise it could arrive
           // after a tool finishes and falsely look like post-tool answer content.
-          if (!turnTrackerRef.current.currentResponseHasToken) {
-            const first = markFirstToken(turnTrackerRef.current, monotonicNow());
-            const metrics = first ? snapshotTurnMetrics(turnTrackerRef.current) : null;
-            upsertById(
-              currentAssistantId.current,
-              "assistant",
-              (content) => content || text,
-              first ? { ttftMs: metrics.ttftMs } : null,
-            );
-          } else {
-            upsertById(currentAssistantId.current, "assistant", (content) => content || text);
-          }
+          const first = !transcript.turn.currentResponseHasToken
+            && markFirstToken(transcript.turn, monotonicNow());
+          const metrics = first ? snapshotTurnMetrics(transcript.turn) : null;
+          const content = updateAssistantTranscript(transcript.parts, evt, transcript.responseId);
+          upsertById(
+            transcript.id,
+            "assistant",
+            () => content,
+            first ? { ttftMs: metrics.ttftMs } : null,
+          );
         }
         break;
       }
       case "response.audio.delta":
-      case "response.output_audio.delta":
-        if (evt.delta && currentAssistantId.current) {
-          const receivedAtMs = monotonicNow();
-          const bytes = base64ToUint8(evt.delta);
-          const voice = pcmVoiceOffsetsMs(bytes);
-          markFirstAudio(turnTrackerRef.current, receivedAtMs);
-          const willRender = shouldRenderPcmOutput(
-            isUserSpeaking.current,
-            avatarAudioAvailableRef.current,
-            transportRef.current,
-          );
-          if (willRender) {
-            if (voice.firstVoicedMs != null) {
-              markFirstSpeech(turnTrackerRef.current, receivedAtMs + voice.firstVoicedMs);
-            }
-            const audio = ensureAudio();
-            if (!audio.isPlaying) audio.startStreamingPlayback();
-            const playbackAtMs = audio.playChunk(
-              bytes,
-              voice.firstVoicedMs,
-              voice.lastVoicedMs == null ? null : voice.lastVoicedMs + 20,
-            );
-            if (voice.firstVoicedMs != null) {
-              markFirstPlayback(turnTrackerRef.current, playbackAtMs);
-            }
-          }
-          const metrics = snapshotTurnMetrics(turnTrackerRef.current);
+      case "response.output_audio.delta": {
+        const response = assistantResponsesRef.current.get(evt.response_id);
+        if (evt.delta && response) {
+          markFirstAudio(response.turn, monotonicNow());
+          const metrics = snapshotTurnMetrics(response.turn);
           // Audio can precede its transcript. Create the (temporarily empty) response bubble now
           // so the latency bars are visible at the instant playable audio arrives.
           upsertById(
-            currentAssistantId.current,
+            response.id,
             "assistant",
             (content) => content,
             metrics,
           );
         }
         break;
+      }
       case "response.audio.done":
       case "response.output_audio.done":
         if (audioRef.current) {
@@ -1206,23 +1251,30 @@ export function useVoiceSession() {
         logEvent("response.audio.done");
         break;
       case "response.done": {
-        const turn = turnTrackerRef.current;
+        const response = assistantResponsesRef.current.get(evt.response?.id);
+        if (response) response.done = true;
+        const turn = response?.turn || turnTrackerRef.current;
         // `response.output` restates the response's items in final form, so a function call whose
         // per-item events were missed is still picked up here (already-answered calls are ignored).
         for (const call of functionCallsFromResponseDone(evt)) noteFunctionCall(call);
         activeResponseCountRef.current = Math.max(0, activeResponseCountRef.current - 1);
         addResponseUsage(turn, evt);
-        const finalize = shouldFinalizeOnResponseDone(turn);
-        currentAssistantId.current = null;
-        if (finalize) {
+        const pendingResponse = [...assistantResponsesRef.current.values()]
+          .some((other) => other.turn === turn && !other.done);
+        const finalize = shouldFinalizeOnResponseDone(turn) && !pendingResponse;
+        if (!response || currentAssistantId.current === response.id) currentAssistantId.current = null;
+        if (finalize && turn === turnTrackerRef.current) {
           attachTurnMetrics();
           markTurn("agent", "");
           setStatus({ text: "ready - listening", kind: "ok" });
-        } else {
+        } else if (turn === turnTrackerRef.current) {
           setStatus({
             text: pendingToolCallCount(turn) > 0 ? "running tool..." : "thinking...",
             kind: "warn",
           });
+        }
+        if (!responseAudioRef.current.hasResponse(evt.response?.id)) {
+          assistantResponsesRef.current.delete(evt.response?.id);
         }
         logEvent("response.done");
         // The response that carried a client function call has ended, so its answer can now be
@@ -1374,6 +1426,7 @@ export function useVoiceSession() {
     beginTurn,
     flushFunctionOutputs,
     handleMcpItem,
+    handleAudioOutput,
     logError,
     logEvent,
     logStatus,
@@ -1479,6 +1532,9 @@ export function useVoiceSession() {
     cleanupWebRtc();
     isUserSpeaking.current = false;
     currentAssistantId.current = null;
+    assistantTranscriptRef.current = null;
+    assistantResponsesRef.current.clear();
+    responseAudioRef.current.reset();
     turnTrackerRef.current = createTurnTracker();
     sessionToolIndexRef.current = {};
     transcriptionTimingRef.current.clear();
@@ -1518,6 +1574,7 @@ export function useVoiceSession() {
       if (transportRef.current === "webrtc") startWebRtcSession();
     };
     ws.onmessage = (ev) => {
+      if (wsRef.current !== ws || clientCloseRequestedRef.current) return;
       if (typeof ev.data !== "string") return;
       let evt; try { evt = JSON.parse(ev.data); } catch { return; }
       recordFrame("down", evt);
@@ -1530,15 +1587,21 @@ export function useVoiceSession() {
       setStatus({ text: `error: ${sessionFailureRef.current}`, kind: "err" });
     };
     ws.onclose = async (e) => {
+      if (wsRef.current !== ws) return;
       logStatus(`WebSocket closed (code ${e.code}${e.reason ? `, ${e.reason}` : ""})`);
       setSessionReady(false);
       sessionReadyRef.current = false;
       setSessionId(null);
       setActiveHandoffNodeId(null);
       activeHandoffNodeRef.current = null;
-      setHandoffRuntimeMetrics((current) => stopHandoffRuntimeMetrics(current, monotonicNow()));
+      const completed = e.code === 1000
+        && !clientCloseRequestedRef.current && !sessionFailureRef.current;
+      setHandoffRuntimeMetrics((current) => stopHandoffRuntimeMetrics(current, monotonicNow(), { completed }));
       isUserSpeaking.current = false;
       currentAssistantId.current = null;
+      assistantTranscriptRef.current = null;
+      assistantResponsesRef.current.clear();
+      responseAudioRef.current.reset();
       turnTrackerRef.current = createTurnTracker();
       sessionToolIndexRef.current = {};
       transcriptionTimingRef.current.clear();
@@ -1581,6 +1644,8 @@ export function useVoiceSession() {
   const stopSession = useCallback(() => {
     logStatus("Stopping session...");
     clientCloseRequestedRef.current = true;
+    responseAudioRef.current.reset();
+    assistantResponsesRef.current.clear();
     const ws = wsRef.current;
     if (ws) { try { ws.close(1000, "client stopped session"); } catch { /* noop */ } }
     cleanupAvatar();

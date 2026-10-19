@@ -11,9 +11,9 @@
       "accent_color": "#147d64",
       "lock_runtime": true,
       "mcp": {
-        "config_file": "../shared_mcp/config/generated/example1.local.env",
-        "token_file": "../shared_mcp/state/local/token",
-        "source_label": "Local shared_mcp Dev Tunnel",
+        "connection_mode": "public",
+        "server_url": "https://voice-agent-noauth-mcp.lemonsky-36682081.westus2.azurecontainerapps.io/mcp/finance-handoff",
+        "source_label": "Public no-auth MCP",
         "source_reference": "VoiceAgent/shared_mcp"
       }
     },
@@ -27,9 +27,9 @@
       "accent_color": "#6b5dd3",
       "lock_runtime": true,
       "mcp": {
-        "config_file": "../shared_mcp/config/generated/example1.local.env",
-        "token_file": "../shared_mcp/state/local/token",
-        "source_label": "Local shared_mcp Dev Tunnel",
+        "connection_mode": "public",
+        "server_url": "https://voice-agent-noauth-mcp.lemonsky-36682081.westus2.azurecontainerapps.io/mcp/finance-handoff",
+        "source_label": "Public no-auth MCP",
         "source_reference": "VoiceAgent/shared_mcp"
       }
     },
@@ -41,9 +41,9 @@
       "summary": "Verify a caller by OTP, discuss financing, and find the requested loan officer.",
       "accent_color": "#50c9ce",
       "mcp": {
-        "config_file": "../shared_mcp/config/generated/example2.local.env",
-        "token_file": "../shared_mcp/state/local/token",
-        "source_label": "Local shared_mcp Dev Tunnel",
+        "connection_mode": "public",
+        "server_url": "https://voice-agent-noauth-mcp.lemonsky-36682081.westus2.azurecontainerapps.io/mcp/finance-otp-officer",
+        "source_label": "Public no-auth MCP",
         "source_reference": "VoiceAgent/shared_mcp"
       }
     },
@@ -55,11 +55,24 @@
       "summary": "Assess elevator safety, confirm and create Zendesk tickets, query status, and route human assistance.",
       "accent_color": "#d97706",
       "mcp": {
-        "connection_mode": "managed",
-        "config_file": "../shared_mcp/config/generated/example3.local.env",
-        "token_file": "../shared_mcp/state/local/token",
-        "source_label": "Local shared_mcp Dev Tunnel",
+        "connection_mode": "public",
+        "server_url": "https://voice-agent-noauth-mcp.lemonsky-36682081.westus2.azurecontainerapps.io/mcp/elevator-service",
+        "source_label": "Public no-auth MCP",
         "source_reference": "VoiceAgent/shared_mcp"
+      }
+    },
+    {
+      "id": "frontdesk-receptionist-example",
+      "folder": "../samples/example4_frontdesk_with_fluency_and_handoff",
+      "name": "Example 4: Front Desk with Fluency and Handoff",
+      "category": "Reception",
+      "summary": "A response-first receptionist for company questions, grounded support search, transfer fallback, and confirmed callback messages.",
+      "accent_color": "#2563eb",
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "https://voice-agent-noauth-mcp.lemonsky-36682081.westus2.azurecontainerapps.io/mcp/frontdesk",
+        "source_label": "Public no-auth MCP",
+        "source_reference": "Hosted Front Desk MCP"
       }
     }
   ]

@@ -66,6 +66,27 @@ const voiceDefinition = (model, voice, clientReferenceEc = false) => ({
   },
 });
 
+export async function mockWebRtcPeer(page) {
+  // Keep browser regression tests off STUN/TURN and media networks.
+  await page.addInitScript(() => {
+    window.RTCPeerConnection = class extends EventTarget {
+      iceGatheringState = "complete";
+      connectionState = "new";
+      signalingState = "stable";
+      localDescription = null;
+      addTrack() { return {}; }
+      addTransceiver() { return {}; }
+      getSenders() { return []; }
+      createDataChannel() { return Object.assign(new EventTarget(), { readyState: "open", close() {} }); }
+      async createOffer() { return { type: "offer", sdp: "synthetic-test-sdp" }; }
+      async setLocalDescription(value) { this.localDescription = value; }
+      async setRemoteDescription() {}
+      async addIceCandidate() {}
+      close() { this.connectionState = "closed"; }
+    };
+  });
+}
+
 export async function mountStudio(page, configPatch = {}, path = "/demo/", options = {}) {
   const api = {
     creates: [], generates: [], versions: [], sockets: [], messages: [], errors: [],
@@ -114,6 +135,7 @@ export async function mountStudio(page, configPatch = {}, path = "/demo/", optio
       { created_at: 100 + index },
     ));
   }
+  entries.push(...(options.extraAgents || []));
   const agents = new Map(entries.map((item) => [item.name, item]));
   page.on("pageerror", (error) => api.errors.push(error.message));
   page.on("console", (message) => { if (message.type() === "error") api.errors.push(message.text()); });

@@ -2,10 +2,18 @@
 
 ## Conclusion
 
+Portal Templates default to the public no-auth MCP endpoints in
+[`portal/templates.config.json`](../portal/templates.config.json); normal
+Template use does not require this local setup or a Project connection.
+See the [Portal guide](../portal/README.md) for the local UI workflow.
+This guide covers deliberately running your own MCP for the CLI samples or
+developing the MCP implementation itself.
+
 The [`VoiceAgent/shared_mcp/`](../shared_mcp/) directory contains the
-customer-owned MCP implementation used by all three Portal examples. Run one
-command to build it locally or one command to deploy it to Azure Container Apps
-and create the three Foundry Project connections required by the Agents.
+customer-owned reference implementation for the three example business packs.
+Run one command to build it locally or one command to deploy it to Azure
+Container Apps and create the three Foundry Project connections required by
+the CLI sample Agents.
 
 Use the [architecture and documentation index](./README.md) for the system
 overview. After the MCP is ready, continue with
@@ -91,10 +99,11 @@ is not a Microsoft-operated service.
 
 ## Run the complete local MCP E2E
 
-This is the supported local workflow for publishing the Finance templates or
-selecting **Try it now** in the portal. It always uses native Python; building
-the optional image alone does not create a public MCP address, Project
-connections, or generated template config.
+This is the optional local workflow for the CLI samples and for developing the
+MCP implementation. Default Portal Templates use the public no-auth MCP and do
+not depend on this workflow. The local workflow always uses native Python;
+building the optional image alone does not create a public MCP address,
+Project connections, or generated template config.
 
 Prerequisites:
 
@@ -118,8 +127,8 @@ cd /path/to/Cognitive-Speech-TTS/VoiceAgent
    --project-endpoint "https://<account>.services.ai.azure.com/api/projects/<project>"
 ```
 
-The executable is stored under the ignored `.local-mcp-and-ui/tools/` state,
-and both setup and lifecycle scripts discover it automatically. Do not add that
+The executable is stored under the ignored `.local-tools/` directory,
+and both setup and E2E scripts discover it automatically. Do not add that
 directory to the interactive shell `PATH`. The manual system/user-local install
 below is optional and remains useful when `devtunnel` is needed outside this
 repository.
@@ -188,7 +197,8 @@ Then run:
 ```bash
 az account show --output table
 ./scripts/setup-local-examples.sh --check
-./scripts/manage-local-mcp-and-ui.sh restart
+cd shared_mcp
+./scripts/e2e-local.sh
 ```
 
 The script requires authenticated `az` and `devtunnel` CLIs. By default it:
@@ -201,7 +211,7 @@ The script requires authenticated `az` and `devtunnel` CLIs. By default it:
 - writes `config/generated/example1.local.env` and `example2.local.env`;
 - verifies authenticated `initialize` and `tools/list` against both public MCP
    routes and checks each route against its sample `agent.json` tool contract;
-- remains running so the sample CLIs or portal can publish and invoke Agents.
+- remains running so the sample CLIs can publish and invoke Agents.
 
 Project connection creation uses the active Azure CLI subscription. If the
 Project is not found, select its exact subscription and retry:
@@ -248,8 +258,8 @@ config/generated/example1.local.env
 config/generated/example2.local.env
 ```
 
-The sample CLIs and portal read those files when publishing. While the E2E
-script is still running, publish or invoke either sample from another terminal:
+The sample CLIs read those files when publishing. While the E2E script is
+still running, publish or invoke either sample from another terminal:
 
 ```bash
 cd ../samples/example1_finance_with_handoff
@@ -289,7 +299,6 @@ Press Ctrl+C to stop the local MCP runtime and dev tunnel.
 | The fixed Dev Tunnel ID conflicts with an unavailable tunnel | The ID belongs to another identity or stale external state | Sign in with its owner; to intentionally reset the machine ID, remove `state/local/devtunnel-id`, rerun normal setup, and update consumers of the old URL |
 | `configure AZURE_AI_PROJECT_ENDPOINT` | Example 1 `.env` is missing or still contains the placeholder | Discover the endpoint with Azure CLI and copy it into both sample `.env` files |
 | Project not found in active Azure CLI subscription | Endpoint and active subscription do not match | Run `az account set` with the exact subscription name or ID |
-| UI says `The local MCP config is not ready` | E2E has not reached connection/config generation, or a prior failed run left an offline config | Run E2E to the final success lines, keep it running, then select **Reload** in Templates |
 
 ## Deploy to Azure Container Apps
 
@@ -449,7 +458,7 @@ post-tool response fails:
 
 ```bash
 cd VoiceAgent
-./scripts/manage-local-mcp-and-ui.sh status
+curl -fsS http://127.0.0.1:18003/healthz
 python skills/debug-local-session/scripts/analyze_session.py <session-id>
 ```
 

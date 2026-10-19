@@ -199,4 +199,8 @@ async def create_test_app():
 
 
 if __name__ == "__main__":
-    web.run_app(create_test_app(), host="127.0.0.1", port=8097, print=None, access_log=None)
+    web.run_app(
+        create_test_app(), host="127.0.0.1",
+        port=int(os.getenv("VOICE_PORTAL_TEST_PORT", "8097")),
+        print=None, access_log=None,
+    )

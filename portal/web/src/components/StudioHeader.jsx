@@ -9,7 +9,7 @@ import {
 } from "../lib/projectPicker.mjs";
 import { Icon } from "./ConfigControls.jsx";
 
-export function StudioHeader({ cfg, disabled }) {
+export function StudioHeader({ cfg, disabled, debugMode = false, onDebugModeChange }) {
   const [projects, setProjects] = useState([]);
   const [projectInput, setProjectInput] = useState(cfg.backend);
   const [resultsOpen, setResultsOpen] = useState(false);
@@ -78,9 +78,13 @@ export function StudioHeader({ cfg, disabled }) {
         <div><h1>Voice agent <span>studio</span></h1><p>Configure. Connect. Converse.</p></div>
       </div>
       <nav className="portal-page-nav" aria-label="Portal pages">
-        <span>Live session</span>
-        <a href="/templates">Templates</a>
-        <a href="/handoff/">Handoff Graph</a>
+        <a href="/editor/">Editor</a>
+        <span aria-current="page">AgentRuntime</span>
+        <label className="debug-mode-toggle">
+          <input type="checkbox" checked={debugMode}
+            onChange={(event) => onDebugModeChange(event.target.checked)} />
+          Debug mode
+        </label>
       </nav>
       <div className="studio-backend">
         <label htmlFor="studio-backend">Foundry project</label>
@@ -135,9 +139,11 @@ export function StudioHeader({ cfg, disabled }) {
       <div className="portal-notice info-note" role="status">
         {cfg.notice}
         <span className="portal-nav">
-          <a href="/">Studio</a>
-          <a href="/webrtc">WebRTC</a>
-          <a href="/static/demo/sessions.html">Local session logs</a>
+          <a href="/demo/">AgentRuntime</a>
+          {debugMode ? <>
+            <a href="/webrtc">WebRTC</a>
+            <a href="/static/demo/sessions.html">Local session logs</a>
+          </> : null}
           <a href="/static/demo/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener noreferrer">Licenses</a>
         </span>
       </div>

@@ -209,6 +209,11 @@ def _asset_version() -> str:
     return "-".join(stamps)
 
 
+async def portal_home(request: web.Request) -> web.Response:
+    path = "/demo/" if request.query.get("agent") else "/editor/"
+    raise web.HTTPFound(location=str(request.rel_url.with_path(path, keep_query=True)))
+
+
 async def index(request: web.Request) -> web.Response:
     await _request_config(request)
     version = _asset_version()
@@ -927,7 +932,8 @@ def build_app(args) -> web.Application:
     if root is not None:
         root.mkdir(parents=True, exist_ok=True)
     app[SESSION_LOG_ROOT] = root
-    for path in ("/", "/demo", "/demo/"):
+    app.router.add_get("/", portal_home)
+    for path in ("/demo", "/demo/"):
         app.router.add_get(path, index)
     for path in ("/webrtc", "/webrtc/", "/demo/webrtc", "/demo/webrtc/"):
         app.router.add_get(path, webrtc_index)

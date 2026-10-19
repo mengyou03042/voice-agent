@@ -24,6 +24,16 @@
     ],
     "reason": "Review shared Envoy pack routes, tool inventories, authentication, and deployment changes when importing dashboard updates."
   },
+  "scenario_imports": [
+    {
+      "source": "docs/voice_agent/project7_frontdesk/template/frontdesk_agent.yaml",
+      "source_sha256": "6822b8384da732bade0995a0fac550e3a6881d5d28ee44278fa70f9947735b82",
+      "imported_on": "2026-10-18",
+      "destination": "samples/example4_frontdesk_with_fluency_and_handoff/agent.json",
+      "action": "adapted",
+      "reason": "Preserve the fluency-first shared prompt, stage prompts, eight business nodes, sixteen edges, greeting, audio and two-tool scopes. Export the existing compatibility compiler with managed hosting, optional call_id and no interim response; use a neutral sample name, store=false and empty MCP URLs. The catalog supplies the existing hosted Front Desk MCP integration; no prototype checkout is needed at runtime."
+    }
+  ],
   "template_mappings": [
     {
       "root": "template_view",
@@ -238,7 +248,7 @@
       "destination": "samples/example1_finance_with_handoff/agent.json",
       "destination_root": "voice_agent",
       "action": "adapted",
-      "reason": "The public sample keeps Portal-compatible local MCP connection policy rather than the Dashboard deployment target."
+      "reason": "The public sample stays portable; the local Portal injects its configured public no-auth MCP URL at publication time."
     },
     {
       "root": "template_example2",

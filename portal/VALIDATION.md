@@ -8,8 +8,8 @@ Node.js **24.21.0**, and newly downloaded Playwright Chromium.
 
 The source was exported from the GitHub PR ref, not copied from the developer's
 working directory. The export contained no `.env`, generated MCP configuration,
-virtual environment, `node_modules`, browser cache, Git metadata, or in-progress
-hosted-playground files. No Git worktree or sibling repository was used.
+virtual environment, `node_modules`, browser cache, Git metadata, or other
+untracked local files. No Git worktree or sibling repository was used.
 
 | Check | Result |
 | --- | --- |

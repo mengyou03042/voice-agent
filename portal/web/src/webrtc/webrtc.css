@@ -190,6 +190,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 /* User view: chat bubbles + metadata */
 .mp-userview { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr); gap: 1rem; align-items: start; }
 .mp-userview > * { min-width: 0; }
+.mp-userview.conversation-only { grid-template-columns: minmax(0, 1fr); }
 .mp-chat { display: flex; flex-direction: column; gap: 0.85rem; background: var(--wrtc-surface);
            border: 1px solid var(--wrtc-line); border-radius: 12px; padding: 1rem; box-shadow: var(--wrtc-shadow); }
 .mp-bubble-row { display: flex; }

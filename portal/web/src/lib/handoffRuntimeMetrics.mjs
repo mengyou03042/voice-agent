@@ -4,6 +4,7 @@ const emptyNode = () => ({
   durationMs: 0,
   userTurns: 0,
   visits: 0,
+  completed: false,
   latencySamplesMs: [],
 });
 
@@ -15,7 +16,7 @@ export function createHandoffRuntimeMetrics() {
   };
 }
 
-function closeActiveNode(state, atMs) {
+function closeActiveNode(state, atMs, completed = false) {
   if (!state.activeNodeId || state.activeSinceMs == null) return state.nodes;
   const current = state.nodes[state.activeNodeId] || emptyNode();
   return {
@@ -23,6 +24,7 @@ function closeActiveNode(state, atMs) {
     [state.activeNodeId]: {
       ...current,
       durationMs: current.durationMs + Math.max(0, atMs - state.activeSinceMs),
+      completed,
     },
   };
 }
@@ -30,7 +32,7 @@ function closeActiveNode(state, atMs) {
 export function activateHandoffNode(state, nodeId, atMs) {
   const id = String(nodeId || "");
   if (!id || state.activeNodeId === id) return state;
-  const nodes = closeActiveNode(state, atMs);
+  const nodes = closeActiveNode(state, atMs, true);
   const current = nodes[id] || emptyNode();
   return {
     activeNodeId: id,
@@ -40,6 +42,7 @@ export function activateHandoffNode(state, nodeId, atMs) {
       [id]: {
         ...current,
         visits: current.visits + 1,
+        completed: false,
       },
     },
   };
@@ -77,12 +80,12 @@ export function recordHandoffLatency(state, nodeId, latencyMs) {
   };
 }
 
-export function stopHandoffRuntimeMetrics(state, atMs) {
+export function stopHandoffRuntimeMetrics(state, atMs, { completed = false } = {}) {
   if (!state.activeNodeId) return state;
   return {
     activeNodeId: null,
     activeSinceMs: null,
-    nodes: closeActiveNode(state, atMs),
+    nodes: closeActiveNode(state, atMs, completed),
   };
 }
 

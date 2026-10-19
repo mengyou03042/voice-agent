@@ -1,5 +1,6 @@
 import {
   ENTRYPOINT_ID,
+  PIPELINE_METRICS_DISCLAIMER,
   PIPELINE_PRESETS,
   createBlankDefinition,
   deepClone,
@@ -7,6 +8,8 @@ import {
   estimatePipeline,
   ensureEditableDefinition,
   extractLatestAgent,
+  formatPipelineCost as calculatedCost,
+  formatPipelineLatency as estimatedLatencyRange,
   layoutHandoffGraph,
   mergeServiceProblems,
   matchesAgentSearch,
@@ -23,7 +26,7 @@ import {
   stableJson,
   uniqueId,
   validateDefinition,
-} from "./handoff-core.mjs?v=20261014-portal-8";
+} from "./handoff-core.mjs?v=20261017-llm-150";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -44,6 +47,7 @@ const NODE_ICONS = Object.freeze([
 const state = {
   cfg: null,
   agents: [],
+  selectedAgentName: "",
   agentListLoaded: false,
   agentListLoading: false,
   agentListError: "",
@@ -62,6 +66,7 @@ const state = {
   selected: { kind: "graph", id: "" },
   outlineTab: "nodes",
   nodeComponentPanel: "",
+  debugMode: false,
   componentSort: {
     stt: { key: "name", direction: "asc" },
     model: { key: "name", direction: "asc" },
@@ -249,8 +254,22 @@ function effectiveVoice(id) {
   return id === ENTRYPOINT_ID ? rootVoice() : (config.voice ?? rootVoice());
 }
 
+function effectiveVoiceType(id) {
+  const config = nodeConfig(id);
+  if (config.voice?.type || config.voice_type) return config.voice?.type || config.voice_type;
+  if (id === ENTRYPOINT_ID || !config.voice) {
+    return rootVoice()?.type || state.definition?.audio?.output?.voice_type || "";
+  }
+  return "";
+}
+
 function nodePipeline(id) {
-  return selectedPipeline(effectiveModel(id), effectiveVoice(id), rootSttModel()).pipeline;
+  return selectedPipeline(
+    effectiveModel(id), effectiveVoice(id), rootSttModel(), {
+      voiceType: effectiveVoiceType(id),
+      customSpeech: Boolean(state.definition?.audio?.input?.transcription?.custom_speech),
+    },
+  ).pipeline;
 }
 
 function setMessage(message, error = "") {
@@ -407,6 +426,7 @@ function pipelineIcon(name) {
     headset: '<path d="M4 13v-1a8 8 0 0 1 16 0v1M4 13h3v6H5a2 2 0 0 1-2-2v-2a2 2 0 0 1 1-2ZM20 13h-3v6h2a2 2 0 0 0 2-2v-2a2 2 0 0 0-1-2ZM17 19c-1 2-3 2-5 2"/>',
     card: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/>',
     calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>',
+    check: '<path d="m5 12 4 4L19 6"/>',
     shield: '<path d="M12 3 4 6v5c0 5 3 8 8 10 5-2 8-5 8-10V6l-8-3Z"/><path d="m9 12 2 2 4-4"/>',
     sliders: '<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="13" cy="18" r="2"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
@@ -454,18 +474,14 @@ function presetTotals(preset) {
   return pipelineTotals(preset);
 }
 
-function selectedPipeline(model, voice, stt) {
+function selectedPipeline(model, voice, stt, { voiceType = "", customSpeech = false } = {}) {
   return estimatePipeline({
     model: normalizedModelId(model),
     voice: voiceName(voice),
+    voiceType: voiceType || (typeof voice === "object" && voice !== null ? voice.type || "" : ""),
+    customSpeech,
     stt,
   });
-}
-
-function calculatedCost(value) {
-  if (value === null || value === undefined) return "Not available";
-  const amount = value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
-  return `~$${amount}/normalized min`;
 }
 
 function componentCostLabel(component) {
@@ -477,31 +493,7 @@ function componentCostLabel(component) {
 function estimatedLatency(value) {
   return value === null || value === undefined
     ? "Not available"
-    : `~${value.toLocaleString()} ms estimated`;
-}
-
-function latencyBoundary(value, roundUp = false) {
-  if (value === null || value === undefined) return "Not available";
-  const milliseconds = roundUp ? Math.ceil(value / 100) * 100 : value;
-  if (milliseconds >= 1000) {
-    return `${(milliseconds / 1000).toFixed(1)} s`;
-  }
-  return `${milliseconds.toLocaleString()} ms`;
-}
-
-function estimatedLatencyRange(value) {
-  if (
-    value?.latencyMinMs === null
-    || value?.latencyMinMs === undefined
-    || value?.latencyMaxMs === null
-    || value?.latencyMaxMs === undefined
-  ) return "Not available";
-  return `~${latencyBoundary(value.latencyMinMs)} – ${latencyBoundary(value.latencyMaxMs, true)} estimated`;
-}
-
-function estimatedLatencyRangeHtml(value) {
-  if (!value) return "Not available";
-  return `~${latencyBoundary(value.latencyMinMs)}<small> – ${latencyBoundary(value.latencyMaxMs, true)} estimated</small>`;
+    : `${value.toLocaleString()} ms`;
 }
 
 function pipelineBar(pipeline, metric) {
@@ -510,7 +502,7 @@ function pipelineBar(pipeline, metric) {
   if (metric === "latencyMs") {
     return `<div class="pipeline-bar">
       <span class="pipeline-segment model" style="width:100%"
-        title="Range midpoint used for bar · ${estimatedLatency(totals.latencyMs)}"></span>
+        title="${estimatedLatencyRange(totals)}"></span>
     </div>`;
   }
   const total = [pipeline.stt, pipeline.model, pipeline.voice]
@@ -522,38 +514,6 @@ function pipelineBar(pipeline, metric) {
         title="${escapeHtml(pipeline[kind].label)} · ${componentCostLabel(pipeline[kind])}"></span>`;
     }).join("")}
   </div>`;
-}
-
-function metricDistribution(pipeline, metric) {
-  const labels = { stt: "STT", model: "LLM", voice: "TTS" };
-  const title = metric === "costPerMinute" ? "Cost distribution" : "Latency range";
-  const totals = pipelineTotals(pipeline);
-  if (metric === "latencyMs") {
-    return `
-      <div class="metric-distribution">
-        <span class="metric-distribution-title">${title}</span>
-        ${pipelineBar(pipeline, metric)}
-        <div class="metric-distribution-legend">
-          <span class="model"><i aria-hidden="true"></i>TTFA → handoff P50
-            <strong>${estimatedLatencyRange(totals)}</strong>
-          </span>
-          <span class="model"><i aria-hidden="true"></i>Bar midpoint
-            <strong>${estimatedLatency(totals?.latencyMs)}</strong>
-          </span>
-        </div>
-      </div>`;
-  }
-  return `
-    <div class="metric-distribution">
-      <span class="metric-distribution-title">${title}</span>
-      ${pipelineBar(pipeline, metric)}
-      <div class="metric-distribution-legend">
-        ${["stt", "model", "voice"].map((kind) => `
-          <span class="${kind}">
-            <i aria-hidden="true"></i>${labels[kind]} <strong>${componentCostLabel(pipeline[kind])}</strong>
-          </span>`).join("")}
-      </div>
-    </div>`;
 }
 
 function nodeConfig(id) {
@@ -672,23 +632,8 @@ async function loadConfig() {
   const response = await fetch("/config");
   const cfg = await readResponse(response);
   state.cfg = cfg;
+  document.body.classList.toggle("playground-mode", cfg.playground === true);
   $("#environment").textContent = `${cfg.backend} · ${cfg.project} · API ${cfg.apiVersion}`;
-  const backend = $("#backend-select");
-  const projects = [...new Set([cfg.backend, ...(cfg.backends || [])].filter(Boolean))];
-  backend.innerHTML = `<option value="${escapeHtml(cfg.backend)}" selected>${escapeHtml(cfg.backend)}</option>`;
-  backend.disabled = projects.length < 2;
-  const remaining = projects.filter((value) => value !== cfg.backend);
-  $("#project-load-state").textContent = remaining.length ? `1 / ${projects.length}` : `${projects.length} available`;
-  const appendProjects = () => {
-    for (const value of remaining.splice(0, 3)) {
-      backend.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`);
-    }
-    $("#project-load-state").textContent = remaining.length
-      ? `${backend.options.length} / ${projects.length}`
-      : `${projects.length} available`;
-    if (remaining.length) window.setTimeout(appendProjects, 40);
-  };
-  if (remaining.length) window.setTimeout(appendProjects, 40);
 }
 
 function sortedAgents(agentMap) {
@@ -698,6 +643,7 @@ function sortedAgents(agentMap) {
 }
 
 function renderAgentLoadState() {
+  $("#agent-select").setAttribute("aria-busy", String(state.agentListLoading));
   const status = $("#agent-load-state");
   if (state.agentListError) {
     status.textContent = "Load failed";
@@ -709,7 +655,7 @@ function renderAgentLoadState() {
     status.textContent = `${state.agents.length} loaded`;
     status.className = "source-load-state ready";
   } else {
-    status.textContent = "Waiting for project";
+    status.textContent = "Connecting…";
     status.className = "source-load-state";
   }
 }
@@ -780,18 +726,44 @@ async function ensureAgentListLoaded() {
   if (!state.agentListLoaded && !state.agentListLoading) await loadAgentList();
 }
 
+function selectAgentOption(name, { focus = false } = {}) {
+  state.selectedAgentName = name;
+  const root = $("#agent-select");
+  const options = $$("[data-agent-name]", root);
+  const selected = options.find((option) => option.dataset.agentName === name);
+  for (const option of options) {
+    option.setAttribute("aria-selected", String(option === selected));
+    option.tabIndex = option === selected ? 0 : -1;
+  }
+  root.tabIndex = selected ? -1 : 0;
+  $("#load-agent").disabled = !selected;
+  if (focus) selected?.focus({ preventScroll: true });
+}
+
 function renderAgentOptions() {
   const query = $("#agent-search").value;
   const filtered = state.agents.filter((item) => matchesAgentSearch(item.name, query));
-  const select = $("#agent-select");
-  const previous = select.value || state.agentName;
-  select.innerHTML = filtered.length
+  const root = $("#agent-select");
+  const focused = root.contains(document.activeElement);
+  const previous = state.selectedAgentName || state.agentName;
+  const selected = filtered.some((item) => item.name === previous) ? previous : filtered[0]?.name || "";
+  root.innerHTML = filtered.length
     ? filtered
-      .map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)} · v${escapeHtml(item.version || "—")}</option>`)
+      .map((item) => `
+        <button type="button" class="agent-option" role="option" data-agent-name="${escapeHtml(item.name)}"
+          aria-label="${escapeHtml(item.name)}" title="${escapeHtml(item.name)}">
+          <span class="agent-option-icon">${pipelineIcon("audio")}</span>
+          <span class="agent-option-copy">
+            <strong>${escapeHtml(item.name)}</strong>
+            <small>Voice Agent <span class="agent-option-version">v${escapeHtml(item.version || "—")}</span></small>
+          </span>
+          <span class="agent-option-check" aria-hidden="true">${pipelineIcon("check")}</span>
+        </button>`)
       .join("")
-    : `<option value="" disabled>${state.agentListLoading ? "Loading Agents…" : query.trim() ? "No partial matches" : "No voice Agents"}</option>`;
-  if (filtered.some((item) => item.name === previous)) $("#agent-select").value = previous;
-  $("#load-agent").disabled = !filtered.some((item) => item.name === select.value);
+    : `<div class="agent-list-empty" role="status">${state.agentListError
+      ? "Could not load Agents. Use refresh to try again."
+      : state.agentListLoading ? "Loading Agents…" : query.trim() ? "No matching Agents. Try another name." : "No voice Agents in this project yet."}</div>`;
+  selectAgentOption(selected, { focus: focused });
   $("#agent-result-count").textContent = query.trim()
     ? `${filtered.length} matching · ${state.agents.length} loaded`
     : `${state.agents.length} available`;
@@ -817,8 +789,7 @@ async function loadAgentByName(name) {
         createdAt: Number(agent.createdAt) || Date.now(),
       });
     }
-    renderAgentOptions();
-    $("#agent-select").value = agent.name;
+    state.selectedAgentName = agent.name;
     setDefinition(agent.definition, {
       ...agent,
       remote: true,
@@ -838,15 +809,25 @@ async function loadAgentByName(name) {
 }
 
 async function loadSelectedAgent() {
-  await loadAgentByName($("#agent-select").value);
+  await loadAgentByName(state.selectedAgentName);
 }
 
 function loadBlank() {
-  setDefinition(createBlankDefinition(), {
-    name: "handoff-graph-agent",
+  const definition = createBlankDefinition();
+  if (state.cfg?.playground) {
+    definition.model = state.cfg.defaultModel;
+    definition.store = false;
+    definition.audio.input.transcription.model = state.cfg.realtimeTranscriptionModels[0];
+    definition.audio.output = { voice: state.cfg.defaultAzureVoice, voice_type: "azure-standard" };
+  }
+  setDefinition(definition, {
+    name: `handoff-graph-agent-${crypto.randomUUID().slice(0, 8)}`,
     version: "local",
-    message: "Created a blank local definition. Set an existing Agent name before publication.",
+    message: "Created a blank working copy. Edit the starter node, then choose Try it now.",
   });
+  const url = new URL(window.location.href);
+  url.searchParams.delete("agent");
+  window.history.replaceState(null, "", url);
 }
 
 function renderTemplateCatalog() {
@@ -856,7 +837,7 @@ function renderTemplateCatalog() {
     root.innerHTML = `
       <div class="template-picker-loading">
         <span aria-hidden="true"></span>
-        Reading the same catalog used by the Templates page…
+        Reading the template catalog…
       </div>`;
     return;
   }
@@ -864,7 +845,7 @@ function renderTemplateCatalog() {
     root.innerHTML = `
       <div class="template-picker-empty">
         <strong>No templates are available.</strong>
-        <span>Open the full Templates page to inspect the catalog configuration.</span>
+        <span>Check the Portal template catalog configuration.</span>
       </div>`;
     return;
   }
@@ -1418,25 +1399,22 @@ function renderGraph() {
         </div>
         </div>
       </div>
-      <details class="node-metric-details">
+      ${state.debugMode ? `<details class="node-metric-details">
         <summary class="node-metrics"
-          aria-label="Show cost and latency distribution for ${escapeHtml(node.id)}"
-          title="Calculated from public rates under the normalized workload. Click for methodology.">
+          aria-label="Show cost and latency disclaimer for ${escapeHtml(node.id)}">
           <div class="metric${totals ? "" : " unavailable"}">
-            <span>${pipelineIcon("coin")} Pipeline total</span>
+            <span>${pipelineIcon("coin")} Cost</span>
             <strong>${totals ? calculatedCost(totals.costPerMinute) : "N/A"}<i class="metric-caret" aria-hidden="true">⌄</i></strong>
           </div>
           <div class="metric${totals ? "" : " unavailable"}">
             <span>${pipelineIcon("clock")} Latency</span>
-            <strong>${totals ? estimatedLatencyRangeHtml(totals) : "N/A"}<i class="metric-caret" aria-hidden="true">⌄</i></strong>
+            <strong>${totals ? estimatedLatencyRange(totals) : "N/A"}<i class="metric-caret" aria-hidden="true">⌄</i></strong>
           </div>
         </summary>
         <div class="node-metric-breakdown">
-          ${metricDistribution(pipeline, "costPerMinute")}
-          ${metricDistribution(pipeline, "latencyMs")}
-          <p>Calculated from public rates for 30 s user audio, 30 s Agent audio, 1,000 text input tokens and 100 text output tokens. Pipeline total = STT-only + Model-only + TTS-only. Latency spans Voice Live typical TTFA to no-transfer-message handoff P50; the bar uses their arithmetic midpoint.</p>
+          <p><strong>Disclaimer</strong> ${PIPELINE_METRICS_DISCLAIMER}</p>
         </div>
-      </details>
+      </details>` : ""}
       ${nodeSidePorts(node.id)}
       ${node.entry ? "" : `<button class="node-handle input" type="button" data-node-handle="input"
         data-node-id="${escapeHtml(node.id)}" aria-label="Input handle for ${escapeHtml(node.id)}" title="Drop an edge here"></button>`}
@@ -1455,7 +1433,7 @@ function renderGraph() {
       });
     });
     const metricDetails = $(".node-metric-details", card);
-    metricDetails.addEventListener("toggle", () => {
+    metricDetails?.addEventListener("toggle", () => {
       card.classList.toggle("metrics-open", metricDetails.open);
       requestAnimationFrame(renderEdgesOnly);
       if (!metricDetails.open) return;
@@ -1617,6 +1595,9 @@ function renderOutline() {
     remove.addEventListener("click", () => confirmDeleteEdgeById(edge.id));
     row.append(button, remove);
     edgeRoot.append(row);
+  }
+  if (!state.definition.handoff.edges.length) {
+    edgeRoot.innerHTML = '<p class="hint">No routes yet. Add an edge to connect nodes.</p>';
   }
   $("#node-count").textContent = String(nodes.length);
   $("#edge-count").textContent = String(state.definition.handoff.edges.length);
@@ -2210,6 +2191,7 @@ function componentDescription(kind, id) {
 
 function componentEvidence(kind, component) {
   const description = componentDescription(kind, component.id);
+  if (!state.debugMode) return description;
   const evidence = [
     component.latencySource ? `Latency source: ${component.latencySource}.` : "",
     component.publicRateLabel ? `Public rate: ${component.publicRateLabel}.` : "",
@@ -2219,18 +2201,7 @@ function componentEvidence(kind, component) {
 }
 
 function componentHeaderHelp(kind, key) {
-  if (key === "latency") {
-    const descriptions = {
-      stt: "Estimated minimum TTFS proxy. Uses speech-stop to final transcript when available. Values are displayed in seconds.",
-      model: "Estimated minimum model latency. When the source is a range, sorting and display use its lower bound. Values are displayed in seconds.",
-      voice: "Estimated minimum first-audio latency. Native output is included in model latency; Azure Speech uses first-text to first-audio. Values are displayed in seconds.",
-    };
-    return descriptions[kind];
-  }
-  if (key === "cost") {
-    return "Calculated normalized component cost from the row's public rate. Values are displayed in cents per normalized minute (¢/min) for comparison, not as an invoice.";
-  }
-  return "";
+  return key === "latency" || key === "cost" ? PIPELINE_METRICS_DISCLAIMER : "";
 }
 
 function componentSortHeader(kind, key, label) {
@@ -2273,10 +2244,7 @@ function componentMetricTableCell(component, metric, maximum) {
   } else {
     label = component.noAdditionalCost
       ? "No extra STT cost"
-      : `~${(value * 100).toLocaleString(undefined, {
-        minimumFractionDigits: value * 100 < 1 ? 2 : 1,
-        maximumFractionDigits: 4,
-      })} ¢/min`;
+      : calculatedCost(value);
   }
   return `
     <span class="component-table-metric">
@@ -2306,12 +2274,12 @@ function componentTableRow(kind, component, selected, maxima) {
         </button>
       </td>
       <td><span class="component-provider">${escapeHtml(provider)}</span></td>
-      <td>${component.locked
+      ${state.debugMode ? `<td>${component.locked
         ? '<span class="component-incompatible">Not compatible</span>'
         : componentMetricTableCell(component, "latency", maxima.latency)}</td>
       <td>${component.locked
         ? '<span class="component-incompatible">Not compatible</span>'
-        : componentMetricTableCell(component, "cost", maxima.cost)}</td>
+        : componentMetricTableCell(component, "cost", maxima.cost)}</td>` : ""}
     </tr>`;
 }
 
@@ -2335,9 +2303,15 @@ function renderNodeComponentPanel() {
     model: normalizedModelId(config.model ?? state.definition.model),
     models: graphModelIds(),
     stt: rootSttModel(),
+    customSpeech: Boolean(state.definition?.audio?.input?.transcription?.custom_speech),
     voice: voiceName(state.selected.id === ENTRYPOINT_ID ? rootVoice() : (config.voice ?? rootVoice())),
   };
-  const currentPipeline = selectedPipeline(selection.model, selection.voice, selection.stt).pipeline;
+  const currentPipeline = selectedPipeline(
+    selection.model, selection.voice, selection.stt, {
+      voiceType: effectiveVoiceType(state.selected.id),
+      customSpeech: selection.customSpeech,
+    },
+  ).pipeline;
   const current = currentPipeline[kind].id;
   const titles = { stt: "Transcriber", model: "Model", voice: "Voice" };
   $("#component-panel-kicker").textContent = "Node pipeline";
@@ -2400,21 +2374,21 @@ function renderNodeComponentPanel() {
       </div>`;
   }
   $("#node-component-panel-body").innerHTML = `
-    <div class="component-estimate-disclaimer" role="note" aria-label="Latency and cost disclaimer">
+    ${state.debugMode ? `<div class="component-estimate-disclaimer" role="note" aria-label="Latency and cost disclaimer">
       <span aria-hidden="true">!</span>
       <div>
-        <strong>Latency &amp; cost disclaimer</strong>
-        <p>Latency and pricing are based on internal experiments and vary with usage scenarios, sales discounts, prompt length, and other factors. These figures are estimates only.</p>
-      </div>
+        <strong>Disclaimer</strong>
+        <p>${PIPELINE_METRICS_DISCLAIMER}</p>
+      </div>` : ""}
     </div>
     <div class="component-table-wrap">
-      <table class="component-table">
+      <table class="component-table${state.debugMode ? "" : " without-metrics"}">
         <thead>
           <tr>
             <th>${componentSortHeader(kind, "name", titles[kind])}</th>
             <th>${componentSortHeader(kind, "provider", "Provider")}</th>
-            <th>${componentSortHeader(kind, "latency", "Latency (estimated)")}</th>
-            <th>${componentSortHeader(kind, "cost", "Cost (estimated)")}</th>
+            ${state.debugMode ? `<th>${componentSortHeader(kind, "latency", "Latency")}</th>
+            <th>${componentSortHeader(kind, "cost", "Cost")}</th>` : ""}
           </tr>
         </thead>
         <tbody>
@@ -2906,7 +2880,12 @@ function renderNodeEditor() {
   const voice = editableValue(entry ? rootVoice() : config.voice);
   const effectiveVoice = entry ? rootVoice() : (config.voice ?? rootVoice());
   const sttModel = rootSttModel();
-  const { preset, pipeline } = selectedPipeline(config.model ?? state.definition.model, effectiveVoice, sttModel);
+  const { preset, pipeline } = selectedPipeline(
+    config.model ?? state.definition.model, effectiveVoice, sttModel, {
+      voiceType: effectiveVoiceType(id),
+      customSpeech: Boolean(state.definition?.audio?.input?.transcription?.custom_speech),
+    },
+  );
   const totals = pipeline ? presetTotals(pipeline) : null;
   const previousMetrics = { ...state.metricDisplay };
   const stt = pipeline?.stt || {
@@ -2924,20 +2903,20 @@ function renderNodeEditor() {
   $("#node-editor-kind-icon").innerHTML = pipelineIcon(nodeIcon(id));
   $("#delete-node-editor").hidden = entry;
   $("#node-editor-body").innerHTML = `
-    <section class="pipeline-overview" aria-label="Pipeline estimates">
+    ${state.debugMode ? `<section class="pipeline-overview" aria-label="Pipeline metrics">
       <div class="overview-metric">
-        <div class="overview-label">${pipelineIcon("coin")}<span>Pipeline total</span></div>
+        <div class="overview-label">${pipelineIcon("coin")}<span>Cost</span></div>
         <strong id="node-cost-value">${totals ? calculatedCost(totals.costPerMinute) : "Not available"}</strong>
         ${pipelineBar(pipeline, "costPerMinute")}
         <div class="bar-legend"><span class="stt">STT</span><span class="model">Model</span><span class="voice">Voice</span></div>
       </div>
       <div class="overview-metric">
         <div class="overview-label">${pipelineIcon("clock")}<span>Latency</span></div>
-        <strong id="node-latency-value">${totals ? estimatedLatencyRangeHtml(totals) : "Not available"}</strong>
+        <strong id="node-latency-value">${totals ? estimatedLatencyRange(totals) : "Not available"}</strong>
         ${pipelineBar(pipeline, "latencyMs")}
-        <p>Voice Live typical TTFA to estimated no-transfer-message handoff P50. The bar uses the range midpoint.</p>
+        <p>Disclaimer: ${PIPELINE_METRICS_DISCLAIMER}</p>
       </div>
-    </section>
+    </section>` : ""}
     <section class="preset-section">
       <div class="preset-heading">
         <div>
@@ -2982,16 +2961,16 @@ function renderNodeEditor() {
         <button type="button" class="component-edit-button" data-node-component="stt">
           ${pipelineIcon("sliders")} Configure Agent-level STT
         </button>
-        <div class="component-metrics">
+        ${state.debugMode ? `<div class="component-metrics">
           <span>Latency <b>${stt.latencyMs === 0
             ? "No separate STT stage"
             : estimatedLatency(stt.latencyMs)}</b></span>
           <span>STT-only cost <b>${componentCostLabel(stt)}</b></span>
-        </div>
+        </div>` : ""}
         <p>${pipeline.architecture === "realtime"
           ? "The model reads audio natively; auxiliary STT runs in parallel and is excluded from the serial total."
           : "Agent-level STT feeds every cascaded node, so only graph-wide compatible choices are enabled."}
-          ${escapeHtml(stt.latencySource ? ` Source: ${stt.latencySource}.` : "")}</p>
+          ${escapeHtml(state.debugMode && stt.latencySource ? ` Source: ${stt.latencySource}.` : "")}</p>
       </article>
       <article class="pipeline-card model-card${state.nodeComponentPanel === "model" ? " component-selected" : ""}"
         data-component-card="model" role="button" tabindex="0">
@@ -3003,10 +2982,10 @@ function renderNodeEditor() {
         <button type="button" class="component-edit-button" data-node-component="model">
           ${pipelineIcon("sliders")} Configure model
         </button>
-        <div class="component-metrics">
+        ${state.debugMode ? `<div class="component-metrics">
           <span>Latency <b>${estimatedLatencyRange(pipeline.model)}</b></span>
           <span>Model-only cost <b>${calculatedCost(pipeline.model.costPerMinute)}</b></span>
-        </div>
+        </div>` : ""}
         <p>${escapeHtml(preset?.summary || (totals
           ? `${pipeline.architecture === "realtime" ? "Speech-to-speech" : "Cascaded"} · ${pipeline.tier} retail tier.`
           : "Custom or unavailable model: estimate unavailable."))}</p>
@@ -3021,7 +3000,7 @@ function renderNodeEditor() {
         <button type="button" class="component-edit-button" data-node-component="voice">
           ${pipelineIcon("sliders")} Configure voice
         </button>
-        <div class="component-metrics">
+        ${state.debugMode ? `<div class="component-metrics">
           <span>Latency <b>${pipeline.voice.latencyIncludedInModel
             ? "Included in model TTFA"
             : estimatedLatency(pipeline.voice.latencyMs)}</b></span>
@@ -3030,7 +3009,7 @@ function renderNodeEditor() {
         <p>${pipeline.voice.latencyIncludedInModel
           ? "Native speech output is already inside the model TTFA and must not be added again."
           : "Independent Azure Speech TTS first-byte estimate; add it only in a cascaded serial path."}
-          ${escapeHtml(pipeline.voice.latencySource ? ` Source: ${pipeline.voice.latencySource}.` : "")}</p>
+          ${escapeHtml(pipeline.voice.latencySource ? ` Source: ${pipeline.voice.latencySource}.` : "")}</p>` : ""}
       </article>
     </section>
     <div class="pipeline-compatibility-note">
@@ -3168,14 +3147,14 @@ function renderNodeEditor() {
   $$("[data-mcp-probe]", nodeEditorBody).forEach((button) => {
     button.addEventListener("click", () => testNodeMcpTool(button));
   });
-  if (totals) {
+  if (state.debugMode && totals) {
     animateMetricElement(
       $("#node-cost-value"),
       previousMetrics.cost,
       totals.costPerMinute,
       (value) => calculatedCost(Math.max(0, value)),
     );
-    $("#node-latency-value").innerHTML = estimatedLatencyRangeHtml(totals);
+    $("#node-latency-value").textContent = estimatedLatencyRange(totals);
     state.metricDisplay = {
       nodeId: id,
       cost: totals.costPerMinute,
@@ -3367,6 +3346,7 @@ function applyEdgeFieldChange(field, value) {
 
 function renderProblems() {
   const problems = currentProblems();
+  $(".rail .problems").hidden = !problems.length;
   const errors = problems.filter((item) => item.severity === "error").length;
   const warnings = problems.length - errors;
   $("#problem-count").textContent = errors ? `${errors}E${warnings ? ` · ${warnings}W` : ""}` : String(warnings);
@@ -3417,16 +3397,16 @@ function renderHeader() {
   $("#dirty-badge").className = `badge ${dirty ? "dirty" : "quiet"}`;
   $("#valid-badge").textContent = !state.definition ? "Not loaded" : errors ? `${errors} error${errors === 1 ? "" : "s"}` : "Valid";
   $("#valid-badge").className = `badge ${!state.definition ? "quiet" : errors ? "invalid" : "valid"}`;
-  const canPublish = Boolean(
+  const canTry = Boolean(
     state.definition && state.agentName.trim() && !errors
-      && (dirty || !state.remoteSource) && !state.publishing,
+      && !state.publishing,
   );
-  $("#publish-run-action").disabled = !canPublish;
+  $("#publish-run-action").disabled = !canTry;
   $("#publish-run-action").textContent = state.publishing
     ? "Publishing…"
-    : "Publish & run";
+    : "Try it now";
+  $("#create-blank-action").disabled = state.publishing || Boolean(state.templateLoadingId);
   $("#template-action").disabled = state.publishing || Boolean(state.templateLoadingId);
-  $("#validate-action").disabled = !state.definition;
   $("#export-action").disabled = !state.definition;
   $("#add-node").disabled = !state.definition;
   $("#add-node-canvas").disabled = !state.definition;
@@ -3435,13 +3415,6 @@ function renderHeader() {
   $("#fit-action").disabled = !state.definition;
   $("#undo-action").disabled = !state.history.length;
   $("#redo-action").disabled = !state.future.length;
-  $("#rail-agent-name").disabled = !state.definition;
-  $("#rail-max-transfers").disabled = !state.definition;
-  $("#rail-max-attempts").disabled = !state.definition;
-  $("#runtime-settings").disabled = !state.definition;
-  $("#rail-agent-name").value = state.agentName;
-  $("#rail-max-transfers").value = state.definition?.handoff?.max_transfers ?? "";
-  $("#rail-max-attempts").value = state.definition?.handoff?.max_attempts ?? "";
 }
 
 function renderDefinition() {
@@ -3611,12 +3584,12 @@ async function publishDefinition() {
   const templateId = sourceTemplateId();
   setMessage(
     templateId
-      ? `Refreshing the managed MCP connection for ${name}…`
+      ? `Checking the template MCP configuration for ${name}…`
       : `Publishing release for ${name} through the server-held Foundry credential…`,
   );
   render();
   if (templateId) {
-    setPublishStep("mcp", "running", "Updating the managed MCP connection in the selected Project…");
+    setPublishStep("mcp", "running", "Checking the template MCP endpoint and any required Project connection…");
     try {
       await readResponse(
         await fetch(
@@ -3628,20 +3601,20 @@ async function publishDefinition() {
           },
         ),
       );
-      setPublishStep("mcp", "complete", "Managed MCP target and credential are current.");
+      setPublishStep("mcp", "complete", "Template MCP configuration is ready.");
     } catch (error) {
       state.publishing = false;
       setPublishStep("mcp", "failed", error.message);
-      finishPublishProgress("Publication stopped while refreshing MCP.", error.message);
+      finishPublishProgress("Publication stopped while configuring MCP.", error.message);
       setMessage(
-        "MCP connection refresh failed. The Agent was not published.",
+        "MCP configuration failed. The Agent was not published.",
         error.message,
       );
       render();
       return null;
     }
   } else {
-    setPublishStep("mcp", "skipped", "No managed Template MCP connection needs to be refreshed.");
+    setPublishStep("mcp", "skipped", "No Template MCP configuration needs to be checked.");
   }
   setPublishStep("publish", "running", `Creating a release for ${name}…`);
   setMessage(`Publishing release for ${name} through the server-held Foundry credential…`);
@@ -3758,16 +3731,35 @@ async function publishDefinition() {
   }
 }
 
-function openAgentInDemo(agentName) {
+function openAgentInDemo(agentName, { startSession = false } = {}) {
   if (!agentName) return;
+  if (startSession) {
+    try {
+      // A one-shot, same-tab request must not turn shared Agent URLs into auto-start links.
+      window.sessionStorage.setItem("voice-agent-editor-run", agentName);
+    } catch (error) {
+      setMessage("Could not prepare the AgentRuntime session.", error.message);
+      if (!$("#publish-progress").hidden) {
+        setPublishStep("open", "failed", error.message);
+        finishPublishProgress("Could not start AgentRuntime.", error.message);
+      }
+      return;
+    }
+  }
   window.location.assign(`/demo/?agent=${encodeURIComponent(agentName)}&view=handoff`);
 }
 
 async function publishAndRun() {
+  if (!state.definition || state.publishing) return;
+  const startSession = state.remoteSource;
+  if (startSession && !state.draft && !isDirty()) {
+    openAgentInDemo(state.agentName, { startSession: true });
+    return;
+  }
   openPublishProgress();
   const published = await publishDefinition();
   if (!published) return;
-  setPublishStep("open", "running", "Preparing the verified Agent in Live session…");
+  setPublishStep("open", "running", "Preparing the verified Agent in AgentRuntime…");
   setMessage(
     `Published Agent ${published.name}, version ${published.version || "(not returned)"}.`,
     "Opening the verified release with its runtime graph expanded…",
@@ -3777,42 +3769,63 @@ async function publishAndRun() {
     "complete",
     `Opening ${published.name}, version ${published.version || "(not returned)"}.`,
   );
-  $("#publish-progress-summary").textContent = "Publication complete. Opening Live session…";
+  $("#publish-progress-summary").textContent = "Publication complete. Opening AgentRuntime…";
   await new Promise((resolve) => window.setTimeout(resolve, 900));
-  openAgentInDemo(published.name);
-}
-
-function validateNow() {
-  if (!state.definition) return;
-  state.serverProblems = [];
-  const problems = validateDefinition(state.definition);
-  const errors = problems.filter((item) => item.severity === "error").length;
-  const warnings = problems.length - errors;
-  setMessage(
-    errors
-      ? `Validation found ${errors} blocking error${errors === 1 ? "" : "s"}${warnings ? ` and ${warnings} warning${warnings === 1 ? "" : "s"}` : ""}.`
-      : `Validation passed${warnings ? ` with ${warnings} warning${warnings === 1 ? "" : "s"}` : ""}.`,
-  );
-  render();
+  openAgentInDemo(published.name, { startSession });
 }
 
 function bindEvents() {
-  $("#backend-select").addEventListener("change", () => {
-    const url = new URL("/handoff/", window.location.origin);
-    url.searchParams.set("backend", $("#backend-select").value);
-    window.location.assign(url);
+  $("#debug-mode").checked = state.debugMode;
+  $("#debug-mode").addEventListener("change", (event) => {
+    state.debugMode = event.target.checked;
+    if (!state.debugMode) {
+      for (const kind of ["stt", "model", "voice"]) {
+        if (["latency", "cost"].includes(state.componentSort[kind].key)) {
+          state.componentSort[kind] = { key: "name", direction: "asc" };
+        }
+      }
+    }
+    renderGraph();
+    if (!$("#node-editor").hidden) renderNodeEditor();
   });
+  let canvasSize = null;
+  new ResizeObserver(([entry]) => {
+    const { width, height } = entry.contentRect;
+    if (canvasSize && state.definition) {
+      state.camera.x += (width - canvasSize.width) / 2;
+      state.camera.y += (height - canvasSize.height) / 2;
+      applyCamera();
+    }
+    canvasSize = { width, height };
+  }).observe($("#canvas"));
   $("#refresh-agents").addEventListener("click", () => loadAgentList({ force: true, announce: true }));
   $("#agent-search").addEventListener("focus", ensureAgentListLoaded);
   $("#agent-search").addEventListener("input", renderAgentOptions);
   $("#agent-select").addEventListener("pointerdown", ensureAgentListLoaded);
-  $("#agent-select").addEventListener("change", () => {
-    $("#load-agent").disabled = !$("#agent-select").value;
+  $("#agent-select").addEventListener("click", (event) => {
+    const option = event.target.closest("[data-agent-name]");
+    if (option) selectAgentOption(option.dataset.agentName);
+  });
+  $("#agent-select").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void loadSelectedAgent();
+      return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    const options = $$("[data-agent-name]", $("#agent-select"));
+    if (!options.length) return;
+    event.preventDefault();
+    const current = options.findIndex((option) => option.dataset.agentName === state.selectedAgentName);
+    const index = event.key === "Home" ? 0
+      : event.key === "End" ? options.length - 1
+        : Math.max(0, Math.min(options.length - 1, current + (event.key === "ArrowDown" ? 1 : -1)));
+    selectAgentOption(options[index].dataset.agentName, { focus: true });
+    options[index].scrollIntoView({ block: "nearest" });
   });
   $("#agent-select").addEventListener("dblclick", loadSelectedAgent);
   $("#load-agent").addEventListener("click", loadSelectedAgent);
-  $("#new-graph").addEventListener("click", loadBlank);
-  $("#runtime-settings").addEventListener("click", () => focusNodeAndOpen(ENTRYPOINT_ID));
+  $("#create-blank-action").addEventListener("click", loadBlank);
   $("#template-action").addEventListener("click", openTemplatePicker);
   $("#publish-run-action").addEventListener("click", publishAndRun);
   $("#close-publish-progress").addEventListener("click", closePublishProgress);
@@ -3826,18 +3839,6 @@ function bindEvents() {
   $("#template-picker").addEventListener("click", (event) => {
     if (event.target === $("#template-picker")) closeTemplatePicker();
   });
-  $("#rail-agent-name").addEventListener("change", (event) => {
-    state.agentName = event.target.value.trim();
-    setMessage("Updated the publication target name. The definition itself was not changed.");
-    render();
-  });
-  for (const [id, field] of [["rail-max-transfers", "max_transfers"], ["rail-max-attempts", "max_attempts"]]) {
-    $(`#${id}`).addEventListener("change", (event) => {
-      mutate(`Updated ${field}`, (definition) => {
-        definition.handoff[field] = Number(event.target.value);
-      });
-    });
-  }
   $("#nodes-tab").addEventListener("click", () => {
     state.outlineTab = "nodes";
     renderOutline();
@@ -3858,7 +3859,6 @@ function bindEvents() {
     autoLayout({ announce: true });
     renderGraph();
   });
-  $("#validate-action").addEventListener("click", validateNow);
   $("#export-action").addEventListener("click", openDefinition);
   $("#close-definition").addEventListener("click", closeDefinition);
   $("#copy-definition").addEventListener("click", copyDefinition);
@@ -4013,16 +4013,14 @@ async function start() {
     const requested = new URLSearchParams(window.location.search).get("agent");
     if (requested) {
       state.agents = [{ name: requested, version: "", createdAt: Date.now() }];
+      state.selectedAgentName = requested;
       renderAgentOptions();
-      $("#agent-select").value = requested;
       await loadAgentByName(requested);
       void loadAgentList({ announce: false });
     } else {
       void loadAgentList({ announce: true });
     }
   } catch (error) {
-    $("#project-load-state").textContent = "Unavailable";
-    $("#project-load-state").className = "source-load-state error";
     state.agentListError = error.message;
     renderAgentLoadState();
     setMessage(

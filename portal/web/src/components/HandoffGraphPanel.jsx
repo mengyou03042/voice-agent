@@ -4,7 +4,10 @@
 
 import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import {
+  PIPELINE_METRICS_DISCLAIMER,
   estimatePipeline,
+  formatPipelineCost,
+  formatPipelineLatency,
   layoutHandoffGraph,
   pipelineBrand,
   pipelineTotals,
@@ -55,17 +58,11 @@ function FlipValue({ value }) {
 }
 
 function StageEstimate({ label, component }) {
-  const latency = Number.isFinite(component?.latencyMs)
-    ? `${component.latencyMs} ms`
-    : "Not available";
-  const cost = Number.isFinite(component?.costPerMinute)
-    ? `$${component.costPerMinute.toFixed(3)}/min`
-    : "Not available";
   return (
     <span>
       <em>{label}</em>
-      <b>{latency}</b>
-      <small>{cost}</small>
+      <b>{formatPipelineLatency(component)}</b>
+      <small>{formatPipelineCost(component?.costPerMinute)}</small>
     </span>
   );
 }
@@ -372,6 +369,7 @@ function NodeModal({
 export function HandoffGraphPanel({
   graph, activeNodeId, takenEdgeIds, trail, agentName, enableMcpProbe = true,
   showMcpServerUrl = true, runtimeMetrics = createHandoffRuntimeMetrics(),
+  debugMode = false,
 }) {
   const [selectedId, setSelectedId] = useState(null);
   const [expandedMetricId, setExpandedMetricId] = useState(null);
@@ -398,8 +396,10 @@ export function HandoffGraphPanel({
   const selected = graph.nodes.find((node) => node.id === selectedId) || null;
 
   const { stats } = graph;
+  let graphStatus = "authored";
+  if (graph.source === "session") graphStatus = activeNodeId ? "live" : "ended";
   const badges = [
-    graph.source === "session" ? "live" : "authored",
+    graphStatus,
     stats.transferCount
       ? `transfers: ${stats.transferCount}${stats.maxTransfers ? `/${stats.maxTransfers}` : ""}`
       : null,
@@ -480,20 +480,25 @@ export function HandoffGraphPanel({
                 stt: node.stt,
                 model: node.model,
                 voice: node.voice,
+                voiceType: node.voiceType,
+                customSpeech: node.customSpeech,
               }).pipeline;
               const estimatedTotals = pipelineTotals(pipelineEstimate);
               const dwellShare = shares[node.id] || 0;
               const mcpCount = node.toolSpecs.filter((tool) => tool.kind === "mcp").length;
               const toolCount = node.toolSpecs.length - mcpCount;
               const outgoing = graph.edges.filter((edge) => edge.source === node.id).length;
+              const nodeCompleted = nodeMetric.completed && !nodeMetric.active;
               const classes = [
                 "runtime-node-card",
                 node.kind === "entry" ? "entry" : "",
                 node.id === activeNodeId ? "active" : "",
                 nodeMetric.visits > 0 ? "visited" : "",
+                nodeCompleted ? "completed" : "",
+                nodeMetric.visits > 0 && !nodeMetric.active && !nodeCompleted ? "stopped" : "",
                 nodeMetric.visits === 0 ? "unvisited" : "",
                 node.id === selectedId ? "selected" : "",
-                node.id === expandedMetricId ? "metrics-open" : "",
+                debugMode && node.id === expandedMetricId ? "metrics-open" : "",
               ];
               return (
                 <article
@@ -503,10 +508,14 @@ export function HandoffGraphPanel({
                   data-node-id={node.id}
                 >
                   {nodeMetric.visits ? (
-                    <span className={`runtime-node-state${nodeMetric.active ? " live" : ""}`}>
-                      {nodeMetric.active
-                        ? "● LIVE"
-                        : `✓ VISITED${nodeMetric.visits > 1 ? ` ×${nodeMetric.visits}` : ""}`}
+                    <span className={`runtime-node-state ${nodeMetric.active ? "live" : nodeCompleted ? "completed" : "stopped"}`}
+                      role="status"
+                      title={nodeCompleted ? "This node visit has completed." : nodeMetric.active ? "Currently running." : "Stopped before this node completed."}>
+                      <span className="runtime-node-state-icon" aria-hidden="true">
+                        {nodeMetric.active ? "●" : nodeCompleted ? "✓" : "■"}
+                      </span>
+                      {nodeMetric.active ? "LIVE" : nodeCompleted ? "COMPLETED" : "STOPPED"}
+                      {nodeMetric.visits > 1 ? ` ×${nodeMetric.visits}` : ""}
                     </span>
                   ) : null}
                   <button
@@ -516,7 +525,7 @@ export function HandoffGraphPanel({
                     aria-label={`Open ${node.label} node details`}
                   >
                     <span className="runtime-node-identity">
-                      <span className="runtime-node-icon" aria-hidden="true">♙</span>
+                      <span className="runtime-node-icon" aria-hidden="true">{nodeCompleted ? "✓" : "♙"}</span>
                       <span>
                         <b>{node.label}</b>
                         <small>{node.kind === "entry" ? "Starter · fixed name" : node.description || "Voice Agent node"}</small>
@@ -536,8 +545,11 @@ export function HandoffGraphPanel({
                   <button
                     type="button"
                     className="runtime-node-metrics"
-                    aria-expanded={node.id === expandedMetricId}
-                    aria-label={`Show runtime latency and estimated cost for ${node.label}`}
+                    disabled={!debugMode}
+                    aria-expanded={debugMode && node.id === expandedMetricId}
+                    aria-label={debugMode
+                      ? `Show runtime latency and cost for ${node.label}`
+                      : `Runtime activity for ${node.label}`}
                     onClick={() => setExpandedMetricId((current) => (
                       current === node.id ? null : node.id
                     ))}
@@ -546,7 +558,7 @@ export function HandoffGraphPanel({
                     <span>Share <FlipValue value={`${dwellShare.toFixed(1)}%`} /></span>
                     <span>Turns <FlipValue value={String(nodeMetric.userTurns)} /></span>
                   </button>
-                  {node.id === expandedMetricId ? (
+                  {debugMode && node.id === expandedMetricId ? (
                     <div className="runtime-node-breakdown" role="region" aria-label={`${node.label} runtime metrics`}>
                       <div className="runtime-observed-latency">
                         <strong>Observed turn latency</strong>
@@ -562,16 +574,12 @@ export function HandoffGraphPanel({
                         )}
                       </div>
                       <div className="runtime-estimate-head">
-                        <span>Pipeline estimate</span>
+                        <span>Pipeline</span>
                         <strong>
-                          {Number.isFinite(estimatedTotals?.latencyMs)
-                            ? `~${estimatedTotals.latencyMs.toLocaleString()} ms`
-                            : "Latency not available"}
+                          {formatPipelineLatency(estimatedTotals)}
                         </strong>
                         <strong>
-                          {Number.isFinite(estimatedTotals?.costPerMinute)
-                            ? `~$${estimatedTotals.costPerMinute.toFixed(3)}/min`
-                            : "Cost not available"}
+                          {formatPipelineCost(estimatedTotals?.costPerMinute)}
                         </strong>
                       </div>
                       <div className="runtime-stage-estimates">
@@ -580,8 +588,7 @@ export function HandoffGraphPanel({
                         <StageEstimate label="TTS" component={pipelineEstimate.voice} />
                       </div>
                       <p className="runtime-estimate-note">
-                        Observed latency uses completed turns in this session. Cost and pipeline
-                        latency are prototype estimates and exclude tools, network, hosting, and endpointing.
+                        Disclaimer: {PIPELINE_METRICS_DISCLAIMER}
                       </p>
                     </div>
                   ) : null}

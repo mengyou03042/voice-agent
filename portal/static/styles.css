@@ -285,25 +285,27 @@ button.danger { background: #dc2626; color: #fff; border-color: #dc2626; }
 }
 .runtime-node-card.visited {
   z-index: 5;
-  border: 3px solid #0b9d78;
+  border: 2px solid #0b9d78;
   background:
     linear-gradient(rgba(218, 250, 238, 0.88), rgba(244, 255, 250, 0.94)),
     #fff;
-  transform: scale(1.045);
   box-shadow:
-    0 0 0 5px rgba(15, 159, 118, 0.2),
-    inset 0 0 0 2px rgba(255, 255, 255, 0.9),
-    0 19px 40px rgba(10, 123, 91, 0.28);
+    0 12px 28px rgba(10, 123, 91, 0.2);
 }
-.runtime-node-card.visited:not(.active)::after {
-  position: absolute;
-  inset: 5px;
-  z-index: 0;
-  content: "";
-  border: 2px solid rgba(15, 159, 118, 0.34);
-  border-radius: 7px;
-  pointer-events: none;
+.runtime-node-card.completed::before { height: 4px; background: #08765c; opacity: 1; }
+.runtime-node-card.completed .runtime-node-icon {
+  border-radius: 50%;
+  color: #fff;
+  background: #08765c;
+  font-size: 25px;
+  font-weight: 900;
 }
+.runtime-node-card.stopped {
+  border-color: #9cafa7;
+  background: #f0f4f2;
+  box-shadow: 0 8px 18px rgba(48, 62, 57, 0.1);
+}
+.runtime-node-card.stopped::before { background: #9cafa7; }
 .runtime-node-card.selected {
   border-color: #7057d9;
   box-shadow:
@@ -312,17 +314,41 @@ button.danger { background: #dc2626; color: #fff; border-color: #dc2626; }
     0 16px 34px rgba(32, 58, 51, 0.15);
 }
 .runtime-node-card.active {
+  --runtime-ring-angle: 0deg;
   z-index: 7;
-  border-color: #05775d;
-  transform: translateY(-4px) scale(1.075);
+  border: 2px solid transparent;
+  background:
+    linear-gradient(145deg, #ffffff, #f6faf8) padding-box,
+    conic-gradient(
+      from var(--runtime-ring-angle),
+      #ff3d7f,
+      #ff7a00,
+      #ffd600,
+      #2dcc70,
+      #00c2ff,
+      #356dff,
+      #8b5cff,
+      #ff3d7f
+    ) border-box;
+  animation: runtime-node-rainbow-ring 1.6s linear infinite;
   box-shadow:
-    0 0 0 7px rgba(15, 159, 118, 0.25),
-    0 0 38px rgba(15, 159, 118, 0.34),
-    0 22px 46px rgba(20, 78, 62, 0.3);
+    0 0 22px rgba(53, 109, 255, 0.24),
+    0 16px 34px rgba(32, 58, 51, 0.2);
 }
 .runtime-node-card.active::before {
   background: linear-gradient(90deg, #0f9f76, #2563eb, #a83fb1);
   opacity: 1;
+}
+@property --runtime-ring-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+@keyframes runtime-node-rainbow-ring {
+  to { --runtime-ring-angle: 360deg; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .runtime-node-card.active { animation: none; }
 }
 .runtime-node-state {
   position: absolute;
@@ -338,7 +364,23 @@ button.danger { background: #dc2626; color: #fff; border-color: #dc2626; }
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.055em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
+.runtime-node-state-icon { font-size: 16px; line-height: 1; }
+.runtime-node-state.completed {
+  top: -20px;
+  min-height: 32px;
+  padding: 6px 12px;
+  color: #fff;
+  border-color: #045d47;
+  background: #08765c;
+  box-shadow: 0 5px 16px rgba(4, 93, 71, 0.35);
+  font-size: 12px;
+  font-weight: 900;
+}
+.runtime-node-state.stopped { color: #526661; border-color: #afbfba; background: #eef2f0; }
 .runtime-node-state.live {
   color: #fff;
   border-color: #08765c;

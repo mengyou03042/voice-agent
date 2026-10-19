@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>Handoff Graph · Voice Agents</title>
-  <link rel="stylesheet" href="/static/handoff/handoff.css?v=20261016-portal-1">
+  <title>Editor · Voice Agents</title>
+  <link rel="stylesheet" href="/static/handoff/handoff.css?v=20261018-debug-metrics">
 </head>
 <body>
   <div class="app">
@@ -15,16 +15,19 @@
         <span>Voice Agent <b>Studio</b></span>
       </a>
       <nav aria-label="Portal pages">
-        <a href="/">Live session</a>
-        <a href="/templates/">Templates</a>
-        <span aria-current="page">Handoff Graph</span>
+        <span aria-current="page">Editor</span>
+        <a href="/demo/">AgentRuntime</a>
+        <label class="debug-mode-toggle">
+          <input id="debug-mode" type="checkbox" autocomplete="off">
+          Debug mode
+        </label>
       </nav>
       <div class="environment" id="environment">Connecting to Foundry…</div>
     </header>
 
     <header class="action-bar">
       <div class="resource-title">
-        <span class="kicker">Handoff Graph</span>
+        <span class="kicker">Editor</span>
         <div class="resource-line">
           <h1 id="agent-title">No Agent selected</h1>
           <span id="version-badge" class="badge">Version —</span>
@@ -33,13 +36,18 @@
         </div>
       </div>
       <div class="action-status">
-        <p id="operation-status" role="status">Choose a project and Agent, or create a new Agent.</p>
+        <p id="operation-status" role="status">Create blank or load from templates to get started.</p>
         <p id="operation-error" role="alert" hidden></p>
       </div>
       <div class="primary-actions" aria-label="Definition actions">
-        <button id="validate-action" class="button ghost" type="button">Validate</button>
-        <button id="export-action" class="button ghost" type="button">Export</button>
-        <button id="publish-run-action" class="button publish" type="button" disabled>Publish &amp; run</button>
+        <div class="starting-actions">
+          <button id="create-blank-action" class="canvas-action canvas-arrange" type="button">Create blank</button>
+          <button id="template-action" class="canvas-action canvas-template" type="button">
+            <span class="template-spark" aria-hidden="true">✦</span>
+            <span class="canvas-action-label">Load from templates</span>
+          </button>
+        </div>
+        <button id="publish-run-action" class="button publish canvas-template" type="button" disabled>Try it now</button>
       </div>
     </header>
 
@@ -47,61 +55,24 @@
       <aside class="rail" aria-label="Graph outline">
         <section class="rail-section source-section">
           <div class="section-heading">
-            <div>
-              <span class="kicker">Foundry source</span>
-              <h2>Working copy</h2>
-            </div>
+            <h2>Agents</h2>
             <button id="refresh-agents" class="icon-button" type="button" aria-label="Refresh Agent list" title="Refresh Agent list">↻</button>
           </div>
-          <div class="source-field-heading">
-            <label for="backend-select">Project</label>
-            <span id="project-load-state" class="source-load-state loading" aria-live="polite">Loading projects…</span>
+          <label for="agent-search" class="visually-hidden">Search Agents</label>
+          <div class="agent-search-field">
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
+            <input id="agent-search" type="search" autocomplete="off" placeholder="Search Agents…">
           </div>
-          <select id="backend-select" aria-label="Foundry project backend" disabled>
-            <option>Loading available projects…</option>
-          </select>
-          <div class="source-field-heading">
-            <label for="agent-search">Find Agent</label>
-            <span id="agent-load-state" class="source-load-state" aria-live="polite">Waiting for project</span>
-          </div>
-          <input id="agent-search" type="search" autocomplete="off"
-            placeholder="Partial match across all loaded Agents">
-          <label for="agent-select" class="visually-hidden">Voice Agent</label>
-          <select id="agent-select" class="agent-list" size="5" aria-label="Voice Agents"></select>
           <div class="agent-list-meta">
-            <span id="agent-result-count">0 available</span>
-            <span>Double-click to open</span>
+            <span id="agent-result-count" aria-live="polite">0 available</span>
+            <span id="agent-load-state" class="source-load-state" aria-live="polite">Connecting…</span>
           </div>
-          <div class="source-action-row">
-            <button id="load-agent" class="button source-open" type="button" disabled>Open selected Agent</button>
-            <button id="new-graph" class="button source-new" type="button">＋ New Agent</button>
-          </div>
-          <div class="rail-graph-fields">
-            <label for="rail-agent-name">Publication name</label>
-            <input id="rail-agent-name" type="text" placeholder="Existing Agent name" disabled>
-            <div class="rail-field-row">
-              <div>
-                <label for="rail-max-transfers">Max transfers</label>
-                <input id="rail-max-transfers" type="number" min="1" disabled>
-              </div>
-              <div>
-                <label for="rail-max-attempts">Max attempts</label>
-                <input id="rail-max-attempts" type="number" min="1" disabled>
-              </div>
-            </div>
-            <button id="runtime-settings" class="button runtime-settings-button full" type="button" disabled>
-              ⚙ Agent runtime settings
-            </button>
-          </div>
+          <div id="agent-select" class="agent-list" role="listbox" aria-label="Voice Agents"
+            aria-describedby="agent-result-count" tabindex="0"></div>
+          <button id="load-agent" class="button source-open full" type="button" disabled>Open selected Agent</button>
         </section>
 
         <section class="rail-section outline-section">
-          <div class="section-heading">
-            <div>
-              <span class="kicker">Topology</span>
-              <h2>Graph objects</h2>
-            </div>
-          </div>
           <div class="topology-tabs" role="tablist" aria-label="Graph object type">
             <button id="nodes-tab" type="button" role="tab" aria-selected="true">
               Nodes <span id="node-count" class="count">0</span>
@@ -118,7 +89,7 @@
           </div>
         </section>
 
-        <section class="rail-section problems">
+        <section class="rail-section problems" hidden>
           <div class="section-heading">
             <h3>Problems</h3>
             <span id="problem-count" class="count">0</span>
@@ -134,14 +105,11 @@
             <small id="canvas-help">Top-to-bottom flow keeps routes readable. Drag cards to fine-tune or connect handles.</small>
           </div>
           <div class="canvas-meta-actions">
-            <button id="template-action" class="canvas-action canvas-template" type="button">
-              <span class="template-spark" aria-hidden="true">✦</span>
-              <span class="canvas-action-label">Load from templates</span>
-            </button>
+            <button id="export-action" class="canvas-action canvas-arrange" type="button" disabled>Export</button>
             <button id="layout-action" class="canvas-action canvas-arrange" type="button"
-              aria-label="Arrange nodes from top to bottom" title="Arrange nodes from top to bottom" disabled>
+              aria-label="Format view" title="Format view" disabled>
               <span aria-hidden="true">↧</span>
-              <span class="canvas-action-label">Arrange nodes</span>
+              <span class="canvas-action-label">Format view</span>
             </button>
           </div>
         </div>
@@ -170,7 +138,7 @@
           <div id="canvas-empty" class="canvas-empty">
             <span class="empty-orbit" aria-hidden="true"></span>
             <strong>No definition loaded</strong>
-            <p>Open an existing Agent or choose New Agent to start a local definition.</p>
+            <p>Choose Create blank or Load from templates to start editing.</p>
           </div>
         </div>
         <div class="canvas-toolbar" role="toolbar" aria-label="Canvas controls">
@@ -187,12 +155,12 @@
       </section>
     </main>
 
-    <section id="publish-progress" class="publish-progress" aria-label="Publish and run progress" hidden>
+    <section id="publish-progress" class="publish-progress" aria-label="Try it now progress" hidden>
       <div class="publish-progress-shell" role="dialog" aria-modal="true" aria-labelledby="publish-progress-title">
         <header class="publish-progress-header">
           <div>
             <span class="kicker">Foundry release</span>
-            <h2 id="publish-progress-title">Publish &amp; run</h2>
+            <h2 id="publish-progress-title">Try it now</h2>
             <p id="publish-progress-summary" role="status">Preparing publication…</p>
           </div>
           <button id="close-publish-progress" class="icon-button" type="button"
@@ -227,7 +195,7 @@
           </li>
           <li data-publish-step="open">
             <span class="publish-step-indicator" aria-hidden="true"></span>
-            <div><strong>Open Live session</strong><small>Launch the verified Agent with its runtime handoff graph expanded.</small></div>
+            <div><strong>Open AgentRuntime</strong><small>Launch the verified Agent with its runtime handoff graph expanded.</small></div>
           </li>
         </ol>
         <footer class="publish-progress-footer">
@@ -266,14 +234,13 @@
           <div>
             <span class="template-picker-kicker">Curated starting points</span>
             <h2 id="template-picker-title">Load a proven workflow into this canvas</h2>
-            <p>Selecting a template replaces the local working copy. Nothing is published until you choose Publish &amp; run.</p>
+            <p>Selecting a template replaces the local working copy. Nothing is published until you choose Try it now.</p>
           </div>
           <button id="close-template-picker" class="icon-button" type="button" aria-label="Close template picker">×</button>
         </header>
         <div class="template-picker-toolbar">
           <p id="template-picker-status" role="status">Loading the template catalog…</p>
           <div>
-            <a class="template-page-link" href="/templates/" target="_blank" rel="noreferrer">Open full Templates page</a>
             <button id="reload-template-picker" type="button">Reload</button>
           </div>
         </div>
@@ -405,6 +372,6 @@
     </div>
   </template>
 
-  <script type="module" src="/static/handoff/handoff-app.js?v=20261016-portal-1"></script>
+  <script type="module" src="/static/handoff/handoff-app.js?v=20261018-debug-metrics"></script>
 </body>
 </html>

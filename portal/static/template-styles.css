@@ -403,6 +403,7 @@ code { background: var(--line-soft); padding: 1px 5px; border-radius: 3px; font-
   background: #fff8e8;
   color: #724700;
 }
+.mcp-start-guide[hidden] { display: none; }
 .mcp-start-guide strong {
   font-size: 12px;
   letter-spacing: .01em;

@@ -3,6 +3,52 @@
 This is the downstream port log, not the full upstream repository history.
 Keep the upstream pin and intentional differences in every port entry.
 
+## 2026-10-19 — Reorder interleaved response audio in client playback
+
+**Upstream pin unchanged:** `e713a37c4cdb3282157cbaf46b6d425bcd984c05`.
+This is a Portal-only playback correction; it does not delay service output.
+
+- Group PCM chunks by response and `item_id`, order items by `output_index`
+  and content parts by `content_index`, and stream the current item immediately.
+  Buffer only later-item audio until the preceding item completes.
+- Keep transcript parts in the same logical order, including when a later
+  item's text or audio arrives first. Item IDs are opaque, not sort keys.
+- Clear scheduled and buffered audio on interruption, discard late packets,
+  and stop only the matching response on cancellation or failure. Reconnecting
+  clears old-connection state. Native WebRTC media is not replayed as PCM.
+- Added deterministic queue tests and browser regressions that inspect real
+  Web Audio scheduling for interleaved packets, cancellation, and barge-in.
+  Rebuilt both browser bundles that use the voice-session hook.
+
+## 2026-10-19 — Preserve spacing between assistant transcript parts
+
+**Upstream pin unchanged:** `e713a37c4cdb3282157cbaf46b6d425bcd984c05`.
+This is a Portal-only transcript assembly correction.
+
+- Track assistant text by response, output item, and content part before
+  combining it into the existing per-turn bubble. Independently emitted
+  English sentences no longer run together after punctuation, including
+  handoff and tool-follow-up responses.
+- Preserve token fragments and existing whitespace within each part. Final
+  transcript events update only their matching part, so repeated completion
+  events do not duplicate text and completion-only parts are not dropped.
+- Added unit and browser regressions for the reported `with.Am` example,
+  streamed words, content boundaries, and handoff continuation; rebuilt both
+  browser bundles that share the voice-session hook.
+
+## 2026-10-18 — Preserve greeting playback order during microphone startup
+
+**Upstream pin unchanged:** `e713a37c4cdb3282157cbaf46b6d425bcd984c05`.
+This is a Portal-only WebSocket audio scheduling correction.
+
+- Stopped microphone initialization from resetting the playback schedule after
+  greeting audio has already been queued. Later greeting sentences now start
+  after earlier audio instead of overlapping it.
+- Added deterministic coverage with and without client-reference echo
+  cancellation, plus a browser regression using delayed microphone startup and
+  real Web Audio scheduling. User interruption still stops queued playback.
+- Rebuilt both checked-in browser bundles used by the Python-only portal.
+
 ## 2026-10-16 — Verify independent installation
 
 **Upstream pin unchanged:** `e713a37c4cdb3282157cbaf46b6d425bcd984c05`.

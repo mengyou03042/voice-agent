@@ -19,18 +19,35 @@ export const MODEL_ESTIMATE_CATALOG = Object.freeze({
 
 const SILENT_HANDOFF_BASELINE_MS = 3126.2;
 const SILENT_HANDOFF_BASELINE_MODEL_LATENCY_MS = 800;
-const ESTIMATE_USAGE = Object.freeze({
-  userAudioTokens: 300,
-  agentAudioTokens: 600,
-  textInputTokens: 1000,
-  textOutputTokens: 100,
+const MODEL_REQUESTS_PER_MINUTE = 10;
+const TEXT_INPUT_TOKENS_PER_REQUEST = 64_000;
+const TEXT_OUTPUT_TOKENS_PER_REQUEST = 2_000;
+const NATIVE_AUDIO_INPUT_TOKENS_PER_REQUEST = 6_000;
+export const PIPELINE_LLM_ESTIMATE_DIVISOR = 150;
+// Charge the complete context on every request, not just the new speech in that turn.
+export const PIPELINE_COST_USAGE = Object.freeze({
+  userAudioSeconds: 60,
+  agentAudioSeconds: 60,
+  inputAudioTokensPerSecond: 10,
+  outputAudioTokensPerSecond: 20,
+  modelRequestsPerMinute: MODEL_REQUESTS_PER_MINUTE,
+  textInputTokensPerRequest: TEXT_INPUT_TOKENS_PER_REQUEST,
+  textOutputTokensPerRequest: TEXT_OUTPUT_TOKENS_PER_REQUEST,
+  nativeAudioInputTokensPerRequest: NATIVE_AUDIO_INPUT_TOKENS_PER_REQUEST,
+  nativeAudioInputTokens: MODEL_REQUESTS_PER_MINUTE * NATIVE_AUDIO_INPUT_TOKENS_PER_REQUEST,
+  textInputTokens: MODEL_REQUESTS_PER_MINUTE * TEXT_INPUT_TOKENS_PER_REQUEST,
+  textOutputTokens: MODEL_REQUESTS_PER_MINUTE * TEXT_OUTPUT_TOKENS_PER_REQUEST,
 });
-const RETAIL_RATES_PER_MILLION = Object.freeze({
+// Round the highest verified standalone duration reference (1.7 cents) up; this is not a Voice Live tariff.
+const AUXILIARY_TRANSCRIPTION_ALLOWANCE_PER_MINUTE = .02;
+export const PIPELINE_RETAIL_RATES_PER_MILLION = Object.freeze({
   pro: Object.freeze({
     nativeAudioInput: 32,
     nativeAudioOutput: 64,
     speechInput: 17,
+    customSpeechInput: 40,
     speechOutput: 31,
+    customSpeechOutput: 55,
     textInput: 4,
     textOutput: 16,
   }),
@@ -38,18 +55,32 @@ const RETAIL_RATES_PER_MILLION = Object.freeze({
     nativeAudioInput: 11,
     nativeAudioOutput: 22,
     speechInput: 15,
+    customSpeechInput: 39,
     speechOutput: 26,
+    customSpeechOutput: 50,
     textInput: .66,
     textOutput: 2.64,
   }),
   lite: Object.freeze({
     nativeAudioInput: 4,
-    nativeAudioOutput: 0,
+    nativeAudioOutput: 12,
     speechInput: 15,
+    customSpeechInput: 38,
     speechOutput: 25,
+    customSpeechOutput: 50,
     textInput: .11,
     textOutput: .44,
   }),
+});
+const UNVERIFIED_MODEL_ALLOWANCE = Object.freeze({
+  nativeAudioInput: 40,
+  nativeAudioOutput: 80,
+  speechInput: 17,
+  customSpeechInput: 40,
+  speechOutput: 31,
+  customSpeechOutput: 55,
+  textInput: 6,
+  textOutput: 30,
 });
 
 export const PIPELINE_MODELS = Object.freeze([
@@ -67,6 +98,8 @@ export const PIPELINE_MODELS = Object.freeze([
     architecture: "realtime",
     tier: "pro",
     typicalLatencyMs: 600,
+    textOutputRate: 24,
+    costIsAllowance: true,
   },
   {
     id: "gpt-realtime-1.5",
@@ -74,6 +107,8 @@ export const PIPELINE_MODELS = Object.freeze([
     architecture: "realtime",
     tier: "pro",
     typicalLatencyMs: 600,
+    textOutputRate: 24,
+    costIsAllowance: true,
   },
   {
     id: "gpt-realtime-2.1-mini",
@@ -112,6 +147,8 @@ export const PIPELINE_MODELS = Object.freeze([
     architecture: "cascaded",
     tier: "pro",
     typicalLatencyMs: 1000,
+    textOutputRate: 24,
+    costIsAllowance: true,
   },
   {
     id: "gpt-5.6-terra",
@@ -119,6 +156,8 @@ export const PIPELINE_MODELS = Object.freeze([
     architecture: "cascaded",
     tier: "pro",
     typicalLatencyMs: 1300,
+    textOutputRate: 24,
+    costIsAllowance: true,
   },
   {
     id: "gpt-5.6-luna",
@@ -133,6 +172,7 @@ export const PIPELINE_MODELS = Object.freeze([
     architecture: "cascaded",
     tier: "pro",
     typicalLatencyMs: 1400,
+    budgetRates: UNVERIFIED_MODEL_ALLOWANCE,
   },
   {
     id: "gpt-6.1-sol",
@@ -140,6 +180,7 @@ export const PIPELINE_MODELS = Object.freeze([
     architecture: "cascaded",
     tier: "pro",
     typicalLatencyMs: 1600,
+    budgetRates: UNVERIFIED_MODEL_ALLOWANCE,
   },
   {
     id: "gpt-6-luna",
@@ -147,6 +188,7 @@ export const PIPELINE_MODELS = Object.freeze([
     architecture: "cascaded",
     tier: "lite",
     typicalLatencyMs: 1400,
+    budgetRates: UNVERIFIED_MODEL_ALLOWANCE,
   },
   {
     id: "gpt-oss-120b",
@@ -154,6 +196,7 @@ export const PIPELINE_MODELS = Object.freeze([
     architecture: "cascaded",
     tier: "standard",
     typicalLatencyMs: 700,
+    budgetRates: UNVERIFIED_MODEL_ALLOWANCE,
   },
 ]);
 
@@ -200,9 +243,6 @@ const TRANSCRIBERS = Object.freeze([
     label: "GPT Live Transcribe",
     latencyMs: 740,
     latencySource: "Realtime transcription family proxy",
-    costPerAudioMinute: .017,
-    publicRateLabel: "$0.017 / audio minute",
-    costSource: "OpenAI public duration rate",
     preview: true,
   },
   {
@@ -210,9 +250,6 @@ const TRANSCRIBERS = Object.freeze([
     label: "GPT Realtime Whisper",
     latencyMs: 740,
     latencySource: "Pipecat public TTFS median",
-    costPerAudioMinute: .017,
-    publicRateLabel: "$0.017 / audio minute",
-    costSource: "OpenAI public duration rate",
     preview: true,
   },
   {
@@ -220,9 +257,6 @@ const TRANSCRIBERS = Object.freeze([
     label: "GPT Transcribe",
     latencyMs: 637,
     latencySource: "GPT-4o transcription family proxy",
-    costPerAudioMinute: .0045,
-    publicRateLabel: "$0.0045 / audio minute",
-    costSource: "OpenAI public duration rate",
     preview: true,
   },
   {
@@ -230,39 +264,24 @@ const TRANSCRIBERS = Object.freeze([
     label: "GPT-4o Transcribe",
     latencyMs: 637,
     latencySource: "Pipecat public TTFS median",
-    audioInputRatePerMillion: 2.5,
-    textOutputRatePerMillion: 10,
-    publicRateLabel: "$2.50 audio input + $10 text output / 1M tokens",
-    costSource: "OpenAI public token rates",
   },
   {
     id: "gpt-4o-mini-transcribe",
     label: "GPT-4o Mini Transcribe",
     latencyMs: 637,
     latencySource: "GPT-4o transcription family proxy",
-    audioInputRatePerMillion: 1.25,
-    textOutputRatePerMillion: 5,
-    publicRateLabel: "$1.25 audio input + $5 text output / 1M tokens",
-    costSource: "OpenAI public token rates",
   },
   {
     id: "gpt-4o-transcribe-diarize",
     label: "GPT-4o Transcribe Diarize",
     latencyMs: 637,
     latencySource: "GPT-4o transcription family proxy",
-    audioInputRatePerMillion: 2.5,
-    textOutputRatePerMillion: 10,
-    publicRateLabel: "$2.50 audio input + $10 text output / 1M tokens",
-    costSource: "OpenAI public token rates",
   },
   {
     id: "whisper-1",
     label: "Whisper 1",
     latencyMs: 1507,
     latencySource: "Public hosted-API median",
-    costPerAudioMinute: .006,
-    publicRateLabel: "$0.006 / audio minute",
-    costSource: "OpenAI public duration rate",
   },
 ]);
 const CASCADED_TRANSCRIBER_IDS = Object.freeze(TRANSCRIBERS.slice(1, 5).map((item) => item.id));
@@ -362,54 +381,79 @@ function compatibleVoices(model) {
     .filter((voice) => allowedTypes.has(voice.type));
 }
 
-function componentCost(model, kind, voiceType = "") {
-  const rates = RETAIL_RATES_PER_MILLION[model.tier];
+function configuredPipelineVoice(model, id, voiceType) {
+  const known = compatibleVoices(model).find((voice) => voice.id === id);
+  if (known && (!voiceType || known.type === voiceType)) return known;
+  const type = voiceType || (/^[a-z]{2,3}-[A-Z]{2}-.+Neural$/.test(id) ? "azure-standard" : "");
+  if (!id || !supportedVoiceTypes(model).includes(type)) return null;
+  return {
+    id,
+    label: id,
+    type,
+    latencyMs: null,
+    latencySource: "No latency reference for this configured voice",
+  };
+}
+
+function componentRates(model) {
+  return model.budgetRates || PIPELINE_RETAIL_RATES_PER_MILLION[model.tier];
+}
+
+function componentCost(model, kind, { voiceType = "", customSpeech = false } = {}) {
+  const rates = componentRates(model);
   if (kind === "stt") {
-    return rates.speechInput * ESTIMATE_USAGE.userAudioTokens / 1_000_000;
+    const inputRate = customSpeech ? rates.customSpeechInput : rates.speechInput;
+    return inputRate * PIPELINE_COST_USAGE.userAudioSeconds
+      * PIPELINE_COST_USAGE.inputAudioTokensPerSecond / 1_000_000;
   }
   if (kind === "model") {
     const outputRate = model.textOutputRate ?? rates.textOutput;
     const textCost = (
-      rates.textInput * ESTIMATE_USAGE.textInputTokens
-      + outputRate * ESTIMATE_USAGE.textOutputTokens
+      rates.textInput * PIPELINE_COST_USAGE.textInputTokens
+      + outputRate * PIPELINE_COST_USAGE.textOutputTokens
     ) / 1_000_000;
     const nativeAudioInputCost = model.architecture === "realtime"
-      ? rates.nativeAudioInput * ESTIMATE_USAGE.userAudioTokens / 1_000_000
+      ? rates.nativeAudioInput * PIPELINE_COST_USAGE.nativeAudioInputTokens / 1_000_000
       : 0;
-    return textCost + nativeAudioInputCost;
+    return (textCost + nativeAudioInputCost) / PIPELINE_LLM_ESTIMATE_DIVISOR;
   }
   const nativeOutput = model.architecture === "realtime"
     && (voiceType === "openai" || voiceType === "azure-realtime-native");
-  const rate = nativeOutput ? rates.nativeAudioOutput : rates.speechOutput;
-  return rate * ESTIMATE_USAGE.agentAudioTokens / 1_000_000;
+  let rate = rates.speechOutput;
+  if (nativeOutput) rate = rates.nativeAudioOutput;
+  else if (voiceType === "azure-custom" || voiceType === "azure-personal") rate = rates.customSpeechOutput;
+  return rate * PIPELINE_COST_USAGE.agentAudioSeconds
+    * PIPELINE_COST_USAGE.outputAudioTokensPerSecond / 1_000_000;
 }
 
-function transcriptionCost(transcription, model) {
+function transcriptionUsesAllowance(transcription) {
+  return transcription.id !== "native-realtime-audio"
+    && !CASCADED_TRANSCRIBER_IDS.includes(transcription.id);
+}
+
+function transcriptionCost(transcription, model, customSpeech) {
   if (transcription.id === "native-realtime-audio") return 0;
-  if (Number.isFinite(transcription.costPerAudioMinute)) {
-    return transcription.costPerAudioMinute * ESTIMATE_USAGE.userAudioTokens / 600;
+  const speechCost = componentCost(model, "stt", { customSpeech });
+  if (transcriptionUsesAllowance(transcription)) {
+    return Math.max(
+      speechCost,
+      AUXILIARY_TRANSCRIPTION_ALLOWANCE_PER_MINUTE * PIPELINE_COST_USAGE.userAudioSeconds / 60,
+    );
   }
-  if (
-    Number.isFinite(transcription.audioInputRatePerMillion)
-    && Number.isFinite(transcription.textOutputRatePerMillion)
-  ) {
-    return (
-      transcription.audioInputRatePerMillion * ESTIMATE_USAGE.userAudioTokens
-      + transcription.textOutputRatePerMillion * ESTIMATE_USAGE.textOutputTokens
-    ) / 1_000_000;
-  }
-  return componentCost(model, "stt");
+  return speechCost;
 }
 
-function transcriptionPublicRateLabel(transcription, model) {
-  if (transcription.publicRateLabel) return transcription.publicRateLabel;
+function transcriptionPublicRateLabel(transcription, model, customSpeech) {
+  if (transcriptionUsesAllowance(transcription) || model.budgetRates) return "";
   if (transcription.id === "native-realtime-audio") return "$0 additional transcription";
-  const rate = RETAIL_RATES_PER_MILLION[model.tier].speechInput;
-  return `$${rate} / 1M Voice Live speech-input tokens`;
+  const rates = componentRates(model);
+  const rate = customSpeech ? rates.customSpeechInput : rates.speechInput;
+  return `$${rate} / 1M Voice Live ${customSpeech ? "custom " : ""}speech-input tokens`;
 }
 
 function modelPublicRateLabel(model) {
-  const rates = RETAIL_RATES_PER_MILLION[model.tier];
+  if (model.budgetRates || model.costIsAllowance) return "";
+  const rates = componentRates(model);
   const outputRate = model.textOutputRate ?? rates.textOutput;
   if (model.architecture === "realtime") {
     return `$${rates.nativeAudioInput} audio input + $${rates.textInput} text input + $${outputRate} text output / 1M tokens`;
@@ -418,10 +462,13 @@ function modelPublicRateLabel(model) {
 }
 
 function voicePublicRateLabel(model, voiceType) {
-  const rates = RETAIL_RATES_PER_MILLION[model.tier];
+  if (model.budgetRates || voiceType === "azure-personal") return "";
+  const rates = componentRates(model);
   const nativeOutput = model.architecture === "realtime"
     && (voiceType === "openai" || voiceType === "azure-realtime-native");
-  const rate = nativeOutput ? rates.nativeAudioOutput : rates.speechOutput;
+  let rate = rates.speechOutput;
+  if (nativeOutput) rate = rates.nativeAudioOutput;
+  else if (voiceType === "azure-custom") rate = rates.customSpeechOutput;
   return `$${rate} / 1M ${nativeOutput ? "native audio-output" : "Voice Live speech-output"} tokens`;
 }
 
@@ -433,9 +480,9 @@ function estimatedHandoffLatency(model) {
   );
 }
 
-function buildPipeline({ model, stt, voice }) {
+function buildPipeline({ model, stt, voice, voiceType = "", customSpeech = false }) {
   const transcription = TRANSCRIBERS.find((item) => item.id === stt);
-  const selectedVoice = compatibleVoices(model).find((item) => item.id === voice);
+  const selectedVoice = configuredPipelineVoice(model, voice, voiceType);
   if (
     !transcription
     || !supportedTranscriberIds(model).includes(transcription.id)
@@ -443,14 +490,24 @@ function buildPipeline({ model, stt, voice }) {
   ) return null;
   const handoffLatencyMs = estimatedHandoffLatency(model);
   const latencyMidpointMs = Math.round((model.typicalLatencyMs + handoffLatencyMs) / 2);
+  const transcriptionAllowance = transcriptionUsesAllowance(transcription);
+  const modelAllowance = Boolean(model.budgetRates || model.costIsAllowance);
+  const customInput = customSpeech && transcription.id === "azure-speech";
+  let transcriptionSource = transcription.costSource;
+  if (customInput) transcriptionSource = "Voice Live Custom Speech audio-input retail rate";
+  if (transcriptionAllowance || model.budgetRates) {
+    transcriptionSource = "Conservative transcription allowance; exact public Voice Live rate is unverified";
+  }
   return {
     architecture: model.architecture,
     tier: model.tier,
     estimatedHandoffLatencyMs: handoffLatencyMs,
     stt: {
       ...transcription,
-      costPerMinute: transcriptionCost(transcription, model),
-      publicRateLabel: transcriptionPublicRateLabel(transcription, model),
+      costPerMinute: transcriptionCost(transcription, model, customInput),
+      publicRateLabel: transcriptionPublicRateLabel(transcription, model, customInput),
+      costIsAllowance: transcriptionAllowance || Boolean(model.budgetRates),
+      costSource: transcriptionSource,
     },
     model: {
       ...model,
@@ -459,13 +516,19 @@ function buildPipeline({ model, stt, voice }) {
       latencyMs: latencyMidpointMs,
       costPerMinute: componentCost(model, "model"),
       publicRateLabel: modelPublicRateLabel(model),
-      costSource: "Azure Voice Live public retail rate",
+      costIsAllowance: modelAllowance,
+      costSource: `${modelAllowance
+        ? "Conservative model allowance; exact public Voice Live rate is unverified"
+        : "Azure Voice Live public retail rate"}. Temporary model budget /${PIPELINE_LLM_ESTIMATE_DIVISOR}; workload revision pending approval`,
     },
     voice: {
       ...selectedVoice,
-      costPerMinute: componentCost(model, "voice", selectedVoice.type),
+      costPerMinute: componentCost(model, "voice", { voiceType: selectedVoice.type }),
       publicRateLabel: voicePublicRateLabel(model, selectedVoice.type),
-      costSource: "Azure Voice Live public retail rate",
+      costIsAllowance: Boolean(model.budgetRates) || selectedVoice.type === "azure-personal",
+      costSource: model.budgetRates || selectedVoice.type === "azure-personal"
+        ? "Conservative speech allowance; exact public Voice Live rate is unverified"
+        : "Azure Voice Live public retail rate",
     },
   };
 }
@@ -542,7 +605,9 @@ export function estimatePipelineComponent(kind, id) {
   };
 }
 
-export function estimatePipeline({ model = "", voice = "", stt = "" } = {}) {
+export function estimatePipeline({
+  model = "", voice = "", voiceType = "", stt = "", customSpeech = false,
+} = {}) {
   const modelId = normalizePipelineModelId(model);
   const modelEntry = modelDefinition(modelId);
   if (!modelEntry) {
@@ -559,7 +624,7 @@ export function estimatePipeline({ model = "", voice = "", stt = "" } = {}) {
   }
   const sttId = stt || defaultStt(modelEntry);
   const voiceId = voice || defaultVoice(modelEntry);
-  const pipeline = buildPipeline({ model: modelEntry, stt: sttId, voice: voiceId });
+  const pipeline = buildPipeline({ model: modelEntry, stt: sttId, voice: voiceId, voiceType, customSpeech });
   if (!pipeline) {
     return {
       preset: null,
@@ -606,6 +671,7 @@ export function pipelineComponentOptions(kind, selection = {}) {
         : buildPipeline({
           model: currentModel,
           stt: transcriber.id,
+          customSpeech: selection.customSpeech,
           voice: compatibleVoices(currentModel).some((item) => item.id === selection.voice)
             ? selection.voice
             : defaultVoice(currentModel),
@@ -613,6 +679,7 @@ export function pipelineComponentOptions(kind, selection = {}) {
       return {
         ...(pipeline?.stt || estimatePipelineComponent("stt", transcriber.id)),
         ...transcriber,
+        costSource: pipeline?.stt.costSource || transcriber.costSource,
         compatible: unsupported.length === 0,
         incompatibility: unsupported.length
           ? `Unavailable with ${unsupported.map((model) => model.label).join(", ")}.`
@@ -737,10 +804,35 @@ export function pipelineCompatibility({
   };
 }
 
+export const PIPELINE_METRICS_DISCLAIMER = `STT/TTS budget: ${PIPELINE_COST_USAGE.userAudioSeconds}s input + ${PIPELINE_COST_USAGE.agentAudioSeconds}s output audio. Temporary LLM estimate: previous model budget /${PIPELINE_LLM_ESTIMATE_DIVISOR}; workload revision pending approval. Actual charges may be higher; latency varies.`;
+
+export function formatPipelineCost(value) {
+  if (!Number.isFinite(value) || value < 0) return "Not available";
+  const scaled = value * 10_000;
+  if (!Number.isFinite(scaled)) return "Not available";
+  const hundredths = Math.max(
+    value > 0 ? 1 : 0,
+    Math.ceil(scaled - Math.abs(scaled) * Number.EPSILON),
+  );
+  const amount = (hundredths / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  return `${amount}¢/min`;
+}
+
+export function formatPipelineLatency(component) {
+  const minimum = component?.latencyMinMs ?? component?.latencyMs;
+  const maximum = component?.latencyMaxMs ?? component?.latencyMs;
+  if (!Number.isFinite(minimum) || !Number.isFinite(maximum)) return "Not available";
+  const boundary = (value) => value >= 1000
+    ? `${(value / 1000).toFixed(1)} s`
+    : `${value.toLocaleString("en-US")} ms`;
+  if (minimum === maximum) return boundary(minimum);
+  return `${boundary(minimum)} – ${boundary(Math.ceil(maximum / 100) * 100)}`;
+}
+
 export function pipelineTotals(pipeline) {
   if (!pipeline?.available && pipeline?.available !== undefined) return null;
   const components = [pipeline.stt, pipeline.model, pipeline.voice];
-  if (components.some((component) => component.costPerMinute === null)) return null;
+  if (components.some((component) => !Number.isFinite(component.costPerMinute) || component.costPerMinute < 0)) return null;
   return {
     costPerMinute: components.reduce((total, component) => total + component.costPerMinute, 0),
     latencyMinMs: pipeline.model.latencyMinMs,

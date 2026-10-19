@@ -136,7 +136,8 @@ function Timeline({ messages, events, filter, showEvents, onApproval, listRef, o
           </div> : null}
           <div className="timeline-message">
             {row.message ? (
-              <MessageBubble message={row.message} allMessages={messages} onApproval={onApproval} />
+              <MessageBubble message={row.message} allMessages={messages}
+                debugMode={showEvents} onApproval={onApproval} />
             ) : null}
           </div>
         </div>
