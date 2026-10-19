@@ -38,6 +38,7 @@ MCP_TEMPLATES = [
 TOOL_FREE_TEMPLATES = [
     ("customer-support-example", "example5_customer_support", 5, 9),
     ("appointment-setter-example", "example6_appointment_setter", 7, 12),
+    ("receptionist-messaging-example", "example7_receptionist_messaging", 6, 14),
 ]
 EXPECTED_TEMPLATES = [
     *MCP_TEMPLATES,

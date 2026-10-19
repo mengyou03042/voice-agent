@@ -92,6 +92,15 @@
       "summary": "Qualify interest, collect proposed meeting times, and read back a meeting request for the team to confirm, without calendar, mail, or CRM tools.",
       "accent_color": "#db2777",
       "lock_runtime": true
+    },
+    {
+      "id": "receptionist-messaging-example",
+      "folder": "../samples/example7_receptionist_messaging",
+      "name": "Example 7: Receptionist and Messaging",
+      "category": "Front desk",
+      "summary": "Answer company questions from sample facts, route callers to a directory entry, and read back a message for follow-up, without presence, mail, or SMS tools.",
+      "accent_color": "#7c3aed",
+      "lock_runtime": true
     }
   ]
 }
