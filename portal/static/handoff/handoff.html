@@ -51,6 +51,17 @@
       </div>
     </header>
 
+    <aside id="mock-tools-banner" class="mock-tools-banner" role="note" hidden>
+      <div>
+        <strong>This Agent uses mock tools</strong>
+        <p id="mock-tools-banner-text"></p>
+      </div>
+      <div class="mock-tools-banner-actions">
+        <button id="open-tool-connections" type="button">Connect my tools</button>
+        <a href="/guide/real-tools" target="_blank" rel="noreferrer">How to connect Salesforce, Zendesk, and more</a>
+      </div>
+    </aside>
+
     <main class="workspace">
       <aside class="rail" aria-label="Graph outline">
         <section class="rail-section source-section">
@@ -225,6 +236,26 @@
           <button id="close-node-mcp-dialog" class="icon-button" type="button" aria-label="Close MCP connections">×</button>
         </header>
         <div id="node-mcp-dialog-body" class="node-mcp-dialog-body"></div>
+      </div>
+    </section>
+
+    <section id="tool-connections" class="template-picker tool-connections" aria-label="Connect my tools" hidden>
+      <div class="template-picker-shell" role="dialog" aria-modal="true" aria-labelledby="tool-connections-title">
+        <header class="template-picker-header">
+          <div>
+            <span class="template-picker-kicker">Tool connections</span>
+            <h2 id="tool-connections-title">Connect each system to your own MCP server</h2>
+            <p>Each system uses mock data until you connect a public HTTPS MCP server for it. Servers are called without credentials, so point them at sandbox or test data. Changes apply to this working copy; publish with Try it now.</p>
+          </div>
+          <button id="close-tool-connections" class="icon-button" type="button" aria-label="Close tool connections">×</button>
+        </header>
+        <div class="template-picker-toolbar">
+          <p id="tool-connections-status" role="status">Reading the working copy's tools…</p>
+          <div>
+            <a href="/guide/real-tools" target="_blank" rel="noreferrer">Setup guide</a>
+          </div>
+        </div>
+        <div id="tool-connection-groups" class="tool-connection-groups" aria-live="polite"></div>
       </div>
     </section>
 

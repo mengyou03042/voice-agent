@@ -1,81 +1,73 @@
 # Customer Support with Handoff
 
-## Overview
+## Conclusion
 
-`agent.json` is a portable, tool-free Voice Agent that handles first-line
-customer support as a staged handoff graph. The example portal loads this local
-definition; it is not a claim about a separately deployed Toolbox variant. It needs no MCP
-service, Project connection, or Toolbox, so it runs in any Foundry Project.
+`agent.json` is a Voice Agent for a fictional AI platform's support line that
+troubleshoots issues, answers verified account questions, and escalates to a
+support ticket as a staged handoff graph.
 
-The agent is instructed not to claim an outcome that no tool produced. It does not create
-tickets, change accounts, verify identity, or transfer to a person. It prepares
-an unsubmitted summary and says that someone must follow up manually.
+By default its business tools run on the shared **mock-tool-call** MCP server:
+Zendesk help-center search for troubleshooting steps, Salesforce contact lookup
+to verify an account, and Zendesk tools to comment on an existing ticket or
+open a new one. The mocks take the same arguments and return the same fields as
+the real tools, but results are fictional and nothing real is filed. To connect
+real systems, see [Connect real tools](../../docs/05_connect_real_tools.md).
+
+No payment system is connected, so no refund, charge, or plan change happens on
+the call.
 
 ## When to use this example
 
-Use it to try a multi-stage support conversation, staged handoff, and spoken
-transfer messages before you connect real ticketing, knowledge, or CRM tools.
+Use it to try triage between technical and account paths, article-grounded
+troubleshooting, an identity check before account details, and an escalation
+that waits for a yes, before you connect real help-center, CRM, or ticketing
+tools.
 
 ## Workflow
 
 | Stage | Purpose |
 | --- | --- |
-| `identify_issue` | Classify the issue or answer the caller's limited note/next-step request without an unsolicited summary. |
-| `troubleshoot` | Suggest one concrete step at a time and wait for the result. |
-| `account_billing` | Give general account and billing guidance without an identity-check flow. |
-| `resolve_or_escalate` | Confirm the fix, or read back an unsubmitted follow-up summary. |
-| `end` | Call `end_conversation` after the incoming edge's single spoken goodbye. |
+| `identify_issue` | Listen to the issue, capture the caller's name, and route to the technical or account path. |
+| `troubleshoot` | Search the help center, then suggest one step at a time and wait for the result. |
+| `account_billing` | Look the contact up by email, check the caller's full name against the record, then answer only from returned fields. |
+| `resolve_or_escalate` | Confirm a fix, or read the escalation back and, after a yes, comment on the caller's ticket or open a new one. |
+| `end` | Say a short goodbye and call `end_conversation`. |
 
-Every stage can route to `end` as soon as the caller says goodbye, asks to stop,
-or reached the wrong number. Edges into business stages retain a short
-`transfer_message` that states a capability limit, rather than announcing work
-the target stage will describe again. The target replies directly to the latest
-request instead of repeating the transition, greeting, or workflow. Shorter
-wording still needs same-condition voice testing for newly exposed silence; an
-early fixed message alone does not prove a faster substantive answer.
+Every stage can route to `end` as soon as the caller says goodbye or asks to
+stop. Handoffs are silent: no edge carries a `transfer_message`.
 
-Every existing edge into `end` says "Goodbye." once. The target `end` node then
-calls the same platform tool without another closing or question. This keeps
-the spoken closing separate from tool-only termination and does not require the
-caller to use a particular goodbye word or finish the current task.
+Each stage carries the full persona, tone, and conversation rules because a
+handoff node's instructions replace the session instructions.
 
-The root `definition.instructions` is the shared prompt: Personality,
-Environment, Tone, How you respond, How you sound, Goal, and Guardrails. It
-contains no stage routes, field checklist, or entrypoint procedure. Every node
-sets `inherit_from_base_instructions: true` and contains only its own stage
-instructions. The existing publisher combines the shared and local text before
-publishing; it does not depend on automatic service-side inheritance.
-The existing `$entrypoint` edge specifies the initial silent route.
+### Mock tools by stage
 
-The shared conversation rules acknowledge only meaningful caller corrections,
-emotions, and constraints, without mandatory filler or invented history.
-Troubleshooting steps, note contents, routing, and termination remain local.
+| Stage | Tools |
+| --- | --- |
+| `troubleshoot` | `mock_tool_call_zendesk_search` |
+| `account_billing` | `mock_tool_call_salesforce_search`, `mock_tool_call_salesforce_get_contact` |
+| `resolve_or_escalate` | `mock_tool_call_salesforce_search`, `mock_tool_call_salesforce_get_contact`, `mock_tool_call_zendesk_search`, `mock_tool_call_zendesk_add_comment`, `mock_tool_call_zendesk_create_ticket` |
 
-When the caller requests only one next step, an already suggested check counts:
-the agent should not add a second recommendation just because another speech
-segment or stage arrives. A final question must be answered aloud before the
-end handoff; placing the answer only in an internal tool reason is insufficient.
-An issue description alone does not request a new diagnostic. A later constraint
-or request for brevity calls for a brief response to that constraint, not another
-check, full summary, or submission reminder.
+`identify_issue` and `end` have no business tools. The escalation is written
+once, only after the caller says yes to the read-back: a comment when the caller
+gave a ticket number, otherwise a new ticket with a priority of low, normal,
+high, or urgent.
 
-Summaries distinguish a suggestion from an accepted caller plan, an attempted
-check, and an observed result. They preserve the latest corrected facts,
-untested status, and urgency when supplied. Names and contact details are
-optional. Nothing is sent automatically: the caller must submit the summary
-themselves through a support channel they already know, with no promised
-recipient, response time, or callback.
-An issue-only note retains its known reference and omits recommendations unless
-the caller asks to include them. Leaving out a personal field does not mean it
-was never provided. Explaining a capability limit does not establish that the
-caller confirmed or accepted it; notes must not invent that confirmation.
-If the caller has not reported a test status, omit it rather than assuming the
-issue is untested.
+## Sample data
 
-The example uses `azure_semantic_vad` with `profile: normal` and
-`silence_duration_ms: 400`. These settings affect turn boundaries and response
-waiting; compare complete, same-condition conversations before judging latency
-or interruption behavior.
+After an escalation, the agent says the support team usually follows up within
+one business day; it never promises a specific person or time.
+
+Fixed mock data (see the
+[mock-tool-call README](../../shared_mcp/app/shared_mcp/mock_tool_call/README.md)
+and [`fixtures.json`](../../shared_mcp/app/shared_mcp/mock_tool_call/fixtures.json)):
+
+- Help-center articles include "Troubleshoot data sync failures", "API returns
+  401 Unauthorized", and the password or MFA and GlobalProtect VPN articles.
+- CRM contact Jack Rogers, `jrogers@burlington.com`, phone +13362227000, VP,
+  Facilities, Burlington Textiles Corp of America. Any other email, such as
+  `dana.test20261020@example.com`, finds no contact.
+- Existing tickets: 1 (solved), 2 (pending), and 3 (open, API returns 401;
+  Jack Rogers). New tickets are numbered from 1001.
 
 ## Run in the portal
 
@@ -84,30 +76,44 @@ or interruption behavior.
 3. Select **Example 5: Customer Support**.
 4. Choose **Try it now**, then connect in AgentRuntime.
 
-No `shared_mcp` setup is required.
+After loading, a banner says **This Agent uses mock tools**. To use your own
+tools, choose **Connect my tools** and enter a public HTTPS MCP server for each
+system (Salesforce, Zendesk); the Agent calls it without credentials, so point
+it at sandbox data. There is nothing to start locally.
+
+The hand-tuned tool-free version (shared prompt plus per-stage instructions)
+is still available: select
+[`backups/20261021T000000Z/tool_free_default`](backups/20261021T000000Z/tool_free_default/agent.json)
+in the **Version** selector. The older `backups/20261020T011523936708Z`
+versions are unchanged.
+
+The example uses `gpt-realtime` with `azure_semantic_vad`, `profile: normal`,
+and `silence_duration_ms: 400`.
 
 ## Try these turns
 
-- "My API calls started returning 500 errors this morning." Expect routing to
-  troubleshooting and one step at a time.
-- "I was charged twice this month." Expect the account stage and no claim of a
-  refund or a verified account.
-- "That didn't help, can someone look at it?" Expect a read-back summary that
-  is explicitly not submitted.
-- "Thanks, that's all." Expect a short goodbye and the session ending.
+- "My API calls started returning 401 errors." Expect a
+  `mock_tool_call_zendesk_search` call and one step from "API returns 401
+  Unauthorized", naming the title, then a wait for the result.
+- "Still broken, please add to ticket 3 that it started after a key rotation."
+  Expect the comment read back with no tool call. After "yes", expect one
+  `mock_tool_call_zendesk_add_comment` call on ticket 3.
+- In a new call, "My data sync keeps failing, escalate it, high urgency."
+  Expect questions for any missing name or contact, then a read-back. Say "no,
+  not yet": expect nothing filed. After a later "yes", expect one
+  `mock_tool_call_zendesk_create_ticket` call and a ticket number from 1001 up.
+- "Check my account: jrogers@burlington.com." Expect the email spelled back, a
+  `mock_tool_call_salesforce_search` call, and a request for your full name
+  before any details. With an unknown email, expect no contact found and only
+  general guidance.
+- "I was charged twice, refund it." Expect no claim that a refund was processed
+  and an offer to escalate.
 
 ## Boundaries
 
-- All company facts are fictional; there is no knowledge base, ticketing, CRM,
-  payment system, or live transfer.
-- No identity check is performed. Do not provide credentials or payment details;
-  the agent should not request them to explain a limit or prepare a note.
+- The company, articles, contacts, and tickets are fictional and come from the
+  mock server; no ticket is real.
 - `store` is `false`; enable persistence deliberately if you need it.
-- To attach real tools, add them to the stage that needs them and remove that
-  stage's capability limit; a prompt alone does not make a tool read-only.
-
-## Conclusion
-
-This example prepares general guidance and unsubmitted notes, not external
-support actions. These are authored rules; complete same-condition conversations
-and a human or Agent transcript review are still needed to verify a revision.
+- To use real help-center, CRM, and ticketing systems, follow
+  [Connect real tools](../../docs/05_connect_real_tools.md); conversational
+  confirmation is not an authorization boundary.

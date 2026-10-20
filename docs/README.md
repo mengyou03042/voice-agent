@@ -9,6 +9,7 @@ self-contained Finance Voice Agent examples:
 2. [Configure, start, deploy, or change the shared MCP for CLI samples](./02_mcp_settings.md).
 3. [Start and run the CLI samples or local Portal](./03_run_samples.md).
 4. [Debug a portal session](./04_debug_session.md).
+5. [Connect real tools to a Template that uses mock tools](./05_connect_real_tools.md).
 
 The scenario-specific source of truth remains with each example:
 

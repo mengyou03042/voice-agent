@@ -24,8 +24,10 @@ from dotenv import dotenv_values
 
 try:
     from .common import AgentsConfig, FOUNDRY_FEATURES
+    from .guide_render import render_page
 except ImportError:
     from common import AgentsConfig, FOUNDRY_FEATURES
+    from guide_render import render_page
 
 
 ROOT = Path(__file__).resolve().parent
@@ -282,6 +284,286 @@ def mcp_handshake(url: str, bearer_token: str = "") -> dict[str, Any]:
         "server_version": str(server_info.get("version") or ""),
         "tools": tools,
     }
+
+
+_TOOL_NAME_CHARS = re.compile(r"[^a-z0-9]")
+WORK_IQ_NOTE = (
+    "Work IQ calendar, Teams, and mail act as the signed-in user in your own Microsoft 365 "
+    "tenant through a Foundry Project connection. The shared Playground cannot hold your "
+    "identity or credentials, so these tools stay on mock data here. To call them for real, "
+    "attach a Work IQ Toolbox to this Agent in your own Foundry Project."
+)
+
+
+@dataclass(frozen=True)
+class ToolGroup:
+    """Business system behind a set of Template tools, connected to one MCP server."""
+
+    id: str
+    label: str
+    pattern: re.Pattern[str]
+    connectable: bool = True
+    note: str = ""
+
+
+# Mock tools grouped by the real system they stand for, in display order.
+TOOL_GROUPS = (
+    ToolGroup("salesforce", "Salesforce", re.compile(r"^mock_tool_call_salesforce_")),
+    ToolGroup("zendesk", "Zendesk", re.compile(r"^mock_tool_call_zendesk_")),
+    ToolGroup("twilio", "Twilio SMS", re.compile(r"^mock_tool_call_twilio_")),
+    ToolGroup(
+        "work_iq",
+        "Microsoft 365 (Work IQ)",
+        re.compile(
+            r"^mock_tool_call_(find_meeting_times|get_user_date_and_time_zone_settings|create_event"
+            r"|list_calendar_view|update_event|cancel_event|get_user_presence|send_email_with_attachments)$"
+        ),
+        connectable=False,
+        note=WORK_IQ_NOTE,
+    ),
+    ToolGroup("orders", "Order system", re.compile(r"^mock_tool_call_order_")),
+    ToolGroup("reservations", "Reservation system", re.compile(r"^mock_tool_call_hotel_")),
+    ToolGroup("records", "Learning and research records", re.compile(r"^mock_tool_call_(quiz|training|research)_")),
+)
+OTHER_TOOL_GROUP = ToolGroup("other", "Other tools", re.compile(""))
+
+
+def tool_group(name: str) -> ToolGroup:
+    """The business system a Template tool belongs to."""
+    return next((group for group in TOOL_GROUPS if group.pattern.search(name)), OTHER_TOOL_GROUP)
+
+
+def tool_groups(definition: dict[str, Any]) -> list[dict[str, Any]]:
+    """The systems a definition's mock tools belong to, each with its tools, in display order."""
+    tools = [name for name in required_mcp_tools(definition) if name.startswith("mock_tool_call_")]
+    groups = []
+    for group in (*TOOL_GROUPS, OTHER_TOOL_GROUP):
+        names = [name for name in tools if tool_group(name) is group]
+        if names:
+            groups.append({
+                "id": group.id,
+                "label": group.label,
+                "tools": names,
+                "connectable": group.connectable,
+                "note": group.note,
+            })
+    return groups
+
+
+def required_mcp_tools(definition: dict[str, Any]) -> list[str]:
+    """Every MCP tool name a definition's stages allow, in first-use order."""
+    names = (
+        str(name)
+        for tool in iter_mcp_tools(definition)
+        for name in tool.get("allowed_tools") or []
+        if isinstance(name, str) and name
+    )
+    return list(dict.fromkeys(names))
+
+
+def _tool_key(name: str) -> str:
+    """Compare tool names across naming styles: drop a mock or server-label prefix, case, and separators."""
+    bare = name.rsplit("___", 1)[-1]
+    if bare.startswith("mock_tool_call_"):
+        bare = bare[len("mock_tool_call_"):]
+    return _TOOL_NAME_CHARS.sub("", bare.lower())
+
+
+def suggest_tool_map(required: list[str], available: list[str]) -> dict[str, str]:
+    """Map each required tool to a server tool with the same name in any naming style, or ''."""
+    by_key: dict[str, str] = {}
+    for name in available:
+        by_key.setdefault(_tool_key(name), name)
+    return {
+        name: name if name in available else by_key.get(_tool_key(name), "")
+        for name in required
+    }
+
+
+def validate_tool_map(
+    required: list[str],
+    available: list[str],
+    tool_map: Any,
+) -> dict[str, str]:
+    """Check that every required tool maps to a tool the server lists."""
+    if not isinstance(tool_map, dict):
+        raise ValueError("tool_map must map every template tool to a server tool.")
+    mapped = {str(key): str(value or "").strip() for key, value in tool_map.items()}
+    missing = [name for name in required if not mapped.get(name)]
+    if missing:
+        raise ValueError(f"Choose a server tool for: {', '.join(missing)}")
+    unknown = sorted({mapped[name] for name in required} - set(available))
+    if unknown:
+        raise ValueError(f"The MCP server does not list: {', '.join(unknown)}")
+    return {name: mapped[name] for name in required}
+
+
+def _split_mcp_tool(
+    tool: dict[str, Any],
+    servers: dict[str, tuple[str, dict[str, str]]],
+) -> list[dict[str, Any]]:
+    """Split one MCP tool into one per connected system; unconnected tools stay on the tool's server."""
+    kept: list[str] = []
+    connected: dict[str, list[str]] = {}
+    for name in tool.get("allowed_tools") or []:
+        group = tool_group(str(name)).id
+        if group in servers:
+            connected.setdefault(group, []).append(servers[group][1][str(name)])
+        else:
+            kept.append(str(name))
+    split: list[dict[str, Any]] = []
+    if kept:
+        split.append({**tool, "allowed_tools": kept})
+    for group, names in connected.items():
+        entry = {
+            **tool,
+            "server_label": group,
+            "server_url": servers[group][0],
+            "allowed_tools": list(dict.fromkeys(names)),
+        }
+        for key in ("project_connection_id", "authorization", "headers"):
+            entry.pop(key, None)
+        split.append(entry)
+    return split
+
+
+def apply_tool_servers(
+    definition: dict[str, Any],
+    servers: dict[str, tuple[str, dict[str, str]]],
+) -> dict[str, Any]:
+    """Point each connected system's tools at the user's MCP server for that system.
+
+    ``servers`` maps a tool group ID to its server URL and the map from Template tool to
+    server tool. Tools of other systems keep their server. Mapped tool names are renamed in
+    the instructions.
+    """
+    if not servers:
+        return definition
+
+    def split(value: Any) -> Any:
+        if isinstance(value, list):
+            items: list[Any] = []
+            for item in value:
+                if isinstance(item, dict) and item.get("type") == "mcp":
+                    items.extend(_split_mcp_tool(item, servers))
+                else:
+                    items.append(split(item))
+            return items
+        if isinstance(value, dict):
+            return {key: split(item) for key, item in value.items()}
+        return value
+
+    definition = split(definition)
+    renames = {
+        old: new
+        for _, tool_map in servers.values()
+        for old, new in tool_map.items()
+        if old != new
+    }
+    if not renames:
+        return definition
+    pattern = re.compile(
+        r"\b(" + "|".join(re.escape(name) for name in sorted(renames, key=len, reverse=True)) + r")\b"
+    )
+
+    def rename(value: Any) -> Any:
+        if isinstance(value, str):
+            return pattern.sub(lambda match: renames[match.group(1)], value)
+        if isinstance(value, list):
+            return [rename(item) for item in value]
+        if isinstance(value, dict):
+            return {
+                key: item if key in {"allowed_tools", "server_url"} else rename(item)
+                for key, item in value.items()
+            }
+        return value
+
+    return rename(definition)
+
+
+MOCK_SERVER_LABEL = "mock_tool_call"
+MOCK_ROUTE_SUFFIX = "/mcp/mock-tool-call"
+
+
+def definition_tool_groups(definition: dict[str, Any]) -> list[dict[str, Any]]:
+    """Systems a working definition uses: mock tools per system, plus systems already connected."""
+    groups = {group["id"]: {**group, "connected": None} for group in tool_groups(definition)}
+    by_id = {group.id: group for group in TOOL_GROUPS}
+    for tool in iter_mcp_tools(definition):
+        group = by_id.get(str(tool.get("server_label") or ""))
+        if group is None:
+            continue
+        entry = groups.setdefault(group.id, {
+            "id": group.id, "label": group.label, "tools": [],
+            "connectable": group.connectable, "note": group.note, "connected": None,
+        })
+        connected = entry["connected"] or {"server_url": str(tool.get("server_url") or ""), "tools": []}
+        connected["tools"] = list(dict.fromkeys([*connected["tools"], *(tool.get("allowed_tools") or [])]))
+        entry["connected"] = connected
+    order = [group.id for group in (*TOOL_GROUPS, OTHER_TOOL_GROUP)]
+    return sorted(groups.values(), key=lambda group: order.index(group["id"]))
+
+
+def revert_tool_server(
+    definition: dict[str, Any],
+    group_id: str,
+    tool_map: dict[str, str],
+    mock_url: str,
+) -> dict[str, Any]:
+    """Move a connected system's tools back to the mock server and restore their mock names."""
+    reverse = {new: old for old, new in tool_map.items()}
+
+    def merge(tools: list[Any]) -> list[Any]:
+        merged: list[Any] = []
+        mock: dict[str, Any] | None = None
+        for tool in tools:
+            if isinstance(tool, dict) and tool.get("type") == "mcp" and tool.get("server_label") == group_id:
+                tool = {
+                    **tool,
+                    "server_label": MOCK_SERVER_LABEL,
+                    "server_url": mock_url,
+                    "allowed_tools": [reverse.get(str(name), str(name)) for name in tool.get("allowed_tools") or []],
+                }
+            if isinstance(tool, dict) and tool.get("type") == "mcp" and tool.get("server_label") == MOCK_SERVER_LABEL:
+                if mock is not None:
+                    mock["allowed_tools"] = list(dict.fromkeys([*mock["allowed_tools"], *tool["allowed_tools"]]))
+                    continue
+                mock = {**tool, "allowed_tools": list(tool.get("allowed_tools") or [])}
+                tool = mock
+            merged.append(tool)
+        return merged
+
+    def walk(value: Any) -> Any:
+        if isinstance(value, list):
+            items = [walk(item) for item in value]
+            if any(isinstance(item, dict) and item.get("type") == "mcp" for item in items):
+                return merge(items)
+            return items
+        if isinstance(value, dict):
+            return {key: walk(item) for key, item in value.items()}
+        return value
+
+    definition = walk(definition)
+    renames = {new: old for old, new in tool_map.items() if old != new}
+    if not renames:
+        return definition
+    pattern = re.compile(
+        r"\b(" + "|".join(re.escape(name) for name in sorted(renames, key=len, reverse=True)) + r")\b"
+    )
+
+    def rename(value: Any) -> Any:
+        if isinstance(value, str):
+            return pattern.sub(lambda match: renames[match.group(1)], value)
+        if isinstance(value, list):
+            return [rename(item) for item in value]
+        if isinstance(value, dict):
+            return {
+                key: item if key in {"allowed_tools", "server_url"} else rename(item)
+                for key, item in value.items()
+            }
+        return value
+
+    return rename(definition)
 
 
 def materialize_template(
@@ -1014,6 +1296,11 @@ async def examples_guide(_: web.Request) -> web.FileResponse:
     return web.FileResponse(DOCS_DIR / "03_run_samples.md")
 
 
+async def real_tools_guide(_: web.Request) -> web.Response:
+    markdown = (DOCS_DIR / "05_connect_real_tools.md").read_text(encoding="utf-8")
+    return web.Response(text=render_page(markdown), content_type="text/html")
+
+
 async def template_config(request: web.Request) -> web.Response:
     cfg = await _cfg(request)
     return web.json_response({
@@ -1409,6 +1696,102 @@ async def configure_template_mcp(request: web.Request) -> web.Response:
     })
 
 
+async def custom_server_tools(server_url: str) -> tuple[str, list[str]]:
+    """Validate a user's public MCP URL and list its tools without credentials."""
+    url = validate_https_url(server_url, "MCP server URL")
+    try:
+        result = await asyncio.to_thread(mcp_handshake, url)
+    except McpProbeError as error:
+        raise ValueError(f"The MCP server could not be reached: {error}") from error
+    return url, list(result["tools"])
+
+
+def catalog_mock_url(catalog: TemplateCatalog) -> str:
+    """The mock-tool-call server URL that the catalog's mock-tool Templates use."""
+    for card in catalog.cards():
+        source = catalog.source(card["id"])
+        if source and source.connection_mode == "public" and source.mcp_server_url.endswith(MOCK_ROUTE_SUFFIX):
+            return source.mcp_server_url
+    return ""
+
+
+async def _tool_request(request: web.Request) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Read a working definition and one of its systems from a tool-connection request."""
+    try:
+        body = await request.json()
+    except json.JSONDecodeError as error:
+        raise web.HTTPBadRequest(text="Expected a JSON object.") from error
+    if not isinstance(body, dict) or not isinstance(body.get("definition"), dict):
+        raise web.HTTPBadRequest(text="Expected a JSON object with a definition.")
+    definition = body["definition"]
+    groups = {group["id"]: group for group in definition_tool_groups(definition)}
+    group = groups.get(str(body.get("group") or ""))
+    if group is None:
+        raise web.HTTPBadRequest(text="The definition has no tools for that system.")
+    return body, definition, group
+
+
+async def list_definition_tool_groups(request: web.Request) -> web.Response:
+    try:
+        body = await request.json()
+    except json.JSONDecodeError as error:
+        raise web.HTTPBadRequest(text="Expected a JSON object.") from error
+    if not isinstance(body, dict) or not isinstance(body.get("definition"), dict):
+        raise web.HTTPBadRequest(text="Expected a JSON object with a definition.")
+    return web.json_response({"groups": definition_tool_groups(body["definition"])})
+
+
+async def discover_definition_tools(request: web.Request) -> web.Response:
+    body, _, group = await _tool_request(request)
+    if not group["connectable"] or not group["tools"]:
+        return web.json_response({"ok": False, "error": f"{group['label']} cannot be connected here."})
+    try:
+        url, tools = await custom_server_tools(str(body.get("server_url") or ""))
+    except ValueError as error:
+        return web.json_response({"ok": False, "error": str(error)})
+    mapping = suggest_tool_map(group["tools"], tools)
+    return web.json_response({
+        "ok": True,
+        "group": group["id"],
+        "server_url": url,
+        "tools": tools,
+        "required": group["tools"],
+        "mapping": mapping,
+        "unmapped": [name for name in group["tools"] if not mapping[name]],
+    })
+
+
+async def connect_definition_tools(request: web.Request) -> web.Response:
+    body, definition, group = await _tool_request(request)
+    if not group["connectable"] or not group["tools"]:
+        raise web.HTTPBadRequest(text=f"{group['label']} cannot be connected here.")
+    try:
+        url, tools = await custom_server_tools(str(body.get("server_url") or ""))
+        tool_map = validate_tool_map(group["tools"], tools, body.get("tool_map"))
+    except ValueError as error:
+        raise web.HTTPBadRequest(text=str(error)) from error
+    updated = apply_tool_servers(definition, {group["id"]: (url, tool_map)})
+    return web.json_response({
+        "definition": updated,
+        "tool_map": tool_map,
+        "groups": definition_tool_groups(updated),
+    })
+
+
+async def disconnect_definition_tools(request: web.Request) -> web.Response:
+    body, definition, group = await _tool_request(request)
+    tool_map = body.get("tool_map")
+    if not group["connected"] or not isinstance(tool_map, dict):
+        raise web.HTTPBadRequest(text=f"{group['label']} is not connected to your server.")
+    mock_url = catalog_mock_url(_catalog(request))
+    if not mock_url:
+        raise web.HTTPBadRequest(text="No mock tool server is configured.")
+    updated = revert_tool_server(
+        definition, group["id"], {str(key): str(value) for key, value in tool_map.items()}, mock_url,
+    )
+    return web.json_response({"definition": updated, "groups": definition_tool_groups(updated)})
+
+
 async def publish_template(request: web.Request) -> web.Response:
     cfg = await _cfg(request)
     template_id = request.match_info["template_id"]
@@ -1480,6 +1863,7 @@ def install_template_routes(
     app.router.add_get("/templates", templates_index)
     app.router.add_get("/templates/", templates_index)
     app.router.add_get("/guide/run-samples", examples_guide)
+    app.router.add_get("/guide/real-tools", real_tools_guide)
     app.router.add_get("/api/config", template_config)
     app.router.add_get("/api/templates", list_templates)
     app.router.add_get("/api/templates/env", templates_env)
@@ -1492,5 +1876,9 @@ def install_template_routes(
         "/api/templates/{template_id}/mcp/configure",
         configure_template_mcp,
     )
+    app.router.add_post("/api/tools/groups", list_definition_tool_groups)
+    app.router.add_post("/api/tools/discover", discover_definition_tools)
+    app.router.add_post("/api/tools/connect", connect_definition_tools)
+    app.router.add_post("/api/tools/disconnect", disconnect_definition_tools)
     app.router.add_post("/api/templates/{template_id}/publish", publish_template)
     app.router.add_get("/static/{asset}", template_asset)
