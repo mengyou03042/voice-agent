@@ -1,0 +1,288 @@
+{
+  "version": 1,
+  "defaults": {
+    "store": false
+  },
+  "templates": {
+    "finance-example-realtime": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/finance-handoff",
+        "source_label": "Hosted shared_mcp: Finance Handoff",
+        "source_reference": "VoiceAgent/shared_mcp"
+      }
+    },
+    "finance-example-cascade-luna": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/finance-handoff",
+        "source_label": "Hosted shared_mcp: Finance Handoff",
+        "source_reference": "VoiceAgent/shared_mcp"
+      }
+    },
+    "finance-with-otp-and-officer-search": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/finance-otp-officer",
+        "source_label": "Hosted shared_mcp: Finance OTP and Officer Search",
+        "source_reference": "VoiceAgent/shared_mcp"
+      }
+    },
+    "elevator-service-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/elevator-service",
+        "source_label": "Hosted shared_mcp: Elevator Service",
+        "source_reference": "VoiceAgent/shared_mcp"
+      }
+    },
+    "frontdesk-receptionist-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/frontdesk",
+        "source_label": "Hosted Front Desk MCP",
+        "source_reference": "Hosted Front Desk MCP"
+      }
+    },
+    "appointment-scheduler-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "assessment-quiz-agent-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "collections-payment-recovery-agent-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "corporate-training-roleplay-coach-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "education-tutoring-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "healthcare-receptionist-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "hotel-reservation-agent-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "inbound-lead-qualifier-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "incident-response-coordinator-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "insurance-advisor-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "internal-knowledge-assistant-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "it-access-request-agent-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "it-help-desk-internal-support-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "language-practice-tutor-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "legal-intake-specialist-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "marketing-lead-capture-agent-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "new-hire-onboarding-assistant-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "order-status-tracking-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "outbound-sales-representative-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "personal-voice-assistant-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "real-estate-lead-follow-up-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "restaurant-phone-order-taker-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "salon-spa-beauty-receptionist-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "survey-feedback-intake-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "technical-support-agent-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "travel-agency-trip-planner-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "user-research-interviewer-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "customer-support-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "appointment-setter-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    "receptionist-messaging-example": {
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "${VOICE_PLAYGROUND_MCP_BASE_URL}/mcp/mock-tool-call",
+        "source_label": "Hosted mock tools (mock-tool-call)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    }
+  }
+}
