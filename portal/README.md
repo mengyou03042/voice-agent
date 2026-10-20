@@ -147,8 +147,8 @@ publish operations, including the template catalog consumed by Handoff Graph.
   in the starter node editor, and validation problems appear only when present.
   Nodes and routes also remain editable directly on the canvas.
 - Editor can load any configured Template into a temporary working copy.
-  Example 1 has Realtime and Cascade Luna runtime variants, so the seven sample
-  projects appear as eight selectable catalog cards. The
+  Example 1 has Realtime and Cascade Luna runtime variants, so the 34 sample
+  projects appear as 35 selectable catalog cards. The
   [Front Desk sample](../samples/example4_frontdesk_with_fluency_and_handoff/README.md)
   preserves its response-first shared prompt, eight business nodes, and two-tool
   search/confirmed-message boundary.
@@ -236,8 +236,10 @@ publish operations, including the template catalog consumed by Handoff Graph.
   and also detects `example2_finance_with_OTP_and_Officer_Search` and
   `example3_elevator_service_with_safety_zendesk_and_handoff`. The tool-free
   `example5_customer_support`, `example6_appointment_setter`, and
-  `example7_receptionist_messaging` handoff examples need no MCP setup. Select
-  **Reload** in that picker to reread their configured Agent files.
+  `example7_receptionist_messaging` handoff examples, and the 27
+  ElevenLabs-converted `example8_*` through `example34_*` handoff examples,
+  need no MCP setup. Select **Reload** in that picker to reread their
+  configured Agent files.
 - Template MCP readiness calls `initialize` and `tools/list` against the hosted
   endpoint without an Authorization header and checks every declared tool.
   Publishing sets that endpoint on every MCP tool, including handoff nodes,
