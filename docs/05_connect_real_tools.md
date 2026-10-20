@@ -106,7 +106,10 @@ Any MCP server that exposes those tools works. Two common choices on Azure:
 - **Azure Logic Apps (Standard) workflows exposed as MCP tools.** Each tool is a
   workflow with an HTTP Request trigger whose JSON schema is the tool's arguments;
   the Salesforce, Zendesk, and Twilio calls use connectors or HTTP actions. This is
-  how the reference backend behind the Foundry Templates is built.
+  how the reference backend behind the Foundry Templates is built. Logic Apps MCP
+  servers require an `X-API-KEY` header, so the Playground reaches them through a
+  no-auth proxy that holds the key. Step-by-step setup:
+  [Create MCP servers with Azure Logic Apps](./06_logic_apps_mcp_servers.md).
 
 ### Salesforce
 

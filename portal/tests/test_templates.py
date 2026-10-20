@@ -186,11 +186,14 @@ class TemplateCatalogTests(unittest.TestCase):
     def test_mock_tool_examples_bind_only_mock_tools(self) -> None:
         catalog = TemplateCatalog()
 
+        cards = {card["id"]: card for card in catalog.cards()}
         for template_id, folder, node_count, edge_count in MOCK_TOOL_TEMPLATES:
             with self.subTest(template_id=template_id):
                 detail = catalog.detail(template_id)
                 source = catalog.source(template_id)
                 assert detail is not None and source is not None
+                self.assertTrue(cards[template_id]["mock_tools"])
+                self.assertTrue(cards[template_id]["tool_systems"])
                 self.assertTrue(detail["requires_mcp"])
                 self.assertTrue(detail["runtime_locked"])
                 self.assertEqual("public", source.connection_mode)
@@ -922,6 +925,16 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('<a href="/guide/run-samples"', text)
         for system in ("Salesforce", "Zendesk", "Twilio"):
             self.assertIn(system, text)
+        self.assertIn('<a href="/guide/logic-apps-mcp"', text)
+
+    async def test_logic_apps_mcp_guide_is_served(self) -> None:
+        response = await self.client.get("/guide/logic-apps-mcp")
+        self.assertEqual(200, response.status)
+        self.assertEqual("text/html", response.content_type)
+        text = await response.text()
+        self.assertIn("<h1>Create Salesforce, Zendesk, and Work IQ MCP servers with Azure Logic Apps</h1>", text)
+        self.assertIn("X-API-KEY", text)
+        self.assertIn('<a href="/guide/real-tools"', text)
 
     def test_guide_renderer_escapes_markup_and_drops_unsafe_links(self) -> None:
         from guide_render import render_markdown

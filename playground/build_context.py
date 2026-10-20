@@ -34,6 +34,7 @@ def stage(
         portal_source / "samples/voice_agent_definition.py",
         portal_source / "docs/03_run_samples.md",
         portal_source / "docs/05_connect_real_tools.md",
+        portal_source / "docs/06_logic_apps_mcp_servers.md",
     ]
     deployment_files = {
         ROOT / "Dockerfile": Path("portal/hosting/Dockerfile"),

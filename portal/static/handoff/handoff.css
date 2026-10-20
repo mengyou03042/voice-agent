@@ -1413,6 +1413,28 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
   font-size: .49rem;
   font-weight: 650;
 }
+.template-choice-systems {
+  display: flex;
+  gap: 5px;
+  margin-top: 9px;
+  flex-wrap: wrap;
+}
+.template-choice-systems span {
+  padding: 3px 6px;
+  border: 1px solid color-mix(in srgb, var(--template-accent) 28%, transparent);
+  border-radius: 5px;
+  color: var(--template-accent);
+  background: #fff;
+  font-size: .49rem;
+  font-weight: 700;
+}
+.template-choice-systems span.mock-only {
+  border-style: dashed;
+  color: #7a6a3a;
+  border-color: #d9c98f;
+}
+.template-picker-footer a { color: #075e7a; font-weight: 700; }
+.tool-connections .template-picker-toolbar div { display: flex; gap: 14px; }
 .template-choice-load {
   display: flex;
   align-items: center;

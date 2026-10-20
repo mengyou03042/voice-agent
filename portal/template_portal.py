@@ -963,6 +963,10 @@ class TemplateCatalog:
         definition = document["definition"]
         graph = graph_summary(definition)
         mcp_tools = list(iter_mcp_tools(definition))
+        systems = [
+            {"id": group["id"], "label": group["label"], "connectable": group["connectable"]}
+            for group in tool_groups(definition)
+        ]
         return {
             "id": source.id,
             "name": source.name or str(document.get("name") or source.id),
@@ -979,6 +983,8 @@ class TemplateCatalog:
             "error_count": 0,
             "warning_count": 0,
             "requires_mcp": bool(mcp_tools),
+            "mock_tools": bool(systems),
+            "tool_systems": systems,
             "default_version": ".",
             "versions": [
                 {
@@ -1298,6 +1304,11 @@ async def examples_guide(_: web.Request) -> web.FileResponse:
 
 async def real_tools_guide(_: web.Request) -> web.Response:
     markdown = (DOCS_DIR / "05_connect_real_tools.md").read_text(encoding="utf-8")
+    return web.Response(text=render_page(markdown), content_type="text/html")
+
+
+async def logic_apps_mcp_guide(_: web.Request) -> web.Response:
+    markdown = (DOCS_DIR / "06_logic_apps_mcp_servers.md").read_text(encoding="utf-8")
     return web.Response(text=render_page(markdown), content_type="text/html")
 
 
@@ -1864,6 +1875,7 @@ def install_template_routes(
     app.router.add_get("/templates/", templates_index)
     app.router.add_get("/guide/run-samples", examples_guide)
     app.router.add_get("/guide/real-tools", real_tools_guide)
+    app.router.add_get("/guide/logic-apps-mcp", logic_apps_mcp_guide)
     app.router.add_get("/api/config", template_config)
     app.router.add_get("/api/templates", list_templates)
     app.router.add_get("/api/templates/env", templates_env)

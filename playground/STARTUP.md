@@ -370,16 +370,18 @@ python ../12_noauth_mcp/scripts/validate_live.py \
 
 Do not declare success from `/healthz` alone.
 
-The current Portal release is `voice-agent-playground--0000032`, image digest
-`sha256:e9ed2285...`, built by ACR run `cc1t` on 2026-10-21 from this repository
+The current Portal release is `voice-agent-playground--0000033`, image digest
+`sha256:4f56be75...`, built by ACR run `cc1u` on 2026-10-21 from this repository
 (`build_context.py`) with 35 cards. Examples 5-34 run on the `mock-tool-call` route of
-the shared no-auth MCP service. The Editor shows a mock-tools banner, and **Connect my
-tools** binds each business system to the user's own public HTTPS MCP server. Work IQ
-is listed but cannot be connected. `/guide/real-tools` is rendered as HTML. It replaced
-revision `0000031` (`sha256:ff69c014...`), the rollback image. Only the image changed:
-environment variable names were compared before and after, and the revision is Healthy
-with two replicas and 100% traffic. The hosted regression suite ran 47 tests: 46 passed
-and the opt-in Kusto check was skipped.
+the shared no-auth MCP service. In **Load from templates**, each card marks **Mock
+tools** and the systems it uses, and its **Tools** choice can open **Connect my tools**
+right after loading. The Editor shows a mock-tools banner, and **Connect my tools** binds
+each business system to the user's own public HTTPS MCP server. Work IQ is listed but
+cannot be connected. `/guide/real-tools` and `/guide/logic-apps-mcp` are rendered as
+HTML. It replaced revision `0000032` (`sha256:e9ed2285...`), the rollback image. Only
+the image changed: environment variable names were compared before and after, and the
+revision is Healthy with two replicas and 100% traffic. The hosted regression suite ran
+47 tests: 46 passed and the opt-in Kusto check was skipped.
 
 The earlier release was `voice-agent-playground--0000026`, image digest
 `sha256:932691d8...`, built by ACR run `cc13` from the Portal working-copy snapshot

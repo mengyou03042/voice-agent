@@ -16,6 +16,8 @@ GUIDE_ROUTES = {
     "03_run_samples.md": "/guide/run-samples",
     "./05_connect_real_tools.md": "/guide/real-tools",
     "05_connect_real_tools.md": "/guide/real-tools",
+    "./06_logic_apps_mcp_servers.md": "/guide/logic-apps-mcp",
+    "06_logic_apps_mcp_servers.md": "/guide/logic-apps-mcp",
 }
 _LINK = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
 _CODE = re.compile(r"`([^`]+)`")
@@ -55,7 +57,7 @@ th {{ background: #eef4f1; }}
 </head>
 <body>
 <main>
-<a class="back" href="/templates">&larr; Back to Templates</a>
+<a class="back" href="/editor">&larr; Back to the Editor</a>
 {body}
 </main>
 </body>

@@ -82,6 +82,7 @@ const state = {
   publishing: false,
   templates: [],
   templateVersions: new Map(),
+  templateToolModes: new Map(),
   templateCatalogLoaded: false,
   templateCatalogLoading: false,
   templateLoadingId: "",
@@ -871,15 +872,23 @@ function renderTemplateCatalog() {
     button.dataset.templateId = template.id;
     button.disabled = Boolean(state.templateLoadingId);
     button.style.setProperty("--template-accent", template.accent_color || template.accent || "#0f9f76");
+    const systems = Array.isArray(template.tool_systems) ? template.tool_systems : [];
     button.innerHTML = `
       <span class="template-choice-orbit" aria-hidden="true"></span>
       <span class="template-choice-topline">
         <span class="template-choice-category">${escapeHtml(template.category || "Voice Agent")}</span>
-        ${template.requires_mcp ? '<span class="template-choice-mcp">MCP</span>' : ""}
+        ${template.mock_tools
+          ? '<span class="template-choice-mcp">Mock tools</span>'
+          : template.requires_mcp ? '<span class="template-choice-mcp">MCP</span>' : ""}
       </span>
       <strong>${escapeHtml(template.name || template.id)}</strong>
       <span class="template-choice-id">${escapeHtml(template.id)}</span>
       <span class="template-choice-summary">${escapeHtml(template.summary || "Voice Agent template.")}</span>
+      ${systems.length ? `<span class="template-choice-systems">${systems.map((system) => `
+        <span class="${system.connectable ? "" : "mock-only"}" title="${system.connectable
+          ? "Mock by default; connect your own MCP server"
+          : "Mock only in the shared Playground"}">${escapeHtml(system.label)}${system.connectable ? "" : " · mock only"}</span>`).join("")}
+      </span>` : ""}
       <span class="template-choice-metrics">
         <span>${Number(template.node_count || 0) ? `${Number(template.node_count)} nodes` : "single Agent"}</span>
         <span>${Number(template.edge_count || 0)} edges</span>
@@ -911,8 +920,24 @@ function renderTemplateCatalog() {
       button.querySelector(".template-choice-metrics").hidden = select.value !== (template.default_version || ".");
     });
     label.append(select);
-    button.addEventListener("click", () => loadTemplateIntoGraph(template.id, select.value));
     card.append(button, label);
+    let toolsSelect = null;
+    if (systems.some((system) => system.connectable)) {
+      const toolsLabel = document.createElement("label");
+      toolsLabel.className = "template-choice-version";
+      toolsLabel.textContent = "Tools";
+      toolsSelect = document.createElement("select");
+      toolsSelect.setAttribute("aria-label", `Tools for ${template.name || template.id}`);
+      toolsSelect.disabled = Boolean(state.templateLoadingId);
+      toolsSelect.add(new Option("Mock tools (default)", "mock"));
+      toolsSelect.add(new Option("Connect my real tools after loading", "real"));
+      toolsSelect.value = state.templateToolModes.get(template.id) || "mock";
+      toolsSelect.addEventListener("change", () => state.templateToolModes.set(template.id, toolsSelect.value));
+      toolsLabel.append(toolsSelect);
+      card.append(toolsLabel);
+    }
+    button.addEventListener("click", () =>
+      loadTemplateIntoGraph(template.id, select.value, { connectTools: toolsSelect?.value === "real" }));
     root.append(card);
   }
 }
@@ -1208,7 +1233,7 @@ function handleToolInput(event) {
   }
 }
 
-async function loadTemplateIntoGraph(templateId, version = ".") {
+async function loadTemplateIntoGraph(templateId, version = ".", { connectTools = false } = {}) {
   if (!templateId || state.templateLoadingId) return;
   state.templateLoadingId = templateId;
   $("#template-picker-status").textContent = `Materializing ${templateId} for ${state.cfg?.project || "the selected project"}…`;
@@ -1236,6 +1261,7 @@ async function loadTemplateIntoGraph(templateId, version = ".") {
     url.searchParams.delete("agent");
     window.history.replaceState(null, "", url);
     closeTemplatePicker();
+    if (connectTools) openToolConnections();
   } catch (error) {
     $("#template-picker-status").textContent = `Could not load ${templateId}: ${error.message}`;
   } finally {

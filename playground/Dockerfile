@@ -14,6 +14,7 @@ COPY portal/hosting/profile.json /app/portal/hosting/profile.json
 COPY samples/ /app/samples/
 COPY docs/03_run_samples.md /app/docs/03_run_samples.md
 COPY docs/05_connect_real_tools.md /app/docs/05_connect_real_tools.md
+COPY docs/06_logic_apps_mcp_servers.md /app/docs/06_logic_apps_mcp_servers.md
 USER 10001
 RUN python -c "import importlib.metadata, importlib.util; assert importlib.metadata.version('pip') == '26.2'; assert importlib.util.find_spec('ensurepip') is None" \
     && python -m pip check
