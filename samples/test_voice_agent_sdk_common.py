@@ -265,7 +265,7 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
             "VOICE_AGENT_MCP_SERVER_URL": "https://tools.example/mcp",
         }
         _, _, finance = load_materialized_agent(
-            samples / "example1_finance_with_handoff",
+            samples / "example1_finance_with_handoff_realtime",
             {
                 **common_settings,
                 "VOICE_AGENT_NAME": "finance-test",
@@ -418,10 +418,8 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
             },
         )
 
-    def test_example1_variants_share_workflow_and_pin_runtime(self) -> None:
-        sample_dir = (
-            Path(__file__).resolve().parent / "example1_finance_with_handoff"
-        )
+    def test_example1_directories_preserve_original_workflow_and_runtime(self) -> None:
+        samples = Path(__file__).resolve().parent
         settings = {
             "AZURE_AI_PROJECT_ENDPOINT": (
                 "https://account.services.ai.azure.com/api/projects/project"
@@ -434,27 +432,26 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
         }
         with patch.dict(os.environ, {}, clear=True):
             realtime_name, _, realtime = load_materialized_agent(
-                sample_dir,
+                samples / "example1_finance_with_handoff_realtime",
                 settings,
-                agent_file="agent.realtime.json",
                 prefer_document_name=True,
             )
             cascade_name, _, cascade = load_materialized_agent(
-                sample_dir,
+                samples / "example1_finance_with_handoff_cascade",
                 settings,
-                agent_file="agent.cascade-luna.json",
                 prefer_document_name=True,
             )
 
         self.assertEqual("finance-example-realtime", realtime_name)
         self.assertEqual("finance-example-cascade-luna", cascade_name)
         self.assertEqual(realtime["handoff"], cascade["handoff"])
+        self.assertEqual(realtime["greeting"], cascade["greeting"])
         self.assertEqual(
             {
                 "type": "template",
                 "text": (
-                    "Hello, thank you for taking the call. "
-                    "This is Virtual Finance calling."
+                    "Hello, this is Virtual Finance calling "
+                    "about a personal loan offer."
                 ),
             },
             realtime["greeting"],
@@ -462,34 +459,72 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
         edges = {
             edge["id"]: edge for edge in realtime["handoff"]["edges"]
         }
+        for edge_id in (
+            "entrypoint_to_dial_assess",
+            "dial_assess_to_rpc",
+            "ivr_to_rpc",
+            "rpc_to_offer",
+            "offer_to_offer_decision",
+            "appointment_to_offer_summary",
+        ):
+            with self.subTest(edge=edge_id):
+                self.assertNotIn("transfer_message", edges[edge_id])
+                self.assertEqual("auto", edges[edge_id]["target_response"])
         self.assertEqual(
-            (
-                "Thank you. This call is to introduce a personal loan offer. "
-                "Please hold for a moment while I bring up the call details."
-            ),
-            edges["entrypoint_to_dial_assess"]["transfer_message"],
+            {
+                "dial_assess_to_voicemail": (
+                    "A calling assistant tried to reach you and will try again later."
+                ),
+                "ivr_to_voicemail": (
+                    "A calling assistant tried to reach you and will try again later."
+                ),
+                "offer_decision_to_wrap_up": (
+                    "Because you did not accept our offer, we can talk again next time."
+                ),
+                "charges_to_bureau_consent": (
+                    "Do you consent to a credit-bureau check for this application? "
+                    'Please say "I consent" or "I decline".'
+                ),
+            },
+            {
+                edge_id: edge["transfer_message"]
+                for edge_id, edge in edges.items()
+                if "transfer_message" in edge
+            },
         )
-        self.assertEqual(
-            (
-                "Before I share the details, please hold while I confirm who "
-                "I'm speaking with."
-            ),
-            edges["dial_assess_to_rpc"]["transfer_message"],
-        )
-        rpc = next(
-            node
-            for node in realtime["handoff"]["nodes"]
-            if node["id"] == "rpc"
-        )
+        self.assertEqual("none", edges["charges_to_bureau_consent"]["target_response"])
+        nodes = {node["id"]: node for node in realtime["handoff"]["nodes"]}
+        self.assertEqual(13, len(nodes))
+        self.assertEqual(24, len(edges))
+        for node_id, node in nodes.items():
+            with self.subTest(node=node_id):
+                self.assertIsNone(node["config"]["interim_response"])
+        rpc = nodes["rpc"]
         self.assertIn(
             "Am I speaking with <calling_first_name>?",
             " ".join(rpc["config"]["instructions"].split()),
         )
-        end = next(
-            node
-            for node in realtime["handoff"]["nodes"]
-            if node["id"] == "end"
+        self.assertIn(
+            "Could you please tell me your date of birth?",
+            " ".join(rpc["config"]["instructions"].split()),
         )
+        self.assertIn(
+            "Call tools without a spoken lead-in.",
+            nodes["offer"]["config"]["instructions"],
+        )
+        for node_id in ("offer", "appointment"):
+            self.assertNotIn(
+                "The handoff edge alone says",
+                nodes[node_id]["config"]["instructions"],
+            )
+        for phrase in (
+            "I'm checking those details now.",
+            "Confirming your identity, just a second.",
+            "Checking your offer, one moment.",
+            "Saving your appointment info",
+        ):
+            self.assertNotIn(phrase, json.dumps(realtime))
+        end = nodes["end"]
         self.assertEqual(
             {
                 "type": "system",
@@ -505,7 +540,12 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
             },
             end["config"]["tools"][0],
         )
-        self.assertEqual("gpt-realtime-2.1", realtime["model"])
+        self.assertEqual("gpt-realtime", realtime["model"])
+        for definition in (realtime, cascade):
+            self.assertEqual(
+                400,
+                definition["audio"]["input"]["turn_detection"]["silence_duration_ms"],
+            )
         self.assertEqual(
             "whisper-1",
             realtime["audio"]["input"]["transcription"]["model"],
@@ -542,7 +582,8 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
     def test_sample_env_defaults_match_committed_model_mode(self) -> None:
         samples = Path(__file__).resolve().parent
         for directory in (
-            "example1_finance_with_handoff",
+            "example1_finance_with_handoff_realtime",
+            "example1_finance_with_handoff_cascade",
             "example2_finance_with_OTP_and_Officer_Search",
             "example3_elevator_service_with_safety_zendesk_and_handoff",
         ):
@@ -560,7 +601,7 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
             }
             self.assertEqual(definition["model_type"], "managed")
             self.assertNotIn("VOICE_AGENT_MODEL_TYPE", defaults)
-            if directory == "example1_finance_with_handoff":
+            if directory.startswith("example1_finance_with_handoff_"):
                 self.assertNotIn("VOICE_AGENT_MODEL", defaults)
             else:
                 self.assertEqual(

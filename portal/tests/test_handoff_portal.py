@@ -129,7 +129,7 @@ class HandoffPortalStaticContractTests(unittest.TestCase):
         for step in ("validate", "mcp", "publish", "verify", "open"):
             self.assertIn(f'data-publish-step="{step}"', html)
         self.assertNotIn('id="save-draft-action"', html)
-        self.assertIn('fetch(`/api/templates/${encodeURIComponent(templateId)}`)', app)
+        self.assertIn('fetch(`/api/templates/${encodeURIComponent(templateId)}?version=${encodeURIComponent(version)}`)', app)
         self.assertIn("/mcp/configure", app)
         self.assertIn("openPublishProgress()", app)
         self.assertIn('setPublishStep("verify", "running"', app)

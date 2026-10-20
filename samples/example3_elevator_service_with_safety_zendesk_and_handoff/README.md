@@ -198,3 +198,22 @@ call-control tools in the active graph node.
   runtime.
 - Re-running publish creates another immutable Agent version.
 - Cleanup is intentionally manual to avoid deleting an unrelated Agent.
+
+## Template versions
+
+The root [`agent.json`](agent.json) keeps the original business content and
+remains the default (`.`), using `gpt-realtime` and 400 ms Semantic VAD.
+In the Portal **Version** field, select:
+
+- [`backups/20261020T040235Z/original`](backups/20261020T040235Z/original/agent.json):
+  original business content with the current runtime settings.
+- [`backups/20261020T040235Z/revised`](backups/20261020T040235Z/revised/agent.json):
+  experimental candidate-04, **in progress and not accepted**.
+
+This is a frozen authored revision, not a completed assessment. Acknowledgement
+and waiting failures observed in candidate-03 are not proven fixed in this
+candidate. See the [version manifest](backups/20261020T040235Z/manifest.json)
+for the evaluation status at capture, provenance, and checksums.
+Exact prior bytes remain in each affected version's `agent.source.json` and
+the archived manifest, outside the Version selector. The runtime change itself
+has not been accepted by live latency or listening validation.

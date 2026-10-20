@@ -1,6 +1,6 @@
 {
-  "name": "finance-example-base",
-  "description": "A dedicated Foundry Voice Agent that runs outbound lending calls: it works out what answered the phone, navigates a phone menu or leaves a voicemail, confirms it is speaking to the borrower, discloses why it is calling, pitches the pre-approved amount, settles the rate, period and instalment within policy, states the charges, takes an auditable credit-bureau consent, records the outcome, and closes the call.",
+  "name": "finance-example-realtime",
+  "description": "Finance with Handoff using the managed GPT Realtime speech-to-speech pipeline.",
   "definition": {
     "kind": "voice",
     "model_type": "managed",
@@ -21,7 +21,7 @@
           "remove_filler_words": true,
           "threshold": 0.5,
           "prefix_padding_ms": 300,
-          "silence_duration_ms": 800,
+          "silence_duration_ms": 400,
           "create_response": true,
           "idle_timeout_ms": 15000,
           "interrupt_response": true,

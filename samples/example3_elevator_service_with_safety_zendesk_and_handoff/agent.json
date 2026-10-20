@@ -17,7 +17,7 @@
           "profile": "normal",
           "threshold": 0.5,
           "prefix_padding_ms": 300,
-          "silence_duration_ms": 800,
+          "silence_duration_ms": 400,
           "create_response": true,
           "idle_timeout_ms": 15000,
           "interrupt_response": true,

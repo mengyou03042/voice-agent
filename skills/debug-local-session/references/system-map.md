@@ -60,7 +60,8 @@ MCP.
 
 Agent publication is immutable:
 
-- Example 1 source: `samples/example1_finance_with_handoff/agent.json`
+- Example 1 Realtime source: `samples/example1_finance_with_handoff_realtime/agent.json`
+- Example 1 Cascade source: `samples/example1_finance_with_handoff_cascade/agent.json`
 - Example 2 source:
   `samples/example2_finance_with_OTP_and_Officer_Search/agent.json`
 - CLI publication: each example's `sample.py`
@@ -171,7 +172,10 @@ a CLI-created Agent handoff failure, correlate the session timestamp with
 Verify the published Agent version using the same materialized settings:
 
 ```bash
-cd samples/example1_finance_with_handoff
+cd samples/example1_finance_with_handoff_realtime
+python sample.py check
+
+cd ../example1_finance_with_handoff_cascade
 python sample.py check
 
 cd ../example2_finance_with_OTP_and_Officer_Search

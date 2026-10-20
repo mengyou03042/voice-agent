@@ -1,0 +1,90 @@
+{
+  "captured_at_utc": "2026-10-20T04:10:07.170529+00:00",
+  "version_id": "20261020T040235Z",
+  "original_commit": "8c41ae3edf6f496300495e6b51699a343be15005",
+  "revised_source": "../docs/voice_agent/template_adding/agent_validator/evaluations/20261020_continuation/elevator-service-example/round-01/candidate-04/agent.json",
+  "source_path_base": "Paths in source fields are relative to the voice-agent repository root. ../docs is external evaluation evidence and is not bundled with this template.",
+  "default_version": ".",
+  "status": "experimental_not_accepted",
+  "definition_fingerprint_algorithm": "SHA256 of json.dumps(definition, sort_keys=True, separators=(',', ':'), ensure_ascii=True). This is a semantic JSON fingerprint, not the raw file SHA256.",
+  "files": [
+    {
+      "version": "original",
+      "file": "original/agent.json",
+      "source": "samples/example3_elevator_service_with_safety_zendesk_and_handoff/agent.json",
+      "bytes": 23754,
+      "sha256": "d099f64afb7ee6238889267b46f7f3d01b3dac19caf5eba6393fde1f32c53c1e",
+      "authored_definition_fingerprint_sha256": "11f444eadf21f927608564a056a78844ffaefa3d0ece1deda4ea89170fd8eab5"
+    },
+    {
+      "version": "revised",
+      "file": "revised/agent.json",
+      "source": "../docs/voice_agent/template_adding/agent_validator/evaluations/20261020_continuation/elevator-service-example/round-01/candidate-04/agent.json",
+      "bytes": 26378,
+      "sha256": "a6291c26c06dd255ad466c4e47d4618976683b4e302cf5f9f7c2dc93500e5a96",
+      "authored_definition_fingerprint_sha256": "a7f2bd0628316541c9ded71f8a2028223d5d240756ee9f92ca94a2e8f5d80f63"
+    }
+  ],
+  "provenance": {
+    "template_id": "elevator-service-example",
+    "round": "round-01",
+    "candidate_id": "candidate-04",
+    "source_form": "Portable authored {name, description, definition} document; exact source bytes, not expanded node prompts from a materialized deployment definition.",
+    "continuation_manifest_source": "../docs/voice_agent/template_adding/agent_validator/evaluations/20261020_continuation/elevator-service-example/round-01/continuation_manifest.json",
+    "scope_proof_source": "../docs/voice_agent/template_adding/agent_validator/evaluations/20261020_continuation/elevator-service-example/round-01/candidate-04/scope_proof.json",
+    "run_plan_source": "../docs/voice_agent/template_adding/agent_validator/evaluations/20261020_continuation/elevator-service-example/round-01/candidate-04/run_plan.json",
+    "functional_plan_source": "../docs/voice_agent/template_adding/agent_validator/evaluations/20261020_continuation/elevator-service-example/round-01/candidate-04/functional_plan.json",
+    "review_state_source": "../docs/voice_agent/template_adding/agent_validator/evaluations/20261020_continuation/elevator-service-example/round-01/review_state.json",
+    "source_hash_verified_against": "scope_proof.json /source_sha256 and both plans /candidate_source_sha256; materialized file bytes also match both plans /candidate_definition_file_sha256.",
+    "transformed_fields": [],
+    "binding_policy": "The source already has only empty server_url and project_connection_id placeholders. They are retained byte-for-byte; the publisher supplies deployment bindings. No Project, test Agent name, URL, or credential was copied from the materialized evidence.",
+    "authored_structure": {
+      "handoff_nodes": 9,
+      "handoff_edges": 17,
+      "nodes_with_inherit_from_base_instructions": 9,
+      "inheritance_and_graph_preserved_from_source": true
+    },
+    "materialized_evidence": {
+      "source": "../docs/voice_agent/template_adding/agent_validator/evaluations/20261020_continuation/elevator-service-example/round-01/candidate-04/definition.json",
+      "definition_pointer": "/elevator-service-example/definition",
+      "file_sha256": "0fa8daa76f87ee84a4b726ec6b41f6cb21810e34832b12214fb24ba6b74e8b9c",
+      "definition_fingerprint_sha256": "57d3e876e670931b998c9d32ae8ac95f5dc76abd57f7cc98f4b00c183b5916e1",
+      "fingerprint_verified_against": "scope_proof.json /definition_sha256 and definition.json /elevator-service-example/sha256",
+      "copied_to_template": false
+    }
+  },
+  "candidate_status": {
+    "status": "in_progress_unassessed",
+    "accepted": false,
+    "adopted": false,
+    "assessment_complete": false,
+    "selection_reason": "Freeze the latest stable authored candidate-04 while its evaluation is in progress. Candidate-03 is the latest completed captured/reviewed candidate at the observation time and remains rejected; its results are not candidate-04 results.",
+    "observed_at_utc": "2026-10-20T04:10:07.170529+00:00",
+    "run_ledger_observations": [
+      {
+        "source": "../docs/voice_agent/template_adding/agent_validator/evaluations/20261020_continuation/elevator-service-example/round-01/candidate-04/formal/pair-01/cohort.json",
+        "sha256_at_observation": "0d179e37e9846b54256cd08f0b885d9506a66a2ca2aa435217d03c6258f982cf",
+        "status": "running_formal_pair",
+        "baseline_attempt_status": "incomplete",
+        "candidate_attempts_started": 0,
+        "candidate_attempts_completed": 0
+      },
+      {
+        "source": "../docs/voice_agent/template_adding/agent_validator/evaluations/20261020_continuation/elevator-service-example/round-01/candidate-04/functional/pair-01/cohort.json",
+        "sha256_at_observation": "46193e3933cffb71f9165c6f13b4c845fa9ba113c4844eb2f3e27bf91bb107a1",
+        "status": "waiting_automatic_functional_lock",
+        "candidate_attempts_started": 0,
+        "candidate_attempts_completed": 0
+      }
+    ],
+    "ledger_note": "The source and definition are hash-pinned snapshots. Active external ledgers may change after this observation; the recorded statuses and hashes are not a claim about later evaluation progress.",
+    "previous_candidate_failures_not_proven_fixed": [
+      "Candidate-03 omitted required pre-tool feedback in a formal report conversation and used awkward category labels in a functional conversation.",
+      "Candidate-03's formal status pair added waiting despite a restored original-length bridge."
+    ],
+    "unassessed": [
+      "Candidate-04 complete functional business behavior, safety/confirmation reliability, and formal paired waiting.",
+      "Acoustic listening, physical playback drain, natural-human noise/barge-in, and same-condition ElevenLabs comparison."
+    ]
+  }
+}

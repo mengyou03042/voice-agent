@@ -496,7 +496,7 @@ test("Template data remains available without exposing a Templates navigation it
   await expect(navigation.getByRole("link", { name: "Templates", exact: true })).toHaveCount(0);
 
   await page.goto("/templates/");
-  await expect(page.getByText("5 available", { exact: true })).toBeVisible();
+  await expect(page.getByText("35 available", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example 1: Finance with Handoff — Realtime/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example 1: Finance with Handoff — Cascade Luna/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example 2: Finance with OTP and Officer Search/ })).toBeVisible();
@@ -554,7 +554,7 @@ test("Editor loads the fluency-improved Front Desk template and complete graph",
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/editor/");
   await page.getByRole("button", { name: "Load from templates", exact: true }).click();
-  await expect(page.locator(".template-choice")).toHaveCount(5);
+  await expect(page.locator(".template-choice")).toHaveCount(35);
   const frontdesk = page.locator('[data-template-id="frontdesk-receptionist-example"]');
   await expect(frontdesk).toContainText("Example 4: Front Desk with Fluency and Handoff");
   await frontdesk.click();
@@ -586,7 +586,7 @@ test("Handoff Graph loads a Portal template, publishes it, and opens the runtime
 
   await page.getByRole("button", { name: /Load from templates/ }).click();
   const choices = page.locator(".template-choice");
-  await expect(choices).toHaveCount(5);
+  await expect(choices).toHaveCount(35);
   await page.locator('[data-template-id="elevator-service-example"]').click();
 
   await expect(page.locator("#agent-title")).toContainText(

@@ -1,0 +1,35 @@
+{
+  "captured_at_utc": "2026-10-20T01:15:23.936708+00:00",
+  "original_commit": "8c41ae3edf6f496300495e6b51699a343be15005",
+  "revised_source": "local working-tree snapshot; not a commit",
+  "files": [
+    {
+      "version": "original",
+      "file": "original/agent.json",
+      "source": "samples/example5_customer_support/agent.json",
+      "bytes": 31670,
+      "sha256": "4e098ba88158bd677515f2d74b1af421cc6c3eeecd8f7c91f93ca0b9395f9abc"
+    },
+    {
+      "version": "original",
+      "file": "original/README.md",
+      "source": "samples/example5_customer_support/README.md",
+      "bytes": 3002,
+      "sha256": "ee03f78d3ba8f91e902735007faaa90807dbbd3142600a906673b148f3870c71"
+    },
+    {
+      "version": "revised",
+      "file": "revised/agent.json",
+      "source": "samples/example5_customer_support/agent.json",
+      "bytes": 50989,
+      "sha256": "ae9c1e5e8f64d38a82c66ea1fab4845e9d406af354bdfef2074375e7f5f07201"
+    },
+    {
+      "version": "revised",
+      "file": "revised/README.md",
+      "source": "samples/example5_customer_support/README.md",
+      "bytes": 5076,
+      "sha256": "ba70472e53a986363de38f76f7413cde716b230feac799f8d3d1778c3b42263e"
+    }
+  ]
+}

@@ -8,7 +8,7 @@ For the complete local MCP serving, publication, and UI workflow, use
 
 This sample publishes a customer-neutral, flat, MCP-only Finance Voice Agent
 through the `azure-ai-projects` unified Agents API and runs a text-only
-Voice WebSocket smoke test. It defaults to service-managed `gpt-realtime-2.1`,
+Voice WebSocket smoke test. It defaults to service-managed `gpt-realtime`,
 American English, and business tools for OTP, loan-offer discussion, explicit interest,
 loan-officer selection, callback, and call disposition.
 
@@ -27,10 +27,12 @@ Use this example to validate a compact flat Agent driven by one MCP tool set:
 OTP verification, loan calculation, interest capture, officer assignment or
 search, confirmation, and call completion. It has no handoff graph.
 
-Use [Example 1](../example1_finance_with_handoff/README.md) instead when the
-goal is to validate multi-node handoff topology, target activation, and
-stage-specific tool access. Both examples use the same shared MCP service, but this
-example targets `/mcp/finance-otp-officer`.
+Use [Example 1 Realtime](../example1_finance_with_handoff_realtime/README.md) or
+[Example 1 Cascade Luna](../example1_finance_with_handoff_cascade/README.md)
+instead when the goal is to validate multi-node handoff topology, target
+activation, and stage-specific tool access. Both handoff variants and this
+example use the same shared MCP service; this example targets
+`/mcp/finance-otp-officer`.
 
 ## Prerequisites
 
@@ -80,9 +82,9 @@ Use the Project endpoint created by the subscription setup guide. The selected
 MCP config must have been generated for that same Project.
 
 The portable definition uses `model_type: managed` and defaults to
-`VOICE_AGENT_MODEL=gpt-realtime-2.1`. If the Project does not support that
-exact model, try `gpt-realtime-1.5`, then another versioned managed identifier
-confirmed for the Project. Keep the same value in the portal `.env`.
+`VOICE_AGENT_MODEL=gpt-realtime`, with 400 ms Semantic VAD silence.
+Confirm the Project supports that model rather than silently substituting
+`gpt-realtime-2.1`. Keep the same value in the portal `.env`.
 
 `AZURE_CREDENTIAL_MODE=default` uses `DefaultAzureCredential`. Set it to `cli`
 only when local validation must use the identity selected by `az login`.
@@ -168,3 +170,23 @@ the Foundry MCP item ID with the OTP/officer business state.
   not production-grade.
 - Re-running publish creates another immutable Agent version.
 - Cleanup is intentionally manual to avoid deleting an unrelated Agent.
+
+## Template versions
+
+The root [`agent.json`](agent.json) keeps the original business content and
+remains the default (`.`), using `gpt-realtime` and 400 ms Semantic VAD.
+In the Portal **Version** field, select:
+
+- [`backups/20261020T040235Z/original`](backups/20261020T040235Z/original/agent.json):
+  original business content with the current runtime settings.
+- [`backups/20261020T040235Z/revised`](backups/20261020T040235Z/revised/agent.json):
+  experimental candidate-03, **not accepted**.
+
+The revised candidate was rejected for repeated messages, premature pricing,
+and added waiting. Its evaluated MCP backend also failed to persist incomplete
+or invalid OTP state; this snapshot does not fix that service.
+See the [version manifest](backups/20261020T040235Z/manifest.json) for provenance
+and separate file checksums and definition fingerprints.
+Exact prior bytes remain in each affected version's `agent.source.json` and
+the archived manifest, outside the Version selector. Historical measurements
+do not establish acceptance of this runtime update.

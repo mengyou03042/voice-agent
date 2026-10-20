@@ -24,7 +24,8 @@ have overlapping tool names with different schemas:
 
 | Sample | MCP route | Generated config |
 | --- | --- | --- |
-| `example1_finance_with_handoff` | `/mcp/finance-handoff` | `config/generated/example1.local.env` |
+| `example1_finance_with_handoff_realtime` | `/mcp/finance-handoff` | `config/generated/example1.local.env` |
+| `example1_finance_with_handoff_cascade` | `/mcp/finance-handoff` | `config/generated/example1.local.env` |
 | `example2_finance_with_OTP_and_Officer_Search` | `/mcp/finance-otp-officer` | `config/generated/example2.local.env` |
 | `example3_elevator_service_with_safety_zendesk_and_handoff` | `/mcp/elevator-service` | `config/generated/example3.local.env` |
 
@@ -262,9 +263,13 @@ The sample CLIs read those files when publishing. While the E2E script is
 still running, publish or invoke either sample from another terminal:
 
 ```bash
-cd ../samples/example1_finance_with_handoff
+cd ../samples/example1_finance_with_handoff_realtime
 VOICE_AGENT_MCP_CONFIG=../../shared_mcp/config/generated/example1.local.env \
-  python sample.py publish --variant all
+  python sample.py publish
+
+cd ../example1_finance_with_handoff_cascade
+VOICE_AGENT_MCP_CONFIG=../../shared_mcp/config/generated/example1.local.env \
+  python sample.py publish
 ```
 
 ```bash
@@ -353,7 +358,7 @@ Change the source package, its Agent contract, and its tests together.
 | Business state transitions | `app/shared_mcp/finance_handoff/service.py` | `app/shared_mcp/finance_otp_officer/service.py` |
 | Domain and persistence | `domain.py`, `store.py` | `domain.py`, `store.py`, `auth.py` |
 | Fixture loading | `data.py`, `data/finance_handoff/` | `data.py`, `data/finance_otp_officer/` |
-| Agent tool contract | `../samples/example1_finance_with_handoff/agent.json` | `../samples/example2_finance_with_OTP_and_Officer_Search/agent.json` |
+| Agent tool contract | `../samples/example1_finance_with_handoff_realtime/agent.json` and `../samples/example1_finance_with_handoff_cascade/agent.json` | `../samples/example2_finance_with_OTP_and_Officer_Search/agent.json` |
 
 When changing a tool:
 

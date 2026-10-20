@@ -1307,6 +1307,28 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
   cursor: pointer;
   transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
 }
+.template-choice-card { display: flex; min-width: 0; flex-direction: column; }
+.template-choice-card .template-choice { width: 100%; flex: 1; }
+.template-choice-metrics[hidden] { display: none; }
+.template-choice-version {
+  display: flex;
+  min-width: 0;
+  margin-top: 8px;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: .58rem;
+}
+.template-choice-version select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
 .template-choice::before {
   position: absolute;
   top: 15px;

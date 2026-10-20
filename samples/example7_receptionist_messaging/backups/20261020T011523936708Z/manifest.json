@@ -1,0 +1,65 @@
+{
+  "captured_at_utc": "2026-10-20T01:15:23.936708+00:00",
+  "original_commit": "8c41ae3edf6f496300495e6b51699a343be15005",
+  "revised_source": "local working-tree snapshot; not a commit",
+  "files": [
+    {
+      "version": "original",
+      "file": "original/agent.json",
+      "source": "samples/example7_receptionist_messaging/agent.json",
+      "bytes": 38809,
+      "sha256": "a12f5be7282ec64513f60ac6c33bfc37bd6b0a4a810e71cf1fe0f95f7200e5eb",
+      "source_file_sha256_before_runtime_update": "5301657f413bb2eccabe46b9858a2a381457ab6f644996600cec196979a422d1",
+      "source_snapshot_before_runtime_update": "original/agent.source.json",
+      "runtime_override_paths": [
+        "/definition/audio/input/turn_detection/silence_duration_ms"
+      ]
+    },
+    {
+      "version": "original",
+      "file": "original/README.md",
+      "source": "samples/example7_receptionist_messaging/README.md",
+      "bytes": 3117,
+      "sha256": "cee81f84a50c1aac605b1c2fbf85e79fda100b4e75770c0721084ed12e2b27e4"
+    },
+    {
+      "version": "revised",
+      "file": "revised/agent.json",
+      "source": "samples/example7_receptionist_messaging/agent.json",
+      "bytes": 59043,
+      "sha256": "63b0e5aa117f0dcc1ee65f54e2bd1c571c3171238bbc328ecded4567ba52f91d"
+    },
+    {
+      "version": "revised",
+      "file": "revised/README.md",
+      "source": "samples/example7_receptionist_messaging/README.md",
+      "bytes": 5220,
+      "sha256": "a9d513ffe915b879a267c29b88e5a222f0622bde8f88c83f7402f306bbe9c7ae"
+    },
+    {
+      "version": "original_source_before_runtime_update",
+      "file": "original/agent.source.json",
+      "bytes": 38711,
+      "sha256": "5301657f413bb2eccabe46b9858a2a381457ab6f644996600cec196979a422d1"
+    }
+  ],
+  "runtime_update": {
+    "requested_at_utc": "2026-10-20",
+    "applied_at_utc": "2026-10-20T04:22:29.812810+00:00",
+    "policy": "All selectable versions: azure_semantic_vad silence_duration_ms=400; non-Cascade model=gpt-realtime. Explicit Cascade model is unchanged.",
+    "business_content_unchanged_by_runtime_update": true,
+    "prior_manifest": "manifest.before-runtime-update.json",
+    "prior_manifest_sha256": "27573f601ceff982fa02a2cc224e777012225bf478c099b862ff6e062eb5ff43",
+    "previous_evaluations_apply_to_previous_runtime": true,
+    "current_runtime_voice_validation": "not_run; configuration/selection validation only",
+    "changed_files": [
+      {
+        "file": "original/agent.json",
+        "changed_paths": [
+          "/definition/audio/input/turn_detection/silence_duration_ms"
+        ]
+      }
+    ],
+    "source_snapshots_are_not_selectable_versions": true
+  }
+}

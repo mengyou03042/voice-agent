@@ -231,15 +231,35 @@ publish operations, including the template catalog consumed by Handoff Graph.
   not a false completion. COMPLETED describes the node visit, not successful
   completion of every external business operation.
 - The Handoff Graph **Load from templates** picker reads the allowlist in
-  `templates.config.json`. It exposes the sibling
-  `example1_finance_with_handoff` as separate Realtime and Cascade Luna cards,
+  `templates.config.json`. It exposes
+  `example1_finance_with_handoff_realtime` and
+  `example1_finance_with_handoff_cascade` as separate Realtime and Cascade Luna cards,
   and also detects `example2_finance_with_OTP_and_Officer_Search` and
   `example3_elevator_service_with_safety_zendesk_and_handoff`. The tool-free
   `example5_customer_support`, `example6_appointment_setter`, and
   `example7_receptionist_messaging` handoff examples, and the 27
   ElevenLabs-converted `example8_*` through `example34_*` handoff examples,
-  need no MCP setup. Select **Reload** in that picker to reread their
-  configured Agent files.
+  need no MCP setup. Each card has a **Version** selector: **Default** loads
+  the configured Agent file;
+  other versions are discovered recursively under that sample folder using
+  the same filename (normally `agent.json`). Version names join the relative
+  folders with `/`, for example `backups/20261020T011523936708Z/original`.
+  Choose a version before **Load into canvas**. Loading creates a working copy
+  without modifying the sample or backup. Select **Reload** to rediscover
+  versions and reread their files. Invalid versions are reported without
+  hiding valid versions; files resolving outside the sample folder are rejected.
+  The internal Templates page also has a **Version** selector, and its preview,
+  MCP checks, and publication use the selected definition.
+  The five MCP-backed templates keep their original business content as the
+  default. Their `backups/20261020T040235Z/revised` versions preserve experimental
+  work with known limitations; selecting one is not a quality acceptance or a
+  change to the default. Each backup manifest records the exact snapshot.
+  The eight original templates and every selectable backup explicitly use 400 ms
+  `azure_semantic_vad` silence. Non-Cascade definitions use `gpt-realtime`, not
+  `gpt-realtime-2.1`; the explicit Cascade Luna model remains unchanged.
+  Pre-runtime-update source bytes and manifests are retained separately and
+  are not selectable versions. These parameter changes are not a new live
+  latency, interruption or listening acceptance.
 - Template MCP readiness calls `initialize` and `tools/list` against the hosted
   endpoint without an Authorization header and checks every declared tool.
   Publishing sets that endpoint on every MCP tool, including handoff nodes,

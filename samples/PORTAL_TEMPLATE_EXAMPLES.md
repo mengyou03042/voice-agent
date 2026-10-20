@@ -103,9 +103,9 @@ Edit `VoiceAgent/portal/templates.config.json`:
 
 ```json
 {
-  "id": "finance-example",
-  "folder": "../samples/example1_finance_with_handoff",
-  "name": "Example 1: Finance with Handoff",
+  "id": "finance-example-realtime",
+  "folder": "../samples/example1_finance_with_handoff_realtime",
+  "name": "Example 1: Finance with Handoff - Realtime",
   "category": "Financial services",
   "summary": "A short customer-facing summary.",
   "accent_color": "#147d64",
@@ -135,6 +135,17 @@ Field rules:
 
 The portal reload button re-reads both this allowlist and every enabled
 `agent.json`.
+
+### Keep experimental versions separate from the default
+
+Keep the intended default in the sample root's `agent.json`. The existing
+Version selector discovers matching filenames recursively, so a snapshot can
+use `backups/<timestamp>/original/agent.json` and
+`backups/<timestamp>/revised/agent.json` without another catalog entry.
+Record file SHA-256, provenance and validation limitations in a manifest;
+backup availability does not imply acceptance. Keep all snapshots portable and
+credential-free. Realtime and Cascade Finance use separate sample directories
+so one runtime's backup cannot be selected by the other's card.
 
 ## 4. Choose the MCP connection mode
 

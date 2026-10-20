@@ -12,7 +12,8 @@ self-contained Finance Voice Agent examples:
 
 The scenario-specific source of truth remains with each example:
 
-- [Example 1: Finance with Handoff](../samples/example1_finance_with_handoff/README.md)
+- [Example 1: Finance with Handoff - Realtime](../samples/example1_finance_with_handoff_realtime/README.md)
+- [Example 1: Finance with Handoff - Cascade Luna](../samples/example1_finance_with_handoff_cascade/README.md)
 - [Example 2: Finance with OTP and Officer Search](../samples/example2_finance_with_OTP_and_Officer_Search/README.md)
 - [Voice Agent portal](../portal/README.md)
 
@@ -94,7 +95,8 @@ runtime option.
 | Component | Owns | Does not own |
 | --- | --- | --- |
 | [`shared_mcp/`](../shared_mcp/) | Both Finance MCP implementations, fictional data, auth, native local runtime, optional container image, Dev Tunnel, Azure Container Apps IaC, protocol probes, and Foundry connection configuration | Foundry Project creation, model deployment, Agent publication |
-| [`example1_finance_with_handoff/`](../samples/example1_finance_with_handoff/) | Example 1 Agent definition, handoff graph, CLI publication/readback/runtime validation | MCP hosting |
+| [`example1_finance_with_handoff_realtime/`](../samples/example1_finance_with_handoff_realtime/) | Realtime Finance Agent definition, backups and CLI publication/readback/runtime validation | MCP hosting or Cascade source generation |
+| [`example1_finance_with_handoff_cascade/`](../samples/example1_finance_with_handoff_cascade/) | Cascade Luna Finance Agent definition, backups and independent CLI | MCP hosting or Realtime source generation |
 | [`example2_finance_with_OTP_and_Officer_Search/`](../samples/example2_finance_with_OTP_and_Officer_Search/) | Example 2 Agent definition, flat tool workflow, CLI publication/readback/runtime validation | MCP hosting |
 | [`portal/`](../portal/) | Project and Agent selection, template publication, microphone/text sessions, handoff visualization, latency, MCP activity, authoring, WebRTC, and local session recording | MCP business execution |
 | [`voice_agent_sdk_common.py`](../samples/voice_agent_sdk_common.py) | Shared config materialization, Agent publication/readback, and text Voice WebSocket runtime | Browser UI and MCP transport |

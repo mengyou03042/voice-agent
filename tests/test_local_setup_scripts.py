@@ -36,6 +36,23 @@ class LocalSetupScriptContractTests(unittest.TestCase):
         self.assertIn("https://bootstrap.pypa.io/get-pip.py", installer)
         self.assertIn('"${python}" -m pip --version', installer)
 
+    def test_setup_covers_both_independent_finance_runtimes(self):
+        source = SETUP.read_text(encoding="utf-8")
+        for variable, folder in (
+            ("HANDOFF_ROOT", "example1_finance_with_handoff_realtime"),
+            ("CASCADE_ROOT", "example1_finance_with_handoff_cascade"),
+        ):
+            with self.subTest(folder=folder):
+                self.assertIn(f'{variable}="${{SAMPLES_ROOT}}/{folder}"', source)
+                self.assertIn(f'install_python_environment "${{{variable}}}"', source)
+                self.assertIn(f'"${{{variable}}}/.venv/bin/python"', source)
+                self.assertIn(f'check_env_file "${{{variable}}}/.env"', source)
+                self.assertTrue((ROOT / "samples" / folder / "sample.py").is_file())
+        self.assertIn(
+            'HANDOFF_SAMPLE="${SAMPLES_ROOT}/example1_finance_with_handoff_realtime"',
+            MCP_E2E.read_text(encoding="utf-8"),
+        )
+
     def test_devtunnel_login_uses_repo_cli_and_mcp_working_directory(self):
         source = LOGIN.read_text(encoding="utf-8")
 

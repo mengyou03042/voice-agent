@@ -1,0 +1,76 @@
+{
+  "captured_at_utc": "2026-10-20T04:02:35Z",
+  "original_commit": "8c41ae3edf6f496300495e6b51699a343be15005",
+  "template_id": "finance-example-cascade-luna",
+  "default_version": ".",
+  "revised_source": "Preserved round-14 portable candidate, revalidated unchanged during 20261020 continuation.",
+  "revised_status": "content/business progress retained; latency blocked; owner_satisfied=false; not accepted, not adopted, not deployed",
+  "known_limits": [
+    "Observed complete charges, consent, booking, recap and native end do not establish overall acceptance.",
+    "The preserved slow handoff preparation and post-transfer gaps remain unresolved.",
+    "No listening or physical-speaker latency acceptance."
+  ],
+  "files": [
+    {
+      "version": "original",
+      "file": "original/agent.json",
+      "source": "samples/example1_finance_with_handoff/agent.cascade-luna.json",
+      "bytes": 67074,
+      "sha256": "4122c8185fb5a7efb56ad73ac9b95bda55c5d54ec325f2faa62c5b49a672f555",
+      "source_file_sha256_before_runtime_update": "8e7e190a6e7e6a65f2f277663ca196ee73ed9f774f89fa1b68fd13d5180bf310",
+      "source_snapshot_before_runtime_update": "original/agent.source.json",
+      "runtime_override_paths": [
+        "/definition/audio/input/turn_detection/silence_duration_ms"
+      ]
+    },
+    {
+      "version": "revised",
+      "file": "revised/agent.json",
+      "source": "docs/voice_agent/template_adding/agent_validator/evaluations/20261019_existing_templates_revalidation/finance-example-cascade-luna/round-14/candidate.portable.json",
+      "bytes": 70682,
+      "sha256": "b551c6d3c01f9871963d1482abd6db0489c974daa80c9bce2b5a955750103fbe",
+      "source_file_sha256_before_runtime_update": "a39276997b68bbd01c5ee4c922ec111106bc783f42d6d763449396bde22abdb5",
+      "source_snapshot_before_runtime_update": "revised/agent.source.json",
+      "runtime_override_paths": [
+        "/definition/audio/input/turn_detection/silence_duration_ms"
+      ]
+    },
+    {
+      "version": "original_source_before_runtime_update",
+      "file": "original/agent.source.json",
+      "bytes": 67074,
+      "sha256": "8e7e190a6e7e6a65f2f277663ca196ee73ed9f774f89fa1b68fd13d5180bf310"
+    },
+    {
+      "version": "revised_source_before_runtime_update",
+      "file": "revised/agent.source.json",
+      "bytes": 70679,
+      "sha256": "a39276997b68bbd01c5ee4c922ec111106bc783f42d6d763449396bde22abdb5"
+    }
+  ],
+  "runtime_update": {
+    "requested_at_utc": "2026-10-20",
+    "applied_at_utc": "2026-10-20T04:22:29.718884+00:00",
+    "policy": "All selectable versions: azure_semantic_vad silence_duration_ms=400; non-Cascade model=gpt-realtime. Explicit Cascade model is unchanged.",
+    "business_content_unchanged_by_runtime_update": true,
+    "prior_manifest": "manifest.before-runtime-update.json",
+    "prior_manifest_sha256": "beb849f11819fdc20d2180c3600ef2b72ac7683b50352846b74335046e62a8ae",
+    "previous_evaluations_apply_to_previous_runtime": true,
+    "current_runtime_voice_validation": "not_run; configuration/selection validation only",
+    "changed_files": [
+      {
+        "file": "original/agent.json",
+        "changed_paths": [
+          "/definition/audio/input/turn_detection/silence_duration_ms"
+        ]
+      },
+      {
+        "file": "revised/agent.json",
+        "changed_paths": [
+          "/definition/audio/input/turn_detection/silence_duration_ms"
+        ]
+      }
+    ],
+    "source_snapshots_are_not_selectable_versions": true
+  }
+}

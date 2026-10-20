@@ -49,7 +49,7 @@ else:
         / "example3_elevator_service_with_safety_zendesk_and_handoff"
         / "agent.json"
     )
-    HANDOFF_AGENT = SAMPLES_ROOT / "example1_finance_with_handoff" / "agent.json"
+    HANDOFF_AGENT = SAMPLES_ROOT / "example1_finance_with_handoff_realtime" / "agent.json"
     OTP_AGENT = (
         SAMPLES_ROOT
         / "example2_finance_with_OTP_and_Officer_Search"

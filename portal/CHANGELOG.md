@@ -3,6 +3,26 @@
 This is the downstream port log, not the full upstream repository history.
 Keep the upstream pin and intentional differences in every port entry.
 
+## 2026-10-20 - Separate Finance runtimes and retain experimental backups
+
+**Upstream pin unchanged:** `e713a37c4cdb3282157cbaf46b6d425bcd984c05`.
+
+- Finance Realtime and Cascade Luna now have separate sample directories and
+  root `agent.json` files, retaining their existing template IDs and original
+  default business definitions. The explicit runtime update applies 400 ms
+  Semantic VAD everywhere and `gpt-realtime` to non-Cascade versions; Cascade
+  retains its model.
+- The five MCP-backed templates expose original/revised snapshots through the
+  existing Version selector. Experimental revisions are not default selections
+  and carry their validation limitations in backup manifests.
+- Runtime updates apply to every selectable backup. Exact prior bytes and
+  manifests remain separately archived; historical voice results are not new
+  validation of the current runtime configuration.
+- Updated CLI setup, MCP contract paths, source mappings and version regression
+  tests. No new version-discovery mechanism is introduced.
+- Retained the 27 newly added handoff templates alongside the eight original
+  catalog entries and updated browser regressions for all 35 templates.
+
 ## 2026-10-19 — Reorder interleaved response audio in client playback
 
 **Upstream pin unchanged:** `e713a37c4cdb3282157cbaf46b6d425bcd984c05`.

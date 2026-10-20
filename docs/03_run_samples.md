@@ -45,7 +45,8 @@ For component-specific detail, use:
 
 - [MCP implementation, local hosting, and Azure deployment](./02_mcp_settings.md)
 - [Portal startup and configuration](../portal/README.md)
-- [Example 1: Finance with Handoff](../samples/example1_finance_with_handoff/README.md)
+- [Example 1: Finance with Handoff - Realtime](../samples/example1_finance_with_handoff_realtime/README.md)
+- [Example 1: Finance with Handoff - Cascade Luna](../samples/example1_finance_with_handoff_cascade/README.md)
 - [Example 2: Finance with OTP and Officer Search](../samples/example2_finance_with_OTP_and_Officer_Search/README.md)
 - [Recorded session debugging](./04_debug_session.md)
 
@@ -54,7 +55,8 @@ For component-specific detail, use:
 | Component | Responsibility |
 | --- | --- |
 | [`shared_mcp/`](../shared_mcp/) | Customer-owned MCP code, native local runtime, optional container packaging, Dev Tunnel, connections, and E2E |
-| [`example1_finance_with_handoff/`](../samples/example1_finance_with_handoff/) | Handoff Agent definition and CLI publication/runtime entry point |
+| [`example1_finance_with_handoff_realtime/`](../samples/example1_finance_with_handoff_realtime/) | Original Realtime Handoff Agent, backup versions and CLI |
+| [`example1_finance_with_handoff_cascade/`](../samples/example1_finance_with_handoff_cascade/) | Original Cascade Luna Handoff Agent, backup versions and CLI |
 | [`example2_finance_with_OTP_and_Officer_Search/`](../samples/example2_finance_with_OTP_and_Officer_Search/) | Flat OTP/officer Agent definition and CLI publication/runtime entry point |
 | [`portal/`](../portal/) | Browser template catalog, Try it now publication, authoring, and live Voice Agent session |
 | [`voice_agent_sdk_common.py`](../samples/voice_agent_sdk_common.py) | Shared config materialization, publication, readback, and Voice WebSocket runtime |
@@ -173,7 +175,13 @@ direct `python3 -m venv` requires that interpreter's `ensurepip` support.
 Install each example's Python dependencies before the first run:
 
 ```bash
-cd "$SAMPLES_ROOT/example1_finance_with_handoff"
+cd "$SAMPLES_ROOT/example1_finance_with_handoff_realtime"
+python3 -m venv .venv
+.venv/bin/python -m pip install \
+  --index-url "${PIP_INDEX_URL}" \
+  -r requirements.txt
+
+cd "$SAMPLES_ROOT/example1_finance_with_handoff_cascade"
 python3 -m venv .venv
 .venv/bin/python -m pip install \
   --index-url "${PIP_INDEX_URL}" \
@@ -197,23 +205,25 @@ npm test
 npm run build:all
 ```
 
-## Configure the two sample and portal environment files
+## Configure the Finance sample and portal environment files
 
-Configure both sample `.env` files. They must use the same Foundry Project:
+Configure the three Finance sample `.env` files. They must use the same Foundry Project:
 
 ```bash
 cd "$SAMPLES_ROOT"
-cp example1_finance_with_handoff/.env.example \
-  example1_finance_with_handoff/.env
+cp example1_finance_with_handoff_realtime/.env.example \
+  example1_finance_with_handoff_realtime/.env
+cp example1_finance_with_handoff_cascade/.env.example \
+  example1_finance_with_handoff_cascade/.env
 cp example2_finance_with_OTP_and_Officer_Search/.env.example \
   example2_finance_with_OTP_and_Officer_Search/.env
 
 cp ../portal/.env.example ../portal/.env
 ```
 
-Set the same valid Project endpoint in all three files. Portal uses
+Set the same valid Project endpoint in all four files. Portal uses
 `AZURE_VOICE_AGENTS_ENDPOINT`; the samples use `AZURE_AI_PROJECT_ENDPOINT`.
-Use `AZURE_CREDENTIAL_MODE=cli` in all three when the intended identity is the one
+Use `AZURE_CREDENTIAL_MODE=cli` in all four when the intended identity is the one
 selected by `az login`. To find an existing endpoint rather than guessing it,
 use [01: Existing Project fast path](./01_setup_subscription.md#existing-project-fast-path).
 
@@ -362,17 +372,24 @@ Publish or run either example from another terminal while E2E remains running:
 ### Example 1: Finance with handoff
 
 ```bash
-cd "$SAMPLES_ROOT/example1_finance_with_handoff"
+cd "$SAMPLES_ROOT/example1_finance_with_handoff_realtime"
 
-.venv/bin/python sample.py publish --variant all
+.venv/bin/python sample.py publish
 
-.venv/bin/python sample.py check --variant all
+.venv/bin/python sample.py check
 
-.venv/bin/python sample.py run --variant realtime \
+.venv/bin/python sample.py run \
     --message "Hello, who is calling?" \
     --expect-handoff \
     --expect-mcp
 ```
+
+For Cascade Luna, run the same commands from
+`$SAMPLES_ROOT/example1_finance_with_handoff_cascade`. Each directory publishes
+its own root `agent.json`; `--variant` and the old shared builder are no longer
+needed. Both directories retain the original definition by default. In the
+Portal Version selector, `backups/20261020T040235Z/revised` loads the experimental
+revision without replacing the default or publishing automatically.
 
 ### Example 2: OTP and officer search
 

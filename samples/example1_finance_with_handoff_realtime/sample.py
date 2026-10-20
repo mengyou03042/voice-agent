@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish, verify, or run the Finance Example Voice Agent."""
+"""Publish, verify, or run the Realtime Finance Voice Agent."""
 
 from pathlib import Path
 import sys
@@ -14,8 +14,4 @@ if __name__ == "__main__":
     sample_cli(
         Path(__file__).resolve().parent,
         mode="raw",
-        variants={
-            "realtime": "agent.realtime.json",
-            "cascade-luna": "agent.cascade-luna.json",
-        },
     )

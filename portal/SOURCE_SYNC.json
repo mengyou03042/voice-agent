@@ -245,10 +245,18 @@
     {
       "root": "template_example1",
       "source": ".",
-      "destination": "samples/example1_finance_with_handoff/agent.json",
+      "destination": "samples/example1_finance_with_handoff_realtime/agent.json",
       "destination_root": "voice_agent",
       "action": "adapted",
-      "reason": "The public sample stays portable; the local Portal injects its configured public no-auth MCP URL at publication time."
+      "reason": "The original Realtime definition is now independent from Cascade. The public sample stays portable; the local Portal injects its configured public no-auth MCP URL at publication time. Experimental revisions are backup versions, not default replacements."
+    },
+    {
+      "root": "template_example1",
+      "source": ".",
+      "destination": "samples/example1_finance_with_handoff_cascade/agent.json",
+      "destination_root": "voice_agent",
+      "action": "adapted",
+      "reason": "The original Cascade Luna business definition is retained in a separate portable sample and backup history. Its template ID and model are unchanged; the explicit current runtime policy sets Semantic VAD silence to 400 ms in every selectable version."
     },
     {
       "root": "template_example2",

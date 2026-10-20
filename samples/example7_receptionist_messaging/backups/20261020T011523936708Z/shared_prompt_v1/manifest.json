@@ -1,0 +1,76 @@
+{
+  "version": "shared_prompt_v1",
+  "status": "backup-only; offline-validated candidate; not published",
+  "created_at_utc": "2026-10-20T01:26:34.733464+00:00",
+  "source_snapshot_utc": "2026-10-20T01:15:23.936708+00:00",
+  "source_snapshot_manifest_file": "../manifest.before-runtime-update.json",
+  "original_commit": "8c41ae3edf6f496300495e6b51699a343be15005",
+  "source": {
+    "file": "../revised/agent.json",
+    "sha256": "63b0e5aa117f0dcc1ee65f54e2bd1c571c3171238bbc328ecded4567ba52f91d"
+  },
+  "source_snapshot_manifest_sha256": "27573f601ceff982fa02a2cc224e777012225bf478c099b862ff6e062eb5ff43",
+  "references": [
+    {
+      "file": "../../../../../../docs/voice_agent/flunecy_improvment/01_interview_conversational_continuity_shared_prompt.md",
+      "sha256": "ab3cb560ef92ba4f431860498d8a112d0d64298aec50a6ff303df91da3508db1"
+    },
+    {
+      "file": "../../../../../../docs/voice_agent/flunecy_improvment/02_frontdesk_fluency_first_shared_prompt.md",
+      "sha256": "f40e48aa382e73429315a9d92795c182e7e3f61db7558f86435be61e2986755e"
+    }
+  ],
+  "inheritance": {
+    "implementation": "../../../../../../voice-agent/samples/voice_agent_definition.py",
+    "function": "materialize_handoff_instruction_inheritance",
+    "business_nodes": true,
+    "terminal_node": false,
+    "implicit_entrypoint_policy": "description of the existing outgoing edge"
+  },
+  "preserved": [
+    "model",
+    "voice",
+    "greeting",
+    "audio/VAD",
+    "store",
+    "tools",
+    "tool_choice",
+    "node and edge IDs",
+    "graph topology",
+    "transfer limits",
+    "transfer_message",
+    "target_response"
+  ],
+  "changes": [
+    "shared personality and speaking policy separated from node logic",
+    "node-local actions and route conditions aligned with graph descriptions",
+    "terminal node remains tool-only without inherited dialogue"
+  ],
+  "instruction_characters": {
+    "revised_baseline": 50414,
+    "candidate_authored": 11473,
+    "candidate_materialized": 32283
+  },
+  "files": [
+    {
+      "file": "shared_prompt.md",
+      "bytes": 4161,
+      "sha256": "5ecb8ccb4f1684a923ccecaf3ce4acd6f38d712346d6fda2c18aab55606a580c"
+    },
+    {
+      "file": "node_prompts.md",
+      "bytes": 7577,
+      "sha256": "1f976067c342206888a1290213803c42723ea4c71f30dbe5058eee29b8f6c732"
+    },
+    {
+      "file": "agent.json",
+      "bytes": 20297,
+      "sha256": "8c82f66fe6422edac1502ec137e53f02595d0b144e675d971f0fa1928c542b21"
+    },
+    {
+      "file": "README.md",
+      "bytes": 3369,
+      "sha256": "4551917cf9505a2d602c1e04da5fe1d50aaf77a833b2e835d27efbab6f530a3a"
+    }
+  ]
+}

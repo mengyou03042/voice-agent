@@ -170,8 +170,8 @@ async def create_test_app():
     catalog = app[template_portal.CATALOG_KEY]
     original_source = catalog.source
 
-    def template_source(template_id):
-        source = original_source(template_id)
+    def template_source(template_id, version="."):
+        source = original_source(template_id, version)
         if source is None:
             return None
         return replace(

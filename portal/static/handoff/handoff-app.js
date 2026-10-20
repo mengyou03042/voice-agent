@@ -81,6 +81,7 @@ const state = {
   format: "yaml",
   publishing: false,
   templates: [],
+  templateVersions: new Map(),
   templateCatalogLoaded: false,
   templateCatalogLoading: false,
   templateLoadingId: "",
@@ -162,6 +163,10 @@ function renderToolCard(tool, index) {
 
 function sourceTemplateId() {
   return String(state.sourceMetadata?.source_template_id || "").trim();
+}
+
+function sourceTemplateVersionQuery() {
+  return `?version=${encodeURIComponent(state.sourceMetadata?.source_template_version || ".")}`;
 }
 
 function mcpProbeMode() {
@@ -850,6 +855,8 @@ function renderTemplateCatalog() {
     return;
   }
   for (const template of state.templates) {
+    const card = document.createElement("div");
+    card.className = "template-choice-card";
     const button = document.createElement("button");
     button.type = "button";
     button.className = "template-choice";
@@ -874,8 +881,31 @@ function renderTemplateCatalog() {
         ${state.templateLoadingId === template.id ? "Loading…" : "Load into canvas"}
         <span aria-hidden="true">→</span>
       </span>`;
-    button.addEventListener("click", () => loadTemplateIntoGraph(template.id));
-    root.append(button);
+    const versions = template.versions || [{ id: ".", name: "Default" }];
+    const selectedVersion = state.templateVersions.get(template.id);
+    const version = versions.some((item) => item.id === selectedVersion)
+      ? selectedVersion
+      : template.default_version || ".";
+    state.templateVersions.set(template.id, version);
+    const label = document.createElement("label");
+    label.className = "template-choice-version";
+    label.textContent = "Version";
+    const select = document.createElement("select");
+    select.setAttribute("aria-label", `Version for ${template.name || template.id}`);
+    select.disabled = Boolean(state.templateLoadingId) || versions.length < 2;
+    for (const item of versions) {
+      select.add(new Option(item.name, item.id));
+    }
+    select.value = version;
+    button.querySelector(".template-choice-metrics").hidden = version !== (template.default_version || ".");
+    select.addEventListener("change", () => {
+      state.templateVersions.set(template.id, select.value);
+      button.querySelector(".template-choice-metrics").hidden = select.value !== (template.default_version || ".");
+    });
+    label.append(select);
+    button.addEventListener("click", () => loadTemplateIntoGraph(template.id, select.value));
+    card.append(button, label);
+    root.append(card);
   }
 }
 
@@ -899,6 +929,11 @@ async function loadTemplateCatalog({ force = false } = {}) {
     $("#template-picker-status").textContent = state.templates.length
       ? `${state.templates.length} curated workflow${state.templates.length === 1 ? "" : "s"} · select one to replace the local working copy`
       : "The catalog is available but contains no templates.";
+    for (const error of payload.errors || []) {
+      const warning = document.createElement("p");
+      warning.textContent = `${error.id}${error.version ? ` (${error.version})` : ""}: ${error.error}`;
+      $("#template-picker-status").append(warning);
+    }
   } catch (error) {
     state.templates = [];
     state.templateCatalogLoaded = false;
@@ -921,7 +956,7 @@ function closeTemplatePicker() {
   $("#template-picker").hidden = true;
 }
 
-async function loadTemplateIntoGraph(templateId) {
+async function loadTemplateIntoGraph(templateId, version = ".") {
   if (!templateId || state.templateLoadingId) return;
   state.templateLoadingId = templateId;
   $("#template-picker-status").textContent = `Materializing ${templateId} for ${state.cfg?.project || "the selected project"}…`;
@@ -929,7 +964,7 @@ async function loadTemplateIntoGraph(templateId) {
   renderHeader();
   try {
     const detail = await readResponse(
-      await fetch(`/api/templates/${encodeURIComponent(templateId)}`),
+      await fetch(`/api/templates/${encodeURIComponent(templateId)}?version=${encodeURIComponent(version)}`),
     );
     if (!detail.definition || detail.definition.kind !== "voice") {
       throw new Error("The template did not return an editable Voice Agent definition.");
@@ -941,8 +976,9 @@ async function loadTemplateIntoGraph(templateId) {
       metadata: {
         source_template_id: detail.id,
         source_template_name: detail.name,
+        source_template_version: detail.version,
       },
-      message: `Loaded ${detail.name} into a temporary local working copy. The Template remains read-only.`,
+      message: `Loaded ${detail.name} (${detail.version === "." ? "Default" : detail.version}) into a temporary local working copy. The Template remains read-only.`,
     });
     const url = new URL(window.location.href);
     url.searchParams.delete("agent");
@@ -3181,7 +3217,7 @@ async function testNodeMcpTool(button) {
     : "Connecting to the published MCP server…";
   try {
     const response = probeMode === "template"
-      ? await fetch(`/api/templates/${encodeURIComponent(sourceTemplateId())}/mcp/probe`)
+      ? await fetch(`/api/templates/${encodeURIComponent(sourceTemplateId())}/mcp/probe${sourceTemplateVersionQuery()}`)
       : await fetch("/api/mcp/probe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3593,7 +3629,7 @@ async function publishDefinition() {
     try {
       await readResponse(
         await fetch(
-          `/api/templates/${encodeURIComponent(templateId)}/mcp/configure`,
+          `/api/templates/${encodeURIComponent(templateId)}/mcp/configure${sourceTemplateVersionQuery()}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },

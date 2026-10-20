@@ -35,10 +35,12 @@ MCP_TEMPLATES = [
     "frontdesk-receptionist-example",
 ]
 # Tool-free handoff examples: (template ID, sample folder, graph nodes, graph edges).
-TOOL_FREE_TEMPLATES = [
+ORIGINAL_TOOL_FREE_TEMPLATES = [
     ("customer-support-example", "example5_customer_support", 5, 9),
     ("appointment-setter-example", "example6_appointment_setter", 7, 12),
     ("receptionist-messaging-example", "example7_receptionist_messaging", 6, 14),
+]
+CONVERTED_TOOL_FREE_TEMPLATES = [
     ("appointment-scheduler-example", "example8_appointment_scheduler", 6, 11),
     ("assessment-quiz-agent-example", "example9_assessment_quiz_agent", 5, 8),
     ("collections-payment-recovery-agent-example", "example10_collections_payment_recovery_agent", 5, 8),
@@ -66,6 +68,10 @@ TOOL_FREE_TEMPLATES = [
     ("technical-support-agent-example", "example32_technical_support_agent", 6, 13),
     ("travel-agency-trip-planner-example", "example33_travel_agency_trip_planner", 6, 11),
     ("user-research-interviewer-example", "example34_user_research_interviewer", 8, 16),
+]
+TOOL_FREE_TEMPLATES = [
+    *ORIGINAL_TOOL_FREE_TEMPLATES,
+    *CONVERTED_TOOL_FREE_TEMPLATES,
 ]
 EXPECTED_TEMPLATES = [
     *MCP_TEMPLATES,
@@ -106,6 +112,89 @@ class TemplateCatalogTests(unittest.TestCase):
                 self.assertEqual(
                     [END_CONVERSATION_TOOL],
                     handoff["nodes"][-1]["config"]["tools"],
+                )
+
+    def test_tool_free_handoff_examples_preserve_normal_400ms_vad(self) -> None:
+        catalog = TemplateCatalog()
+        expected = {
+            "type": "azure_semantic_vad",
+            "profile": "normal",
+            "auto_truncate": True,
+            "interrupt_response": True,
+            "silence_duration_ms": 400,
+        }
+
+        for template_id, *_ in ORIGINAL_TOOL_FREE_TEMPLATES:
+            with self.subTest(template_id=template_id):
+                document = catalog.document(template_id)
+                assert document is not None
+                self.assertEqual(
+                    expected, document["definition"]["audio"]["input"]["turn_detection"],
+                )
+                definition = materialize_template(
+                    document, model="", voice="",
+                    mcp_server_url="", mcp_connection_id="",
+                )
+                self.assertEqual(
+                    expected, definition["audio"]["input"]["turn_detection"],
+                )
+
+    def test_tool_free_handoff_examples_separate_shared_and_local_instructions(self) -> None:
+        catalog = TemplateCatalog()
+        headings = (
+            "Personality", "Environment", "Tone", "How you respond",
+            "How you sound", "Goal", "Guardrails",
+        )
+        local_only = (
+            "Workflow entrypoint", "Current stage:", "Routes:",
+            'handoff(target=', "end_conversation", "target end",
+        )
+
+        for template_id, *_ in ORIGINAL_TOOL_FREE_TEMPLATES:
+            with self.subTest(template_id=template_id):
+                document = catalog.document(template_id)
+                assert document is not None
+                shared = document["definition"]["instructions"]
+                for heading in headings:
+                    self.assertEqual(1, shared.count(f"### {heading}\n"))
+                for text in local_only:
+                    self.assertNotIn(text, shared)
+                definition = materialize_template(
+                    document, model="", voice="",
+                    mcp_server_url="", mcp_connection_id="",
+                )
+                original_nodes = document["definition"]["handoff"]["nodes"]
+                published_nodes = definition["handoff"]["nodes"]
+                self.assertEqual(len(original_nodes), len(published_nodes))
+                for authored, published in zip(original_nodes, published_nodes, strict=True):
+                    config = authored["config"]
+                    self.assertIs(config["inherit_from_base_instructions"], True)
+                    self.assertTrue(config["instructions"].startswith("## CURRENT NODE\n"))
+                    self.assertNotIn("### Personality", config["instructions"])
+                    self.assertNotIn(shared, config["instructions"])
+                    self.assertNotIn("inherit_from_base_instructions", published["config"])
+                    self.assertEqual(
+                        f"{shared}\n\n{config['instructions']}",
+                        published["config"]["instructions"],
+                    )
+
+    def test_converted_handoff_examples_preserve_authored_runtime_and_instructions(self) -> None:
+        catalog = TemplateCatalog()
+        for template_id, folder, *_ in CONVERTED_TOOL_FREE_TEMPLATES:
+            with self.subTest(template_id=template_id):
+                authored = json.loads(
+                    (ROOT.parent / "samples" / folder / "agent.json").read_text(encoding="utf-8")
+                )["definition"]
+                document = catalog.document(template_id)
+                self.assertIsNotNone(document)
+                definition = materialize_template(
+                    document, model="", voice="",
+                    mcp_server_url="", mcp_connection_id="",
+                )
+                self.assertEqual(authored["audio"], definition["audio"])
+                self.assertEqual(authored["instructions"], definition["instructions"])
+                self.assertEqual(
+                    authored["handoff"]["nodes"], definition["handoff"]["nodes"],
                 )
 
     def test_frontdesk_preserves_fluency_prompt_and_complete_workflow(self) -> None:
@@ -261,7 +350,7 @@ class TemplateCatalogTests(unittest.TestCase):
         )
         self.assertTrue(realtime["runtime_locked"])
         self.assertTrue(cascade["runtime_locked"])
-        self.assertEqual("gpt-realtime-2.1", realtime["model"])
+        self.assertEqual("gpt-realtime", realtime["model"])
         self.assertEqual(
             "en-IN-Diya:DragonHDLatestNeural",
             realtime["voice"],
@@ -679,7 +768,7 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
             await self.client.get("/api/templates/finance-example-cascade-luna")
         ).json()
 
-        self.assertEqual("gpt-realtime-2.1", realtime["model"])
+        self.assertEqual("gpt-realtime", realtime["model"])
         self.assertEqual("gpt-5.6-luna", cascade["model"])
 
     async def test_unknown_template_and_asset_are_not_exposed(self) -> None:

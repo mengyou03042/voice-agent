@@ -12,7 +12,7 @@ import socket
 import sys
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlparse
@@ -483,7 +483,8 @@ class TemplateCatalog:
         self.allowed_root = allowed_root.resolve()
         self.mcp_root = mcp_root.resolve()
         self._sources: tuple[TemplateSource, ...] = ()
-        self._documents: dict[str, dict[str, Any]] = {}
+        self._versions: dict[str, dict[str, TemplateSource]] = {}
+        self._documents: dict[Path, dict[str, Any]] = {}
         self._errors: list[dict[str, str]] = []
         self.reload()
 
@@ -492,8 +493,6 @@ class TemplateCatalog:
         return copy.deepcopy(self._errors)
 
     def reload(self) -> None:
-        self._documents.clear()
-        self._errors = []
         try:
             payload = json.loads(self.config_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
@@ -505,6 +504,9 @@ class TemplateCatalog:
         entries = payload.get("templates")
         if not isinstance(entries, list):
             raise RuntimeError("Template config must contain a templates array.")
+        self._documents.clear()
+        self._versions.clear()
+        self._errors = []
         sources: list[TemplateSource] = []
         seen: set[str] = set()
         for index, entry in enumerate(entries):
@@ -607,30 +609,7 @@ class TemplateCatalog:
                     mcp_token_file=mcp_token_file,
                     lock_runtime=lock_runtime,
                 )
-                document = self._load(source)
-                if list(iter_mcp_tools(document["definition"])):
-                    if not source.mcp_server_url and source.mcp_config_path is None:
-                        raise ValueError("mcp.server_url is required for an MCP template")
-                    if source.mcp_server_url:
-                        validate_https_url(source.mcp_server_url, "mcp.server_url")
-                    if source.mcp_connection_id and not re.fullmatch(
-                        r"[A-Za-z0-9][A-Za-z0-9._-]*",
-                        source.mcp_connection_id,
-                    ):
-                        raise ValueError("MCP connection ID has an invalid format")
-                    if (
-                        source.mcp_config_path
-                        and source.mcp_config_path.is_file()
-                        and not (
-                            source.mcp_server_url
-                            and (source.mcp_connection_id or source.connection_mode == "public")
-                        )
-                    ):
-                        raise ValueError(
-                            "mcp.config_file must define both "
-                            "VOICE_AGENT_MCP_SERVER_URL and "
-                            "VOICE_AGENT_MCP_CONNECTION_ID"
-                        )
+                self._validate_source(source)
             except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:
                 self._errors.append(
                     {"id": template_id or f"entry-{index}", "error": str(error)}
@@ -638,44 +617,98 @@ class TemplateCatalog:
                 continue
             seen.add(template_id)
             sources.append(source)
+            versions = {".": source}
+            for candidate in sorted(folder.rglob(path.name)):
+                if candidate == folder / agent_file:
+                    continue
+                version = candidate.parent.relative_to(folder).as_posix()
+                if version == ".":
+                    continue
+                try:
+                    version_path = candidate.resolve()
+                    if not version_path.is_relative_to(folder):
+                        raise ValueError("Version resolves outside the configured folder")
+                    version_source = replace(source, path=version_path)
+                    self._validate_source(version_source)
+                except (OSError, ValueError, RuntimeError) as error:
+                    self._errors.append({
+                        "id": template_id, "version": version, "error": str(error),
+                    })
+                    continue
+                versions[version] = version_source
+            self._versions[template_id] = versions
         self._sources = tuple(sources)
 
+    def _validate_source(self, source: TemplateSource) -> None:
+        document = self._load(source)
+        if not list(iter_mcp_tools(document["definition"])):
+            return
+        if not source.mcp_server_url and source.mcp_config_path is None:
+            raise ValueError("mcp.server_url is required for an MCP template")
+        if source.mcp_server_url:
+            validate_https_url(source.mcp_server_url, "mcp.server_url")
+        if source.mcp_connection_id and not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._-]*", source.mcp_connection_id,
+        ):
+            raise ValueError("MCP connection ID has an invalid format")
+        if (
+            source.mcp_config_path
+            and source.mcp_config_path.is_file()
+            and not (
+                source.mcp_server_url
+                and (source.mcp_connection_id or source.connection_mode == "public")
+            )
+        ):
+            raise ValueError(
+                "mcp.config_file must define both "
+                "VOICE_AGENT_MCP_SERVER_URL and "
+                "VOICE_AGENT_MCP_CONNECTION_ID"
+            )
+
     def _load(self, source: TemplateSource) -> dict[str, Any]:
-        if source.id not in self._documents:
+        if source.path not in self._documents:
             document = json.loads(source.path.read_text(encoding="utf-8"))
-            if not isinstance(document.get("definition"), dict):
+            if not isinstance(document, dict) or not isinstance(document.get("definition"), dict):
                 raise RuntimeError(f"{source.path} has no definition object.")
-            self._documents[source.id] = document
-        return self._documents[source.id]
+            self._documents[source.path] = document
+        return self._documents[source.path]
 
     def cards(self) -> list[dict[str, Any]]:
-        cards = []
-        for source in self._sources:
-            document = self._load(source)
-            definition = document["definition"]
-            graph = graph_summary(definition)
-            mcp_tools = list(iter_mcp_tools(definition))
-            cards.append({
-                "id": source.id,
-                "name": source.name or str(document.get("name") or source.id),
-                "category": source.category,
-                "summary": source.summary or str(document.get("description") or "Voice Agent template."),
-                "accent": source.accent,
-                "accent_color": source.accent,
-                "tags": ["mcp", "voice-agent"] if mcp_tools else ["voice-agent"],
-                "featured": bool(mcp_tools),
-                "node_count": len(graph["nodes"]),
-                "edge_count": len(graph["edges"]),
-                "tool_count": len(mcp_tools),
-                "input_count": 0,
-                "error_count": 0,
-                "warning_count": 0,
-                "requires_mcp": bool(mcp_tools),
-            })
-        return cards
+        return [self._card(source) for source in self._sources]
 
-    def detail(self, template_id: str) -> dict[str, Any] | None:
-        source = self.source(template_id)
+    def _card(self, source: TemplateSource) -> dict[str, Any]:
+        document = self._load(source)
+        definition = document["definition"]
+        graph = graph_summary(definition)
+        mcp_tools = list(iter_mcp_tools(definition))
+        return {
+            "id": source.id,
+            "name": source.name or str(document.get("name") or source.id),
+            "category": source.category,
+            "summary": source.summary or str(document.get("description") or "Voice Agent template."),
+            "accent": source.accent,
+            "accent_color": source.accent,
+            "tags": ["mcp", "voice-agent"] if mcp_tools else ["voice-agent"],
+            "featured": bool(mcp_tools),
+            "node_count": len(graph["nodes"]),
+            "edge_count": len(graph["edges"]),
+            "tool_count": len(mcp_tools),
+            "input_count": 0,
+            "error_count": 0,
+            "warning_count": 0,
+            "requires_mcp": bool(mcp_tools),
+            "default_version": ".",
+            "versions": [
+                {
+                    "id": version,
+                    "name": f"Default ({source.path.name})" if version == "." else version,
+                }
+                for version in self._versions[source.id]
+            ],
+        }
+
+    def detail(self, template_id: str, version: str = ".") -> dict[str, Any] | None:
+        source = self.source(template_id, version)
         if source is None:
             return None
         document = self._load(source)
@@ -721,7 +754,8 @@ class TemplateCatalog:
                     },
                 )
         return {
-            **next(card for card in self.cards() if card["id"] == template_id),
+            **self._card(source),
+            "version": version,
             "description": document.get("description") or source.summary,
             "model": definition.get("model") or "gpt-realtime",
             "voice": voice_name(definition),
@@ -773,12 +807,12 @@ class TemplateCatalog:
             },
         }
 
-    def document(self, template_id: str) -> dict[str, Any] | None:
-        source = self.source(template_id)
+    def document(self, template_id: str, version: str = ".") -> dict[str, Any] | None:
+        source = self.source(template_id, version)
         return copy.deepcopy(self._load(source)) if source else None
 
-    def source(self, template_id: str) -> TemplateSource | None:
-        return next((item for item in self._sources if item.id == template_id), None)
+    def source(self, template_id: str, version: str = ".") -> TemplateSource | None:
+        return self._versions.get(template_id, {}).get(version)
 
 
 def voice_name(definition: dict[str, Any]) -> str:
@@ -1027,11 +1061,12 @@ async def templates_env(request: web.Request) -> web.Response:
 async def get_template(request: web.Request) -> web.Response:
     catalog = _catalog(request)
     template_id = request.match_info["template_id"]
-    source = catalog.source(template_id)
-    detail = catalog.detail(template_id)
-    document = catalog.document(template_id)
+    version = request.query.get("version", ".")
+    source = catalog.source(template_id, version)
+    detail = catalog.detail(template_id, version)
+    document = catalog.document(template_id, version)
     if source is None or detail is None or document is None:
-        raise web.HTTPNotFound(text="Unknown template.")
+        raise web.HTTPNotFound(text="Unknown template or version.")
     model_override = request.app[MODEL_OVERRIDE_KEY]
     if model_override and not source.lock_runtime:
         detail["model"] = model_override
@@ -1076,10 +1111,11 @@ def _probe_report(source: TemplateSource) -> dict[str, Any]:
 async def probe_template_mcp(request: web.Request) -> web.Response:
     catalog = _catalog(request)
     template_id = request.match_info["template_id"]
-    source = catalog.source(template_id)
-    document = catalog.document(template_id)
+    version = request.query.get("version", ".")
+    source = catalog.source(template_id, version)
+    document = catalog.document(template_id, version)
     if source is None or document is None:
-        raise web.HTTPNotFound(text="Unknown template.")
+        raise web.HTTPNotFound(text="Unknown template or version.")
     cfg = await _cfg(request)
     report = _probe_report(source)
     report["backend"] = cfg.backend
@@ -1347,10 +1383,11 @@ async def configure_template_mcp(request: web.Request) -> web.Response:
     cfg = await _cfg(request)
     template_id = request.match_info["template_id"]
     catalog = _catalog(request)
-    document = catalog.document(template_id)
-    source = catalog.source(template_id)
+    version = request.query.get("version", ".")
+    document = catalog.document(template_id, version)
+    source = catalog.source(template_id, version)
     if document is None or source is None:
-        raise web.HTTPNotFound(text="Unknown template.")
+        raise web.HTTPNotFound(text="Unknown template or version.")
     try:
         require_template_backend(source, cfg.backend)
         connection_name = await ensure_template_mcp_connection(
@@ -1376,10 +1413,11 @@ async def publish_template(request: web.Request) -> web.Response:
     cfg = await _cfg(request)
     template_id = request.match_info["template_id"]
     catalog = _catalog(request)
-    document = catalog.document(template_id)
-    source = catalog.source(template_id)
+    version = request.query.get("version", ".")
+    document = catalog.document(template_id, version)
+    source = catalog.source(template_id, version)
     if document is None or source is None:
-        raise web.HTTPNotFound(text="Unknown template.")
+        raise web.HTTPNotFound(text="Unknown template or version.")
     try:
         body = await request.json()
         if not isinstance(body, dict):
@@ -1422,6 +1460,7 @@ async def publish_template(request: web.Request) -> web.Response:
         "agent_name": result["name"],
         "backend": cfg.project,
         "source_agent_name": str(document.get("name") or template_id),
+        "source_template_version": version,
         "mcp_connection_name": connection_name,
     }, status=201)
 

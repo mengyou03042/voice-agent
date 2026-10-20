@@ -1,0 +1,29 @@
+{
+  "captured_at_utc": "2026-10-20T04:02:35Z",
+  "original_commit": "8c41ae3edf6f496300495e6b51699a343be15005",
+  "template_id": "finance-example-cascade-luna",
+  "default_version": ".",
+  "revised_source": "Preserved round-14 portable candidate, revalidated unchanged during 20261020 continuation.",
+  "revised_status": "content/business progress retained; latency blocked; owner_satisfied=false; not accepted, not adopted, not deployed",
+  "known_limits": [
+    "Observed complete charges, consent, booking, recap and native end do not establish overall acceptance.",
+    "The preserved slow handoff preparation and post-transfer gaps remain unresolved.",
+    "No listening or physical-speaker latency acceptance."
+  ],
+  "files": [
+    {
+      "version": "original",
+      "file": "original/agent.json",
+      "source": "samples/example1_finance_with_handoff/agent.cascade-luna.json",
+      "bytes": 67074,
+      "sha256": "8e7e190a6e7e6a65f2f277663ca196ee73ed9f774f89fa1b68fd13d5180bf310"
+    },
+    {
+      "version": "revised",
+      "file": "revised/agent.json",
+      "source": "docs/voice_agent/template_adding/agent_validator/evaluations/20261019_existing_templates_revalidation/finance-example-cascade-luna/round-14/candidate.portable.json",
+      "bytes": 70679,
+      "sha256": "a39276997b68bbd01c5ee4c922ec111106bc783f42d6d763449396bde22abdb5"
+    }
+  ]
+}

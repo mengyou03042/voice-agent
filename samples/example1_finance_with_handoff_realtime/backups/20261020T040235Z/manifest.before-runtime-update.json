@@ -1,0 +1,29 @@
+{
+  "captured_at_utc": "2026-10-20T04:02:35Z",
+  "original_commit": "8c41ae3edf6f496300495e6b51699a343be15005",
+  "template_id": "finance-example-realtime",
+  "default_version": ".",
+  "revised_source": "Previously tested continuation round-02 portable source; no new behavioral changes during packaging.",
+  "revised_status": "experimental; owner_satisfied=false; not accepted, not adopted, not deployed",
+  "known_limits": [
+    "Some duplicate waiting narration is reduced, but mandatory spoken charges are still missing.",
+    "Happy-path content_filter and missing terminal closing remain unresolved.",
+    "No formal latency non-regression or listening acceptance."
+  ],
+  "files": [
+    {
+      "version": "original",
+      "file": "original/agent.json",
+      "source": "samples/example1_finance_with_handoff/agent.realtime.json",
+      "bytes": 66928,
+      "sha256": "79ef261b4fdea3006cf0c4677bcb939b0e5f629a70a4aa9077952830c5b0b1e7"
+    },
+    {
+      "version": "revised",
+      "file": "revised/agent.json",
+      "source": "docs/voice_agent/template_adding/agent_validator/evaluations/20261020_continuation/finance-example-realtime/round-02/candidate-source/agent.realtime.json",
+      "bytes": 70797,
+      "sha256": "724dafe6aac979d2f473f7f3616c7d3d1e49605960638984d8c2e117d3d2bf81"
+    }
+  ]
+}

@@ -89,3 +89,19 @@ node-scoped tools, portable publishing, and the catalog/API entry.
 The Template preserves the response-first receptionist workflow in the
 example source. Portal and Playground only choose its configured MCP endpoint;
 neither owns a second copy of the business definition.
+
+## Template versions
+
+The root [`agent.json`](agent.json) is unchanged and remains the default (`.`),
+already using `gpt-realtime` and 400 ms Semantic VAD.
+In the Portal **Version** field, select:
+
+- [`backups/20261020T040235Z/original`](backups/20261020T040235Z/original/agent.json):
+  exact original snapshot.
+- [`backups/20261020T040235Z/revised`](backups/20261020T040235Z/revised/agent.json):
+  experimental candidate-08, **not accepted**.
+
+The revised graph adds an offer/wait stage, but another route still permits
+message collection without acceptance. It is not an authorization safeguard.
+See the [version manifest](backups/20261020T040235Z/manifest.json) for remaining
+limitations, provenance, and checksums.

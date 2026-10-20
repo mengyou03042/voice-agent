@@ -1,0 +1,35 @@
+{
+  "captured_at_utc": "2026-10-20T01:15:23.936708+00:00",
+  "original_commit": "8c41ae3edf6f496300495e6b51699a343be15005",
+  "revised_source": "local working-tree snapshot; not a commit",
+  "files": [
+    {
+      "version": "original",
+      "file": "original/agent.json",
+      "source": "samples/example7_receptionist_messaging/agent.json",
+      "bytes": 38711,
+      "sha256": "5301657f413bb2eccabe46b9858a2a381457ab6f644996600cec196979a422d1"
+    },
+    {
+      "version": "original",
+      "file": "original/README.md",
+      "source": "samples/example7_receptionist_messaging/README.md",
+      "bytes": 3117,
+      "sha256": "cee81f84a50c1aac605b1c2fbf85e79fda100b4e75770c0721084ed12e2b27e4"
+    },
+    {
+      "version": "revised",
+      "file": "revised/agent.json",
+      "source": "samples/example7_receptionist_messaging/agent.json",
+      "bytes": 59043,
+      "sha256": "63b0e5aa117f0dcc1ee65f54e2bd1c571c3171238bbc328ecded4567ba52f91d"
+    },
+    {
+      "version": "revised",
+      "file": "revised/README.md",
+      "source": "samples/example7_receptionist_messaging/README.md",
+      "bytes": 5220,
+      "sha256": "a9d513ffe915b879a267c29b88e5a222f0622bde8f88c83f7402f306bbe9c7ae"
+    }
+  ]
+}

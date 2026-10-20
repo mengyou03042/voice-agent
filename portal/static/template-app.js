@@ -9,6 +9,8 @@ const $ = (id) => document.getElementById(id);
 const state = {
   templates: [],
   template: null,
+  selectionId: 0,
+  loading: false,
   service: null,
   building: false,
   publishedAgent: "",
@@ -475,16 +477,42 @@ async function loadTemplates(reload = false) {
       make(
         "div",
         { className: "issue error" },
-        make("code", { textContent: broken.id }),
+        make("code", { textContent: `${broken.id}${broken.version ? ` (${broken.version})` : ""}` }),
         make("span", { textContent: broken.error.split("\n")[0] }),
       ),
     );
   }
-  if (templates.length) await selectTemplate(state.template?.id || templates[0].id);
+  if (templates.length) {
+    const selected = templates.find((item) => item.id === state.template?.id) || templates[0];
+    const version = selected.versions.some((item) => item.id === state.template?.version)
+      ? state.template.version
+      : selected.default_version;
+    await selectTemplate(selected.id, version);
+  }
 }
 
-async function selectTemplate(templateId) {
-  const detail = await api(`/api/templates/${encodeURIComponent(templateId)}`);
+function templateUrl(template, action = "") {
+  return `/api/templates/${encodeURIComponent(template.id)}${action}?version=${encodeURIComponent(template.version)}`;
+}
+
+async function selectTemplate(templateId, version = ".") {
+  if (state.building) return;
+  const selectionId = ++state.selectionId;
+  state.loading = true;
+  refreshActionState();
+  let detail;
+  try {
+    detail = await api(templateUrl({ id: templateId, version }));
+  } catch (error) {
+    if (selectionId !== state.selectionId) return;
+    state.loading = false;
+    $("template-version").value = state.template?.version || ".";
+    refreshActionState();
+    toast(`Could not load template version: ${error.message}`, true);
+    return;
+  }
+  if (selectionId !== state.selectionId) return;
+  state.loading = false;
   state.template = detail;
   for (const card of document.querySelectorAll("#template-list .template-card")) {
     card.classList.toggle("selected", card.dataset.templateId === templateId);
@@ -492,6 +520,10 @@ async function selectTemplate(templateId) {
 
   $("detail-name").textContent = detail.name;
   $("detail-desc").textContent = detail.description;
+  $("template-version").replaceChildren(
+    ...detail.versions.map((item) => new Option(item.name, item.id)),
+  );
+  $("template-version").value = detail.version;
   $("detail-tags").replaceChildren(renderTags(detail.tags) || make("span", { className: "muted tiny-inline", textContent: "no tags" }));
   renderBadges($("detail-badges"), detail, [{ text: detail.category }]);
   templateGraph.render(detail.graph);
@@ -505,6 +537,7 @@ async function selectTemplate(templateId) {
   $("mcp-token-config").hidden = !detail.mcp?.allow_user_token;
   state.mcpReady = !detail.requires_mcp;
   state.mcpChecking = false;
+  state.mcpConfiguring = false;
   $("mcp-start-guide").hidden = true;
   $("mcp-test-state").className = "";
   $("mcp-test-state").textContent = detail.requires_mcp
@@ -583,6 +616,7 @@ function showBuildFailure(message) {
 
 function setBuildLocked(locked) {
   $("reload").disabled = locked;
+  $("template-version").disabled = locked || state.template?.versions.length < 2;
   $("btn-voice").disabled = locked || !(state.publishedAgent || canPublish());
   $("btn-publish").disabled = locked || !canPublish();
   $("btn-test-mcp").disabled = locked || state.mcpChecking;
@@ -593,18 +627,19 @@ function setBuildLocked(locked) {
 }
 
 function canPublish() {
-  if (!state.template || !state.projectConfigured) return false;
+  if (state.loading || !state.template || !state.projectConfigured) return false;
   if (!state.template.requires_mcp) return true;
   return state.mcpReady;
 }
 
 function refreshActionState() {
   if (state.building) return;
-  $("btn-voice").disabled = !(state.publishedAgent || canPublish());
+  $("template-version").disabled = state.loading || !state.template || state.template.versions.length < 2;
+  $("btn-voice").disabled = state.loading || !(state.publishedAgent || canPublish());
   $("btn-publish").disabled = !canPublish();
-  $("btn-test-mcp").disabled = !state.template?.requires_mcp || state.mcpChecking;
+  $("btn-test-mcp").disabled = state.loading || !state.template?.requires_mcp || state.mcpChecking;
   $("btn-configure-mcp").disabled = (
-    state.mcpConfiguring
+    state.loading || state.mcpConfiguring
     || $("mcp-token").value.trim() === ""
   );
 }
@@ -649,7 +684,6 @@ function mcpProbeSummary(result) {
 async function testTemplateMcp() {
   const template = state.template;
   if (!template?.requires_mcp || state.mcpChecking) return;
-  const templateId = template.id;
   state.mcpChecking = true;
   state.mcpReady = false;
   $("btn-test-mcp").disabled = true;
@@ -661,10 +695,10 @@ async function testTemplateMcp() {
   let recovery = null;
   try {
     const result = await api(
-      `/api/templates/${encodeURIComponent(templateId)}/mcp/probe`,
+      templateUrl(template, "/mcp/probe"),
     );
     recovery = result;
-    if (state.template?.id !== templateId) return;
+    if (state.template !== template) return;
     if (template.mcp?.allow_user_token) {
       $("mcp-token-config").hidden = result.connection_exists === true;
     }
@@ -673,7 +707,7 @@ async function testTemplateMcp() {
     $("mcp-test-state").className = "good";
     $("mcp-test-state").textContent = mcpProbeSummary(result);
   } catch (error) {
-    if (state.template?.id !== templateId) return;
+    if (state.template !== template) return;
     state.mcpReady = false;
     $("mcp-test-state").className = "bad";
     const summary = recovery ? `${mcpProbeSummary(recovery)} · ` : "";
@@ -689,7 +723,7 @@ async function testTemplateMcp() {
       $("mcp-start-guide").hidden = false;
     }
   } finally {
-    if (state.template?.id === templateId) {
+    if (state.template === template) {
       state.mcpChecking = false;
       $("btn-test-mcp").textContent = "Test MCP";
       refreshActionState();
@@ -702,7 +736,6 @@ async function configureTemplateMcp() {
   if (!template?.mcp?.allow_user_token || state.mcpConfiguring) return;
   const token = $("mcp-token").value.trim();
   if (!token) return;
-  const templateId = template.id;
   $("mcp-token").value = "";
   state.mcpConfiguring = true;
   $("mcp-test-state").className = "";
@@ -710,24 +743,24 @@ async function configureTemplateMcp() {
   refreshActionState();
   try {
     await api(
-      `/api/templates/${encodeURIComponent(templateId)}/mcp/configure`,
+      templateUrl(template, "/mcp/configure"),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
       },
     );
-    if (state.template?.id !== templateId) return;
+    if (state.template !== template) return;
     $("mcp-token-config").hidden = true;
     await testTemplateMcp();
   } catch (error) {
-    if (state.template?.id !== templateId) return;
+    if (state.template !== template) return;
     state.mcpReady = false;
     $("mcp-token-config").hidden = false;
     $("mcp-test-state").className = "bad";
     $("mcp-test-state").textContent = `Connection setup failed: ${error.message}`;
   } finally {
-    if (state.template?.id === templateId) {
+    if (state.template === template) {
       state.mcpConfiguring = false;
       refreshActionState();
     }
@@ -737,20 +770,19 @@ async function configureTemplateMcp() {
 async function publishMyAgent(autoOpen = false) {
   const template = state.template;
   if (!template || state.building) return;
-  const templateId = template.id;
   state.building = true;
   setBuildLocked(true);
   openBuildProgress(template);
   try {
     const published = await api(
-      `/api/templates/${encodeURIComponent(templateId)}/publish`,
+      templateUrl(template, "/publish"),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "{}",
       },
     );
-    if (state.template?.id !== templateId) {
+    if (state.template !== template) {
       throw new Error("The selected template changed while the agent was being built.");
     }
     clearInterval(buildProgressTimer);
@@ -774,7 +806,7 @@ async function publishMyAgent(autoOpen = false) {
     refreshActionState();
     if (autoOpen) openAgentInDemo(published.agent_name);
   } catch (error) {
-    if (state.template?.id === templateId) {
+    if (state.template === template) {
       const message = `Build failed: ${error.message}`;
       state.building = false;
       setResult("tpl-result", message, "bad");
@@ -804,6 +836,9 @@ $("btn-publish").addEventListener("click", () => publishMyAgent(false));
 $("btn-test-mcp").addEventListener("click", () => testTemplateMcp());
 $("btn-configure-mcp").addEventListener("click", () => configureTemplateMcp());
 $("mcp-token").addEventListener("input", () => refreshActionState());
+$("template-version").addEventListener("change", () => {
+  if (state.template) void selectTemplate(state.template.id, $("template-version").value);
+});
 $("build-progress-close").addEventListener("click", () => {
   $("build-progress").hidden = true;
   setBuildLocked(false);

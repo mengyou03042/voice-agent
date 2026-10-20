@@ -4,7 +4,8 @@ set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MCP_ROOT="${ROOT}/shared_mcp"
 SAMPLES_ROOT="${ROOT}/samples"
-HANDOFF_ROOT="${SAMPLES_ROOT}/example1_finance_with_handoff"
+HANDOFF_ROOT="${SAMPLES_ROOT}/example1_finance_with_handoff_realtime"
+CASCADE_ROOT="${SAMPLES_ROOT}/example1_finance_with_handoff_cascade"
 OTP_ROOT="${SAMPLES_ROOT}/example2_finance_with_OTP_and_Officer_Search"
 ELEVATOR_ROOT="${SAMPLES_ROOT}/example3_elevator_service_with_safety_zendesk_and_handoff"
 MCP_LOCAL_STATE_ROOT="${ROOT}/shared_mcp/state/local"
@@ -316,7 +317,11 @@ check_installed_environments() {
     "import mcp, redis, uvicorn" || failed=1
   check_python_environment \
     "${HANDOFF_ROOT}/.venv/bin/python" \
-    "finance-handoff" \
+    "finance-handoff-realtime" \
+    "import azure.ai.projects, azure.identity, dotenv, websockets" || failed=1
+  check_python_environment \
+    "${CASCADE_ROOT}/.venv/bin/python" \
+    "finance-handoff-cascade" \
     "import azure.ai.projects, azure.identity, dotenv, websockets" || failed=1
   check_python_environment \
     "${OTP_ROOT}/.venv/bin/python" \
@@ -373,12 +378,17 @@ ensure_tunnel_id || missing_config=1
 
 if [[ "${CHECK_ONLY}" == "0" ]]; then
   install_python_environment "${MCP_ROOT}" "shared-mcp-native"
-  install_python_environment "${HANDOFF_ROOT}" "finance-handoff"
+  install_python_environment "${HANDOFF_ROOT}" "finance-handoff-realtime"
+  install_python_environment "${CASCADE_ROOT}" "finance-handoff-cascade"
   install_python_environment "${OTP_ROOT}" "finance-otp-officer"
   install_python_environment "${ELEVATOR_ROOT}" "elevator-service"
 
   ensure_env_file \
     "${HANDOFF_ROOT}" \
+    "" \
+    "../../shared_mcp/config/generated/example1.local.env"
+  ensure_env_file \
+    "${CASCADE_ROOT}" \
     "" \
     "../../shared_mcp/config/generated/example1.local.env"
   ensure_env_file \
@@ -393,6 +403,7 @@ fi
 
 check_installed_environments || missing_config=1
 check_env_file "${HANDOFF_ROOT}/.env" || { missing_endpoint=1; missing_config=1; }
+check_env_file "${CASCADE_ROOT}/.env" || { missing_endpoint=1; missing_config=1; }
 check_env_file "${OTP_ROOT}/.env" || { missing_endpoint=1; missing_config=1; }
 check_env_file "${ELEVATOR_ROOT}/.env" || { missing_endpoint=1; missing_config=1; }
 check_authentication || { missing_auth=1; missing_config=1; }
