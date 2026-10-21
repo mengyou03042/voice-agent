@@ -441,18 +441,9 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
                 settings,
                 prefer_document_name=True,
             )
-            # The default before the direct-identity rework stays selectable.
-            previous = "backups/20261021T074447Z/previous_default/agent.json"
-            _, _, previous_realtime = load_materialized_agent(
-                samples / "example1_finance_with_handoff_realtime",
-                settings,
-                agent_file=previous,
-                prefer_document_name=True,
-            )
 
         self.assertEqual("finance-example-realtime", realtime_name)
         self.assertEqual("finance-example-cascade-luna", cascade_name)
-        self.assertEqual(13, len(previous_realtime["handoff"]["nodes"]))
         # Cascade follows the realtime graph, greeting and shared prompt; it
         # adds only latency cover for its slower tool and handoff turns.
         self.assertEqual(realtime["instructions"], cascade["instructions"])
@@ -580,7 +571,7 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
             },
             end["config"]["tools"][0],
         )
-        self.assertEqual("gpt-realtime", realtime["model"])
+        self.assertEqual("gpt-realtime-regional", realtime["model"])
         for definition in (realtime, cascade):
             self.assertEqual(
                 400,

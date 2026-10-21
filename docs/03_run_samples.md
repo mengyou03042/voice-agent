@@ -387,9 +387,7 @@ cd "$SAMPLES_ROOT/example1_finance_with_handoff_realtime"
 For Cascade, run the same commands from
 `$SAMPLES_ROOT/example1_finance_with_handoff_cascade`. Each directory publishes
 its own root `agent.json`; `--variant` and the old shared builder are no longer
-needed. Both directories retain the original definition by default. In the
-Portal Version selector, `backups/20261020T040235Z/revised` loads the experimental
-revision without replacing the default or publishing automatically.
+needed.
 
 ### Example 2: OTP and officer search
 

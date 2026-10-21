@@ -100,20 +100,7 @@ charges. See the [run guide](../../docs/03_run_samples.md).
 ## Template versions
 
 In Portal **Load from templates**, choose **Example 1: Finance with Handoff -
-Realtime**, then select a **Version**:
-
-| Version | Meaning |
-| --- | --- |
-| **Default** | The reworked flow above. |
-| `backups/20261021T094717Z/emotional_response` | Kept for its improved emotional responses; Cascade without latency cover. |
-| `backups/20261021T094257Z/fluency_tested` | The first fluency candidate tried in the Portal, before plain-integer tool arguments. |
-| `backups/20261021T091708Z/business_warm_opening` | Business rework with the warm opening, before fluency changes. |
-| `backups/20261021T081510Z/pre_fluency` | First business rework: direct identity check, charges with consent, fixed closing. |
-| `backups/20261021T074447Z/previous_default` | The default before the rework: dial assessment, IVR, voicemail and separate charges and consent stages. |
-
-Loading a version creates a working copy without changing the default. Older
-backups were removed on 2026-10-21; they remain in Git history. Fingerprints
-are in each backup's `manifest.json`.
+Realtime**. The root [`agent.json`](agent.json) is its only version. Earlier versions were removed on 2026-10-21 and remain in Git history.
 
 ## Validation
 
@@ -128,7 +115,7 @@ correction and frustration turns, three repeats each:
 
 | Version | Realtime pass, score | Cascade pass, score |
 | --- | --- | --- |
-| Business rework (`pre_fluency`) | 5/9, 3.78 | 7/9, 4.81 |
+| Business rework, before fluency changes | 5/9, 3.78 | 7/9, 4.81 |
 | Default | 6/9, 4.69 | 7/9, 4.89 |
 
 Most remaining judge failures add a period question after answering a rate

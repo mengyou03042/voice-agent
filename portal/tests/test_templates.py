@@ -72,7 +72,6 @@ CONVERTED_TEMPLATES = [
     ("user-research-interviewer-example", "example34_user_research_interviewer", 8, 16),
 ]
 MOCK_TOOL_TEMPLATES = [*ORIGINAL_TEMPLATES, *CONVERTED_TEMPLATES]
-TOOL_FREE_BACKUP = "backups/20261021T000000Z/tool_free_default"
 SHARED_MCP_TEMPLATES = list(MCP_TEMPLATES)
 MOCK_TOOL_TEMPLATE_IDS = [template_id for template_id, *_ in MOCK_TOOL_TEMPLATES]
 MCP_TEMPLATES = [*SHARED_MCP_TEMPLATES, *MOCK_TOOL_TEMPLATE_IDS]
@@ -94,28 +93,6 @@ MOCK_TOOL_PREFIX = "mock_tool_call_"
 
 
 class TemplateCatalogTests(unittest.TestCase):
-    def test_tuned_tool_free_backups_need_no_mcp(self) -> None:
-        catalog = TemplateCatalog()
-
-        for template_id, folder, node_count, edge_count in ORIGINAL_TEMPLATES:
-            with self.subTest(template_id=template_id):
-                detail = catalog.detail(template_id, TOOL_FREE_BACKUP)
-                assert detail is not None
-                self.assertFalse(detail["requires_mcp"])
-                self.assertTrue(detail["runtime_locked"])
-                self.assertEqual(node_count, detail["node_count"])
-                self.assertEqual(edge_count, detail["edge_count"])
-                agent = json.loads(
-                    (ROOT.parent / "samples" / folder / TOOL_FREE_BACKUP / "agent.json").read_text(encoding="utf-8")
-                )
-                handoff = agent["definition"]["handoff"]
-                self.assertEqual(template_id, agent["name"])
-                self.assertEqual("end", handoff["nodes"][-1]["id"])
-                self.assertEqual(
-                    [END_CONVERSATION_TOOL],
-                    handoff["nodes"][-1]["config"]["tools"],
-                )
-
     def test_tuned_handoff_examples_preserve_normal_400ms_vad(self) -> None:
         catalog = TemplateCatalog()
         expected = {
@@ -126,11 +103,9 @@ class TemplateCatalogTests(unittest.TestCase):
             "silence_duration_ms": 400,
         }
 
-        for (template_id, *_), version in (
-            (entry, version) for entry in ORIGINAL_TEMPLATES for version in (".", TOOL_FREE_BACKUP)
-        ):
-            with self.subTest(template_id=template_id, version=version):
-                document = catalog.document(template_id, version)
+        for template_id, *_ in ORIGINAL_TEMPLATES:
+            with self.subTest(template_id=template_id):
+                document = catalog.document(template_id)
                 assert document is not None
                 self.assertEqual(
                     expected, document["definition"]["audio"]["input"]["turn_detection"],
@@ -143,45 +118,6 @@ class TemplateCatalogTests(unittest.TestCase):
                 self.assertEqual(
                     expected, definition["audio"]["input"]["turn_detection"],
                 )
-
-    def test_tuned_tool_free_backups_separate_shared_and_local_instructions(self) -> None:
-        catalog = TemplateCatalog()
-        headings = (
-            "Personality", "Environment", "Tone", "How you respond",
-            "How you sound", "Goal", "Guardrails",
-        )
-        local_only = (
-            "Workflow entrypoint", "Current stage:", "Routes:",
-            'handoff(target=', "end_conversation", "target end",
-        )
-
-        for template_id, *_ in ORIGINAL_TEMPLATES:
-            with self.subTest(template_id=template_id):
-                document = catalog.document(template_id, TOOL_FREE_BACKUP)
-                assert document is not None
-                shared = document["definition"]["instructions"]
-                for heading in headings:
-                    self.assertEqual(1, shared.count(f"### {heading}\n"))
-                for text in local_only:
-                    self.assertNotIn(text, shared)
-                definition = materialize_template(
-                    document, model="", voice="",
-                    mcp_server_url="", mcp_connection_id="",
-                )
-                original_nodes = document["definition"]["handoff"]["nodes"]
-                published_nodes = definition["handoff"]["nodes"]
-                self.assertEqual(len(original_nodes), len(published_nodes))
-                for authored, published in zip(original_nodes, published_nodes, strict=True):
-                    config = authored["config"]
-                    self.assertIs(config["inherit_from_base_instructions"], True)
-                    self.assertTrue(config["instructions"].startswith("## CURRENT NODE\n"))
-                    self.assertNotIn("### Personality", config["instructions"])
-                    self.assertNotIn(shared, config["instructions"])
-                    self.assertNotIn("inherit_from_base_instructions", published["config"])
-                    self.assertEqual(
-                        f"{shared}\n\n{config['instructions']}",
-                        published["config"]["instructions"],
-                    )
 
     def test_mock_tool_examples_bind_only_mock_tools(self) -> None:
         catalog = TemplateCatalog()
@@ -462,7 +398,7 @@ class TemplateCatalogTests(unittest.TestCase):
         )
         self.assertTrue(realtime["runtime_locked"])
         self.assertTrue(cascade["runtime_locked"])
-        self.assertEqual("gpt-realtime", realtime["model"])
+        self.assertEqual("gpt-realtime-regional", realtime["model"])
         self.assertEqual(
             "en-IN-Diya:DragonHDLatestNeural",
             realtime["voice"],
@@ -1002,7 +938,7 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
             await self.client.get("/api/templates/finance-example-cascade-luna")
         ).json()
 
-        self.assertEqual("gpt-realtime", realtime["model"])
+        self.assertEqual("gpt-realtime-regional", realtime["model"])
         self.assertEqual("gpt-4.1-mini", cascade["model"])
 
     async def test_unknown_template_and_asset_are_not_exposed(self) -> None:

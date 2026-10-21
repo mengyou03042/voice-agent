@@ -210,21 +210,8 @@ call-control tools in the active graph node.
 
 ## Template versions
 
-The root [`agent.json`](agent.json) is the default (`.`). Since 2026-10-21 it is
-a byte-for-byte copy of the revised candidate-04, using `gpt-realtime` and
-400 ms Semantic VAD. In the Portal **Version** field, select:
-
-- [`backups/20261020T040235Z/original`](backups/20261020T040235Z/original/agent.json):
-  original business content with the current runtime settings (the previous
-  default).
-- [`backups/20261020T040235Z/revised`](backups/20261020T040235Z/revised/agent.json):
-  candidate-04, identical to the default.
-
-The revised candidate was chosen as the default because it performed best in
-hands-on use. It is a frozen authored revision, not a completed assessment. Acknowledgement
-and waiting failures observed in candidate-03 are not proven fixed in this
-candidate. See the [version manifest](backups/20261020T040235Z/manifest.json)
-for the evaluation status at capture, provenance, and checksums.
-Exact prior bytes remain in each affected version's `agent.source.json` and
-the archived manifest, outside the Version selector. The runtime change itself
-has not been accepted by live latency or listening validation.
+The root [`agent.json`](agent.json) is the only version: revised candidate-04,
+using `gpt-realtime` and 400 ms Semantic VAD, chosen because it performed best
+in hands-on use. Acknowledgement and waiting failures observed in candidate-03
+are not proven fixed, and live latency and listening have not been validated.
+Earlier versions were removed on 2026-10-21 and remain in Git history.

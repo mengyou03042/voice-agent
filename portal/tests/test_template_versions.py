@@ -29,30 +29,6 @@ ORIGINAL_TEMPLATE_IDS = (
     "appointment-setter-example",
     "receptionist-messaging-example",
 )
-# These templates default to their revised backup.
-REVISED_DEFAULT_TEMPLATE_IDS = (
-    "finance-with-otp-and-officer-search",
-    "elevator-service-example",
-)
-# The Example 1 Finance defaults were reworked from these exact prior defaults;
-# their older backups were removed at the owner's request.
-FINANCE_FOLDERS = {
-    "finance-example-realtime": "example1_finance_with_handoff_realtime",
-    "finance-example-cascade-luna": "example1_finance_with_handoff_cascade",
-}
-FINANCE_PREVIOUS_DEFAULT = "backups/20261021T074447Z/previous_default"
-# Cascade versions saved before the switch to gpt-4.1-mini keep gpt-5.6-luna.
-CASCADE_MODEL_TRIALS = {
-    name: "gpt-5.6-luna"
-    for name in (
-        "previous_default", "pre_fluency", "business_warm_opening", "fluency_tested",
-        "emotional_response", "latency_cover_smart_turn", "luna_no_smart_turn",
-    )
-}
-FINANCE_PREVIOUS_DEFAULT_SHA256 = {
-    "finance-example-realtime": "7def9d0ac49611645a7268c0dbd99bf8c2b568a882ae6f4c579db395697c6855",
-    "finance-example-cascade-luna": "b551c6d3c01f9871963d1482abd6db0489c974daa80c9bce2b5a955750103fbe",
-}
 
 
 class TemplateVersionFixture:
@@ -213,95 +189,21 @@ class TemplateVersionCatalogTests(TemplateVersionFixture, unittest.TestCase):
                         catalog.document(template_id, version),
                     )
 
-    def test_existing_template_backups_remain_independent_of_defaults(self) -> None:
-        catalog = template_portal.TemplateCatalog()
-        self.assertEqual([], catalog.errors)
-        self.assertTrue(
-            set(ORIGINAL_TEMPLATE_IDS).issubset(card["id"] for card in catalog.cards()),
-        )
-        for template_id in (
-            "finance-with-otp-and-officer-search",
-            "elevator-service-example",
-            "frontdesk-receptionist-example",
-        ):
-            with self.subTest(template_id=template_id):
-                source = catalog.source(template_id)
-                self.assertIsNotNone(source)
-                root = source.path.parent
-                stamp = root / "backups" / "20261020T040235Z"
-                original_bytes = (stamp / "original/agent.json").read_bytes()
-                revised_bytes = (stamp / "revised/agent.json").read_bytes()
-                default_bytes = source.path.read_bytes()
-                if template_id in REVISED_DEFAULT_TEMPLATE_IDS:
-                    self.assertNotEqual(original_bytes, default_bytes)
-                    self.assertEqual(json.loads(revised_bytes), json.loads(default_bytes))
-                else:
-                    self.assertEqual(original_bytes, default_bytes)
-                default = catalog.document(template_id)
-                revised = catalog.document(template_id, "backups/20261020T040235Z/revised")
-                self.assertIsNotNone(revised)
-                if template_id not in REVISED_DEFAULT_TEMPLATE_IDS:
-                    self.assertNotEqual(default["definition"], revised["definition"])
-                self.assertEqual(
-                    default["definition"]["model"],
-                    revised["definition"]["model"],
-                )
-                manifest = json.loads((stamp / "manifest.json").read_text(encoding="utf-8"))
-                for record in manifest["files"]:
-                    path = stamp / record["file"]
-                    self.assertEqual(
-                        record["sha256"], hashlib.sha256(path.read_bytes()).hexdigest(),
-                    )
-                    self.assertEqual(record["bytes"], path.stat().st_size)
-
-    def test_finance_rework_keeps_its_prior_defaults_selectable(self) -> None:
-        catalog = template_portal.TemplateCatalog()
-        self.assertEqual([], catalog.errors)
-        for template_id, folder in FINANCE_FOLDERS.items():
-            with self.subTest(template_id=template_id):
-                root = template_portal.SAMPLES_DIR / folder
-                previous = root / FINANCE_PREVIOUS_DEFAULT / "agent.json"
-                self.assertEqual(
-                    FINANCE_PREVIOUS_DEFAULT_SHA256[template_id],
-                    hashlib.sha256(previous.read_bytes()).hexdigest(),
-                )
-                self.assertEqual(
-                    json.loads(previous.read_bytes()),
-                    catalog.document(template_id, FINANCE_PREVIOUS_DEFAULT),
-                )
-                self.assertNotEqual(
-                    catalog.document(template_id)["definition"]["handoff"],
-                    catalog.document(template_id, FINANCE_PREVIOUS_DEFAULT)["definition"]["handoff"],
-                )
-                manifests = sorted((root / "backups").glob("*/manifest.json"))
-                self.assertIn("20261021T074447Z", {m.parent.name for m in manifests})
-                for manifest_path in manifests:
-                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-                    for record in manifest["files"]:
-                        path = manifest_path.parent / record["file"]
-                        self.assertEqual(
-                            record["sha256"], hashlib.sha256(path.read_bytes()).hexdigest(),
-                        )
-                        self.assertEqual(record["bytes"], path.stat().st_size)
-
     def test_finance_version_roots_and_models_remain_separate(self) -> None:
         catalog = template_portal.TemplateCatalog()
         realtime = catalog.source("finance-example-realtime")
         cascade = catalog.source("finance-example-cascade-luna")
         self.assertNotEqual(realtime.path.parent, cascade.path.parent)
         for template_id, model in (
-            ("finance-example-realtime", "gpt-realtime"),
+            ("finance-example-realtime", "gpt-realtime-regional"),
             ("finance-example-cascade-luna", "gpt-4.1-mini"),
         ):
             card = next(card for card in catalog.cards() if card["id"] == template_id)
             self.assertEqual(".", card["default_version"])
             for version in card["versions"]:
                 with self.subTest(template_id=template_id, version=version["id"]):
-                    expected = model
-                    if template_id == "finance-example-cascade-luna":
-                        expected = CASCADE_MODEL_TRIALS.get(version["id"].rsplit("/", 1)[-1], model)
                     self.assertEqual(
-                        expected,
+                        model,
                         catalog.document(template_id, version["id"])["definition"]["model"],
                     )
 
@@ -310,50 +212,19 @@ class TemplateVersionCatalogTests(TemplateVersionFixture, unittest.TestCase):
         self.assertEqual([], catalog.errors)
         for template_id in ORIGINAL_TEMPLATE_IDS:
             card = next(card for card in catalog.cards() if card["id"] == template_id)
-            model = (
-                "gpt-4.1-mini"
-                if card["id"] == "finance-example-cascade-luna"
-                else "gpt-realtime"
-            )
+            model = {
+                "finance-example-cascade-luna": "gpt-4.1-mini",
+                "finance-example-realtime": "gpt-realtime-regional",
+            }.get(card["id"], "gpt-realtime")
             for version in card["versions"]:
                 with self.subTest(template_id=card["id"], version=version["id"]):
                     definition = catalog.document(card["id"], version["id"])["definition"]
-                    trial = CASCADE_MODEL_TRIALS.get(version["id"].rsplit("/", 1)[-1])
-                    if card["id"] != "finance-example-cascade-luna":
-                        trial = None
-                    self.assertEqual(trial or model, definition["model"])
+                    self.assertEqual(model, definition["model"])
                     turn_detection = definition["audio"]["input"]["turn_detection"]
                     self.assertTrue(
                         turn_detection["type"].startswith("azure_semantic_vad"),
                     )
                     self.assertEqual(400, turn_detection["silence_duration_ms"])
-
-    def test_defaults_and_original_sources_match_reviewed_content(self) -> None:
-        expected_sources = {
-            "finance-with-otp-and-officer-search": "c6a4cb02b00bcba62fb5385bfa650772eba3994872d042715c574648cba8e523",
-            "elevator-service-example": "d099f64afb7ee6238889267b46f7f3d01b3dac19caf5eba6393fde1f32c53c1e",
-            "frontdesk-receptionist-example": "7ee36c0aa082cd3ab1a526c6b89511e0ced6418f326801ca4be93544048ea752",
-        }
-        catalog = template_portal.TemplateCatalog()
-        for template_id, expected_sha in expected_sources.items():
-            with self.subTest(template_id=template_id):
-                source = catalog.source(template_id)
-                original = source.path.parent / "backups/20261020T040235Z/original"
-                archived = original / "agent.source.json"
-                if not archived.exists():
-                    archived = original / "agent.json"
-                raw = archived.read_bytes()
-                self.assertEqual(expected_sha, hashlib.sha256(raw).hexdigest())
-                if template_id in REVISED_DEFAULT_TEMPLATE_IDS:
-                    revised = source.path.parent / "backups/20261020T040235Z/revised/agent.json"
-                    expected = json.loads(revised.read_bytes())
-                else:
-                    expected = json.loads(raw)
-                    expected["definition"]["model"] = "gpt-realtime"
-                    expected["definition"]["audio"]["input"]["turn_detection"][
-                        "silence_duration_ms"
-                    ] = 400
-                self.assertEqual(expected, catalog.document(template_id))
 
     def test_runtime_updated_backup_manifests_keep_exact_prior_sources(self) -> None:
         for manifest_path in template_portal.SAMPLES_DIR.glob("*/backups/**/manifest.json"):

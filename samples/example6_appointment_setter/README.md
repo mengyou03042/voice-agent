@@ -87,12 +87,6 @@ The Microsoft 365 (Work IQ) calendar tools act as the signed-in user, so they
 cannot be connected in the shared Playground and stay on mock data there; use a
 Work IQ Toolbox in your own Foundry Project instead.
 
-The hand-tuned tool-free version (shared prompt plus per-stage instructions)
-is still available: select
-[`backups/20261021T000000Z/tool_free_default`](backups/20261021T000000Z/tool_free_default/agent.json)
-in the **Version** selector. The older `backups/20261020T011523936708Z`
-versions are unchanged.
-
 The example uses `gpt-realtime` with `azure_semantic_vad`, `profile: normal`,
 and `silence_duration_ms: 400`.
 

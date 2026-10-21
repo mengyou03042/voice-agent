@@ -81,12 +81,6 @@ tools, choose **Connect my tools** and enter a public HTTPS MCP server for each
 system (Salesforce, Zendesk); the Agent calls it without credentials, so point
 it at sandbox data. There is nothing to start locally.
 
-The hand-tuned tool-free version (shared prompt plus per-stage instructions)
-is still available: select
-[`backups/20261021T000000Z/tool_free_default`](backups/20261021T000000Z/tool_free_default/agent.json)
-in the **Version** selector. The older `backups/20261020T011523936708Z`
-versions are unchanged.
-
 The example uses `gpt-realtime` with `azure_semantic_vad`, `profile: normal`,
 and `silence_duration_ms: 400`.
 
