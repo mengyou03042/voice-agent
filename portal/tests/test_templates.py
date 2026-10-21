@@ -927,6 +927,17 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(system, text)
         self.assertIn('<a href="/guide/logic-apps-mcp"', text)
 
+    async def test_try_it_turns_come_from_the_sample_readme(self) -> None:
+        response = await self.client.get("/api/templates/collections-payment-recovery-agent-example/try-it")
+        self.assertEqual(200, response.status)
+        payload = await response.json()
+        self.assertEqual("collections-payment-recovery-agent-example", payload["id"])
+        self.assertGreaterEqual(len(payload["turns"]), 3)
+        self.assertIn("4821", payload["turns"][0])
+        self.assertFalse(any("mock_tool_call_" in turn for turn in payload["turns"]))
+        missing = await self.client.get("/api/templates/no-such-template/try-it")
+        self.assertEqual(404, missing.status)
+
     async def test_logic_apps_mcp_guide_is_served(self) -> None:
         response = await self.client.get("/guide/logic-apps-mcp")
         self.assertEqual(200, response.status)
