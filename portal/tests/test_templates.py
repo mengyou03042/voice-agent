@@ -920,7 +920,7 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(200, response.status)
         self.assertEqual("text/html", response.content_type)
         text = await response.text()
-        self.assertIn("<h1>Connect real tools to a Template</h1>", text)
+        self.assertIn("<h1>Use real tools with Templates</h1>", text)
         self.assertIn("<table>", text)
         self.assertIn('<a href="/guide/run-samples"', text)
         for system in ("Salesforce", "Zendesk", "Twilio"):

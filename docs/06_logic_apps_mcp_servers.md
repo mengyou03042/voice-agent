@@ -21,7 +21,7 @@ between before you use **Connect my tools**:
 3. Work IQ acts as the signed-in user, so it stays on mock data in the shared
    Playground. Use section 10 in your own Foundry Project instead.
 
-See [Connect real tools to a Template](./05_connect_real_tools.md) for the tool
+See [Use real tools with Templates](./05_connect_real_tools.md) for the tool
 contract the Templates expect.
 
 **Start here if a collaborator has already provided working services.** Reuse those services; do not rebuild them. Salesforce/Zendesk API keys and Work IQ sign-in are different authentication paths.

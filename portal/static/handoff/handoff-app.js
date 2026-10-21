@@ -1071,6 +1071,7 @@ function renderToolBanner() {
 function openToolConnections() {
   if (!state.definition) return;
   state.toolDrafts = {};
+  state.toolSummaryOpen = false;
   $("#tool-connections").hidden = false;
   $("#tool-connections-status").textContent = "Reading the working copy's tools…";
   void refreshToolGroups();
@@ -1085,20 +1086,84 @@ function shortToolName(name) {
   return String(name).replace(/^mock_tool_call_/, "");
 }
 
+function toolGroupMode(group) {
+  if (group.connected) return "real";
+  if (!group.connectable) return "locked";
+  return state.toolDrafts[group.id]?.url.trim() ? "pending" : "mock";
+}
+
+const TOOL_MODE_LABELS = {
+  real: "Using your MCP server",
+  mock: "Using mock data",
+  pending: "URL not connected",
+  locked: "Mock only",
+};
+
+function toolConnectionsSummary(groups) {
+  const real = groups.filter((group) => group.connected);
+  const mock = groups.filter((group) => !group.connected);
+  return { real, mock, text: `${real.length} on your MCP server · ${mock.length} on mock data` };
+}
+
+function renderToolSummary(groups) {
+  const { real, mock } = toolConnectionsSummary(groups);
+  const row = (group) => {
+    const mode = toolGroupMode(group);
+    const detail = group.connected
+      ? escapeHtml(serverHost(group.connected.server_url))
+      : mode === "pending"
+        ? "The URL you entered was not connected, so this system uses mock data."
+        : mode === "locked" ? "Can't be connected with an MCP URL yet." : "Fictional data from the shared mock MCP server.";
+    return `<li class="${mode}"><strong>${escapeHtml(group.label)}</strong><span>${detail}</span></li>`;
+  };
+  return `
+    <section class="tool-summary">
+      <h3>Review before you continue</h3>
+      <div class="tool-summary-column real">
+        <h4>Real data · your MCP server</h4>
+        ${real.length ? `<ul>${real.map(row).join("")}</ul>` : `<p>None. Every system uses mock data.</p>`}
+      </div>
+      <div class="tool-summary-column mock">
+        <h4>Mock data · nothing real is booked, sent, or saved</h4>
+        ${mock.length ? `<ul>${mock.map(row).join("")}</ul>` : `<p>None.</p>`}
+      </div>
+      <p class="tool-summary-next">Select Confirm, then Try it now to publish the Agent with these choices.</p>
+    </section>`;
+}
+
 function renderToolConnections() {
   renderToolBanner();
   if ($("#tool-connections").hidden) return;
   const groups = state.toolGroups || [];
   $("#tool-connections-status").textContent = groups.length
-    ? `${groups.length} system${groups.length === 1 ? "" : "s"} in this working copy.`
+    ? `This Agent uses ${groups.length} system${groups.length === 1 ? "" : "s"}.`
     : "This working copy has no MCP tools to connect.";
-  $("#tool-connection-groups").innerHTML = groups.map(toolGroupCard).join("");
+  const summaryOpen = Boolean(state.toolSummaryOpen && groups.length);
+  $("#tool-connection-groups").innerHTML = summaryOpen ? renderToolSummary(groups) : groups.map(toolGroupCard).join("");
+  $("#tool-connections-summary").textContent = groups.length ? toolConnectionsSummary(groups).text : "";
+  $("#tool-connections-back").hidden = !summaryOpen;
+  $("#tool-connections-done").textContent = summaryOpen ? "Confirm" : "Done";
+}
+
+function finishToolConnections() {
+  if (!state.toolSummaryOpen && (state.toolGroups || []).length) {
+    state.toolSummaryOpen = true;
+    renderToolConnections();
+    return;
+  }
+  state.toolSummaryOpen = false;
+  closeToolConnections();
+}
+
+function backToToolConnections() {
+  state.toolSummaryOpen = false;
+  renderToolConnections();
 }
 
 const TOOL_URL_STORAGE = "voice-agent.tool-url.";
 const TOOL_GUIDES = {
-  salesforce: "/guide/logic-apps-mcp",
-  zendesk: "/guide/logic-apps-mcp",
+  salesforce: ["/guide/logic-apps-mcp", "How to build a Salesforce MCP server (Azure Logic Apps)"],
+  zendesk: ["/guide/logic-apps-mcp", "How to build a Zendesk MCP server (Azure Logic Apps)"],
 };
 
 function rememberedToolUrl(groupId) {
@@ -1134,12 +1199,18 @@ function serverHost(url) {
   }
 }
 
+function toolGroupHint(mode) {
+  return mode === "pending"
+    ? "Not connected yet. Select Connect to use this URL, or Use mock data to clear it."
+    : "Leave the URL empty to keep mock data for this system.";
+}
+
 function toolGroupCard(group) {
   const connected = group.connected;
-  const status = connected ? "Connected" : group.connectable ? "Mock data" : "Mock only";
+  const mode = toolGroupMode(group);
   const id = escapeHtml(group.id);
   let body = "";
-  if (!group.connectable) {
+  if (mode === "locked") {
     body = `<p class="tool-group-note">${escapeHtml(group.note)}</p>`;
   } else if (connected) {
     const known = Boolean(state.toolConnections[group.id]);
@@ -1147,7 +1218,7 @@ function toolGroupCard(group) {
       <div class="tool-group-row">
         <p class="tool-group-state good">Calls your MCP server at <strong>${escapeHtml(serverHost(connected.server_url))}</strong></p>
         ${known
-          ? `<button type="button" class="tool-group-link" data-tool-action="disconnect" data-group="${id}">Use mock data again</button>`
+          ? `<button type="button" data-tool-action="use-mock" data-group="${id}">Use mock data</button>`
           : ""}
       </div>
       ${known ? "" : `<p class="tool-group-hint">To switch back to mock data, use Undo or load the template again.</p>`}`;
@@ -1169,22 +1240,28 @@ function toolGroupCard(group) {
             </li>`).join("")}</ul>
         </details>`
       : "";
-    const guide = TOOL_GUIDES[group.id] || "/guide/real-tools";
+    const [guide, guideText] = TOOL_GUIDES[group.id]
+      || ["/guide/real-tools", `How to build a ${group.label} MCP server`];
+    const empty = !draft.url.trim();
     body = `
       <div class="tool-group-row">
         <input type="url" data-tool-url="${id}" value="${escapeHtml(draft.url)}"
           placeholder="https://your-server.example.com/mcp" autocomplete="off" spellcheck="false" maxlength="2048"
           aria-label="${escapeHtml(group.label)} MCP server URL">
         <button type="button" class="tool-group-action" data-tool-action="connect" data-group="${id}"
-          ${draft.busy || !draft.url.trim() ? "disabled" : ""}>${draft.busy ? "Connecting…" : "Connect"}</button>
+          ${draft.busy || empty ? "disabled" : ""}>${draft.busy ? "Connecting…" : "Connect"}</button>
+        <button type="button" data-tool-action="use-mock" data-group="${id}" ${draft.busy || empty ? "disabled" : ""}>Use mock data</button>
       </div>
-      ${draft.message ? `<p class="tool-group-state ${draft.error ? "bad" : "good"}">${escapeHtml(draft.message)}</p>` : ""}
+      ${draft.message
+        ? `<p class="tool-group-state ${draft.error ? "bad" : "good"}">${escapeHtml(draft.message)}</p>`
+        : `<p class="tool-group-hint" data-tool-hint>${toolGroupHint(mode)}</p>`}
       ${mapping}
-      <a class="tool-group-guide" href="${guide}" target="_blank" rel="noreferrer">How to get a ${escapeHtml(group.label)} MCP URL</a>`;
+      <a class="tool-group-guide" href="${guide}" target="_blank" rel="noreferrer">${escapeHtml(guideText)}</a>`;
   }
   return `
-    <article class="tool-group ${connected ? "connected" : group.connectable ? "" : "locked"}">
-      <header><strong>${escapeHtml(group.label)}</strong><span class="tool-group-status ${connected ? "good" : group.connectable ? "" : "locked"}">${status}</span></header>
+    <article class="tool-group mode-${mode}" data-group-card="${id}">
+      <header><strong>${escapeHtml(group.label)}</strong>
+        <span class="tool-group-status mode-${mode}" data-tool-status>${TOOL_MODE_LABELS[mode]}</span></header>
       ${body}
     </article>`;
 }
@@ -1231,6 +1308,13 @@ async function handleToolAction(event) {
   if (!group) return;
   const action = button.dataset.toolAction;
   const draft = state.toolDrafts[groupId];
+  if (action === "use-mock" && !group.connected) {
+    state.toolDrafts[groupId] = {
+      url: "", tools: null, mapping: {}, message: "", error: false, busy: false,
+    };
+    renderToolConnections();
+    return;
+  }
   if (action === "connect" && draft && !draft.busy) {
     Object.assign(draft, { busy: true, message: "", error: false });
     renderToolConnections();
@@ -1244,12 +1328,15 @@ async function handleToolAction(event) {
     renderToolConnections();
     return;
   }
-  if (action === "disconnect" && state.toolConnections[groupId]) {
+  if (action === "use-mock" && state.toolConnections[groupId]) {
     try {
       const result = await toolRequest("/api/tools/disconnect", {
         group: groupId, tool_map: state.toolConnections[groupId].tool_map,
       });
       delete state.toolConnections[groupId];
+      state.toolDrafts[groupId] = {
+        url: "", tools: null, mapping: {}, message: "", error: false, busy: false,
+      };
       replaceWorkingDefinition(`Moved ${group.label} tools back to mock data`, result.definition);
       state.toolGroups = result.groups;
     } catch (error) {
@@ -1268,8 +1355,21 @@ function handleToolInput(event) {
     if (url.value.trim() !== (draft.discoveredUrl || "")) {
       Object.assign(draft, { tools: null, mapping: {}, message: "", error: false });
     }
-    const connect = url.closest(".tool-group")?.querySelector('[data-tool-action="connect"]');
-    if (connect) connect.disabled = draft.busy || !url.value.trim();
+    const card = url.closest(".tool-group");
+    const group = (state.toolGroups || []).find((item) => item.id === url.dataset.toolUrl);
+    if (card && group) {
+      const mode = toolGroupMode(group);
+      const status = card.querySelector("[data-tool-status]");
+      status.textContent = TOOL_MODE_LABELS[mode];
+      status.className = `tool-group-status mode-${mode}`;
+      card.className = `tool-group mode-${mode}`;
+      const hint = card.querySelector("[data-tool-hint]");
+      if (hint) hint.textContent = toolGroupHint(mode);
+      card.querySelectorAll('[data-tool-action="connect"], [data-tool-action="use-mock"]').forEach((button) => {
+        button.disabled = draft.busy || !url.value.trim();
+      });
+      $("#tool-connections-summary").textContent = toolConnectionsSummary(state.toolGroups).text;
+    }
     return;
   }
   const select = event.target.closest("[data-tool-map]");
@@ -4190,6 +4290,8 @@ function bindEvents() {
   $("#template-action").addEventListener("click", openTemplatePicker);
   $("#open-tool-connections").addEventListener("click", openToolConnections);
   $("#close-tool-connections").addEventListener("click", closeToolConnections);
+  $("#tool-connections-done").addEventListener("click", finishToolConnections);
+  $("#tool-connections-back").addEventListener("click", backToToolConnections);
   $("#tool-connection-groups").addEventListener("click", (event) => void handleToolAction(event));
   $("#tool-connection-groups").addEventListener("input", handleToolInput);
   $("#tool-connection-groups").addEventListener("change", handleToolInput);

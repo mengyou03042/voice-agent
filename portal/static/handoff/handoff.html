@@ -244,18 +244,25 @@
         <header class="template-picker-header">
           <div>
             <span class="template-picker-kicker">Tool connections</span>
-            <h2 id="tool-connections-title">Connect each system to your own MCP server</h2>
-            <p>This Agent uses mock data for each system below. Paste a no-auth MCP server URL for a system to use your own data instead; each system can use a different server. Keep the servers on sandbox or test data. Changes apply to this working copy until you choose Try it now.</p>
+            <h2 id="tool-connections-title">Choose real or mock data for each system</h2>
+            <p>Every system starts on mock data. To use your own data for a system, paste its no-auth MCP server URL and select Connect; each system can use a different server. Systems you leave alone keep mock data. Select Done to review the choices.</p>
           </div>
           <button id="close-tool-connections" class="icon-button" type="button" aria-label="Close tool connections">×</button>
         </header>
         <div class="template-picker-toolbar">
           <p id="tool-connections-status" role="status">Reading the working copy's tools…</p>
           <div>
-            <a href="/guide/real-tools" target="_blank" rel="noreferrer">Setup guide</a>
+            <a href="/guide/real-tools" target="_blank" rel="noreferrer">Guide: use real tools with templates</a>
           </div>
         </div>
         <div id="tool-connection-groups" class="tool-connection-groups" aria-live="polite"></div>
+        <footer class="tool-connections-footer">
+          <p id="tool-connections-summary" aria-live="polite"></p>
+          <div>
+            <button id="tool-connections-back" class="tool-footer-secondary" type="button" hidden>Back</button>
+            <button id="tool-connections-done" class="tool-footer-primary" type="button">Done</button>
+          </div>
+        </footer>
       </div>
     </section>
 
