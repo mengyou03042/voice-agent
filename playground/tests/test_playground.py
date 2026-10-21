@@ -327,6 +327,10 @@ class PlaygroundPolicyTests(unittest.TestCase):
                 "samples/example4_frontdesk_with_fluency_and_handoff/agent.json",
                 files,
             )
+            self.assertIn("samples/example5_customer_support/README.md", files)
+            self.assertTrue(template_portal.try_it_turns(
+                root / "samples/example5_customer_support/README.md",
+            ))
             staged_catalog = template_portal.TemplateCatalog(
                 root / "portal/templates.config.json",
                 root / "samples",
