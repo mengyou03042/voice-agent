@@ -508,12 +508,12 @@ class TemplateCatalogTests(unittest.TestCase):
             "VoiceAgent/shared_mcp",
             third["mcp"]["source_reference"],
         )
-        dial_assess = next(
+        rpc = next(
             node
             for node in realtime["graph"]["nodes"]
-            if node["id"] == "dial_assess"
+            if node["id"] == "rpc"
         )
-        self.assertEqual(["start_call"], dial_assess["tools"])
+        self.assertEqual(["start_call", "confirm_right_party"], rpc["tools"])
         report_issue = next(
             node
             for node in third["graph"]["nodes"]

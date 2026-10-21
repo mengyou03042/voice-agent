@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish, verify, or run the Cascade Luna Finance Voice Agent."""
+"""Publish, verify, or run the Cascade Finance Voice Agent."""
 
 from pathlib import Path
 import sys

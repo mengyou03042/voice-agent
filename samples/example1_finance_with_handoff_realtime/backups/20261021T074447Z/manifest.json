@@ -1,0 +1,14 @@
+{
+  "captured_at_utc": "2026-10-21T07:44:47.085638+00:00",
+  "version_id": "20261021T074447Z",
+  "reason": "Default before the 2026-10-21 rework (direct identity check, reliable closing, fluency). Older backups were removed at the owner's request.",
+  "files": [
+    {
+      "version": "previous_default",
+      "file": "previous_default/agent.json",
+      "source": "samples/example1_finance_with_handoff_realtime/agent.json",
+      "bytes": 70596,
+      "sha256": "7def9d0ac49611645a7268c0dbd99bf8c2b568a882ae6f4c579db395697c6855"
+    }
+  ]
+}

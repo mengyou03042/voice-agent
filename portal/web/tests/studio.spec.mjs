@@ -8,7 +8,6 @@ import {
 test("keeps auxiliary notice links behind Debug mode without hiding the notice or licenses", async ({ page }) => {
   await mountStudio(page, { notice: "Synthetic evaluation notice." });
   const notice = page.getByRole("status").filter({ hasText: "Synthetic evaluation notice." });
-  const debug = page.getByRole("checkbox", { name: "Debug mode", exact: true });
   const webrtc = page.getByRole("link", { name: "WebRTC", exact: true });
   const logs = page.getByRole("link", { name: "Local session logs", exact: true });
 
@@ -16,12 +15,11 @@ test("keeps auxiliary notice links behind Debug mode without hiding the notice o
   await expect(page.getByRole("link", { name: "Licenses", exact: true })).toBeVisible();
   await expect(webrtc).toHaveCount(0);
   await expect(logs).toHaveCount(0);
-  await debug.check();
+  // Debug mode has no visible toggle; it is requested per page load with ?debug=1.
+  await expect(page.getByRole("checkbox", { name: "Debug mode", exact: true })).toHaveCount(0);
+  await page.goto("/demo/?debug=1");
   await expect(webrtc).toHaveAttribute("href", "/webrtc");
   await expect(logs).toHaveAttribute("href", "/static/demo/sessions.html");
-  await debug.uncheck();
-  await expect(webrtc).toHaveCount(0);
-  await expect(logs).toHaveCount(0);
   await expect(notice).toBeVisible();
   await expect(page.getByRole("link", { name: "Licenses", exact: true })).toBeVisible();
 });
@@ -471,7 +469,7 @@ test("invalid structured input never opens a socket and changing agents clears t
 });
 
 test("workflow remains visible beside the session without unmounting conversation media", async ({ page }) => {
-  const api = await mountStudio(page);
+  const api = await mountStudio(page, {}, "/demo/?debug=1");
   await selectTab(page, "Workflow");
   await page.getByRole("checkbox", { name: /^Customer-care handoff/ }).check();
   await page.getByRole("button", { name: "Create agent", exact: true }).click();
@@ -484,7 +482,6 @@ test("workflow remains visible beside the session without unmounting conversatio
   await expect(page.getByRole("region", { name: "Agent debug" })).toBeVisible();
   await expect(page.locator(".review-session audio")).toHaveCount(1);
   await expect(page.locator(".review-session")).toBeVisible();
-  await page.getByRole("checkbox", { name: "Debug mode", exact: true }).check();
   await expect(page.locator(".timeline.developer-events")).toBeVisible();
   await expect(page.locator(".event-type").filter({ hasText: "session.created" })).toBeVisible();
   await page.getByLabel("Filter protocol frames").fill("no-match");
@@ -1172,11 +1169,7 @@ test("greeting sentences do not overlap when microphone startup finishes during 
   expect(api.errors).toEqual([]);
 });
 
-test("Debug mode reveals collected turn latency and hides open analysis when disabled", async ({ page }) => {
-  const api = await mountStudio(page);
-  const debug = page.getByRole("checkbox", { name: "Debug mode", exact: true });
-  await expect(debug).not.toBeChecked();
-  await api.start();
+async function sendSyntheticTurn(api) {
   api.send({ type: "input_audio_buffer.speech_started", item_id: "debug-user" });
   api.send({ type: "input_audio_buffer.speech_stopped", item_id: "debug-user" });
   api.send({
@@ -1200,39 +1193,41 @@ test("Debug mode reveals collected turn latency and hides open analysis when dis
   api.send({ type: "response.done", response: {
     id: "debug-answer", status: "completed", output: [],
   } });
+}
 
+test("turn latency stays hidden without Debug mode", async ({ page }) => {
+  const api = await mountStudio(page);
+  await expect(page.getByRole("checkbox", { name: "Debug mode", exact: true })).toHaveCount(0);
+  await api.start();
+  await sendSyntheticTurn(api);
   await expect(page.locator(".msg.user")).toContainText("A synthetic spoken question.");
   await expect(page.locator(".msg.assistant")).toContainText("A synthetic spoken answer.");
   await expect(page.locator(".turn-metrics, .compact-latency-trigger, .latency-dialog")).toHaveCount(0);
   await expect(page.locator(".timeline.developer-events")).toHaveCount(0);
+  expect(api.errors).toEqual([]);
+});
 
-  await debug.check();
+test("Debug mode from ?debug=1 reveals collected turn latency", async ({ page }) => {
+  const api = await mountStudio(page, {}, "/demo/?debug=1");
+  await api.start();
+  await sendSyntheticTurn(api);
+  await expect(page.locator(".msg.assistant")).toContainText("A synthetic spoken answer.");
   await expect(page.getByLabel("User transcription metrics")).toContainText("STT");
   await expect(page.getByLabel("Agent turn metrics")).toBeVisible();
   const latency = page.getByRole("button", { name: /User→Agent/ });
   await expect(latency).toBeVisible();
-  const measuredLatency = await latency.innerText();
   await latency.click();
   await expect(page.getByRole("dialog", { name: "Turn latency analysis" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await debug.uncheck();
-  await expect(page.locator(".turn-metrics, .latency-dialog")).toHaveCount(0);
-  await expect(page.locator(".msg.assistant")).toContainText("A synthetic spoken answer.");
-
-  await debug.check();
-  await expect(latency).toHaveText(measuredLatency, { useInnerText: true });
-  await latency.click();
-  // The dialog is a portal; changing the mode must unmount it, not merely hide the bubble.
-  await debug.evaluate((element) => element.click());
   await expect(page.getByRole("dialog", { name: "Turn latency analysis" })).toHaveCount(0);
-  await expect(page.locator(".turn-metrics")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Stop session" })).toBeVisible();
   expect(api.sockets).toHaveLength(1);
   expect(api.errors).toEqual([]);
 });
 
-test("runtime handoff cards show live dwell time and completed user turns per node", async ({ page }, testInfo) => {
-  const api = await mountStudio(page);
+for (const debugMode of [false, true]) {
+test(`runtime handoff cards show live dwell time and completed user turns per node${debugMode ? " with Debug mode" : ""}`, async ({ page }, testInfo) => {
+  const api = await mountStudio(page, {}, debugMode ? "/demo/?debug=1" : "/demo/");
   await api.start("mcp-handoff-agent");
   api.send({
     type: "session.updated",
@@ -1334,19 +1329,20 @@ test("runtime handoff cards show live dwell time and completed user turns per no
   await expect(entry.locator(".runtime-node-metrics")).toContainText("%");
   await expect(tools.locator(".runtime-node-metrics")).toContainText("%");
 
-  await expect(tools.locator(".runtime-node-metrics")).toBeDisabled();
-  await expect(page.locator(".runtime-node-breakdown")).toHaveCount(0);
-  await page.getByRole("checkbox", { name: "Debug mode", exact: true }).check();
-  await tools.locator(".runtime-node-metrics").click();
-  const breakdown = tools.locator(".runtime-node-breakdown");
-  await expect(breakdown).toContainText("Observed turn latency");
-  await expect(breakdown).toContainText("Average");
-  await expect(breakdown).toContainText("Pipeline");
-  await expect(breakdown).toContainText("Disclaimer:");
-  await expect(breakdown).not.toContainText("$");
-  await expect(breakdown).toContainText("Not available");
-  await page.getByRole("checkbox", { name: "Debug mode", exact: true }).uncheck();
-  await expect(breakdown).toHaveCount(0);
+  if (!debugMode) {
+    await expect(tools.locator(".runtime-node-metrics")).toBeDisabled();
+    await expect(page.locator(".runtime-node-breakdown")).toHaveCount(0);
+  } else {
+    await tools.locator(".runtime-node-metrics").click();
+    const breakdown = tools.locator(".runtime-node-breakdown");
+    await expect(breakdown).toContainText("Observed turn latency");
+    await expect(breakdown).toContainText("Average");
+    await expect(breakdown).toContainText("Pipeline");
+    await expect(breakdown).toContainText("Disclaimer:");
+    await expect(breakdown).not.toContainText("$");
+    await expect(breakdown).toContainText("Not available");
+    await tools.locator(".runtime-node-metrics").click();
+  }
   await expect(tools.locator(".runtime-node-metrics")).toContainText("Turns 1");
 
   api.send({
@@ -1365,6 +1361,7 @@ test("runtime handoff cards show live dwell time and completed user turns per no
   await expect(entry).toHaveClass(/stopped/);
   await expect(tools.locator(".runtime-node-state")).toContainText("COMPLETED");
 });
+}
 
 for (const normalCompletion of [true, false]) {
   test(`the final node is ${normalCompletion ? "completed on normal session end" : "stopped on manual cancellation"}`, async ({ page }) => {
@@ -1391,11 +1388,7 @@ test("the standalone WebRTC page keeps its independent layout", async ({ page })
   await page.goto("/static/demo/webrtc.html");
   await expect(page.locator(".wrtc-shell")).toBeVisible();
   await expect(page.locator(".studio")).toHaveCount(0);
-  const debug = page.getByRole("checkbox", { name: "Debug mode", exact: true });
-  await expect(debug).not.toBeChecked();
-  await debug.check();
-  await page.reload();
-  await expect(debug).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Debug mode", exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Agent", { exact: true })).toHaveAttribute(
     "placeholder",
     "Select or enter an exact agent name…",

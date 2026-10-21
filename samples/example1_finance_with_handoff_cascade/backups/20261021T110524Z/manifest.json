@@ -1,0 +1,14 @@
+{
+  "captured_at_utc": "2026-10-21T11:05:24.636580+00:00",
+  "version_id": "20261021T110524Z",
+  "reason": "gpt-4.1-mini trial of the Cascade definition, kept selectable for comparison with the gpt-5.6-luna default. In text smoke tests it answered about twice as fast but skipped start_call and schedule_callback.",
+  "files": [
+    {
+      "version": "gpt_4_1_mini",
+      "file": "gpt_4_1_mini/agent.json",
+      "source": "samples/example1_finance_with_handoff_cascade/agent.json",
+      "bytes": 60970,
+      "sha256": "3977495e3a7b38c07876dfbf1fe5fee5bdb01a58fc4da1e4cf6a247072eeecaf"
+    }
+  ]
+}

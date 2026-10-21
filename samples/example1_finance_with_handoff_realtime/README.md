@@ -2,29 +2,63 @@
 
 ## Overview
 
-This sample owns the standalone Realtime Finance template. Its root
-[`agent.json`](agent.json) is the revised round-02 candidate of the business workflow
-from the former `example1_finance_with_handoff/agent.realtime.json`, with the explicitly requested
-runtime settings: `gpt-realtime`,
-`whisper-1`, and `en-IN-Diya:DragonHDLatestNeural`.
-It retains the original 13-node, 24-edge business graph and uses 400 ms Semantic VAD.
+This sample owns the Realtime Finance template: an outbound personal-loan call
+that verifies the customer, negotiates an indicative offer, discloses charges,
+captures credit-bureau consent and books a loan-officer appointment. Its root
+[`agent.json`](agent.json) uses `gpt-realtime`, `whisper-1` transcription and `en-IN-Diya:DragonHDLatestNeural`, with 400 ms Semantic VAD.
 
-The [Cascade Luna sample](../example1_finance_with_handoff_cascade/README.md)
-is maintained separately. There is no shared base/profile generation step;
-edit each runtime's portable definition independently. Portal template IDs and
-Agent names remain `finance-example-realtime` and `finance-example-cascade-luna`.
+The [Cascade sample](../example1_finance_with_handoff_cascade/README.md)
+has its own directory and version history. Portal template IDs and Agent names
+remain `finance-example-realtime` and `finance-example-cascade-luna`.
 
-## Spoken responses
+## Call flow
 
-Since 2026-10-21 the default is a byte-for-byte copy of
-`backups/20261020T040235Z/revised`, chosen because it performed best in
-hands-on use. It keeps the business transfer messages on startup, identity,
-offer, decision, recap, voicemail, decline and bureau-consent edges.
+The greeting identifies Virtual Finance and the generic purpose. When the
+customer first speaks, the call enters identity verification directly; there
+is no dial assessment, IVR navigation or voicemail stage.
 
-The previous default, a speech-only cleanup that removed process-only handoff
-announcements and static tool-wait responses, remains selectable as
-`backups/20261021T064258Z/previous_default`.
-These local definition changes do not establish live audio quality or latency.
+```text
+rpc -> offer -> offer_decision -> charges_consent -> appointment -> offer_summary -> end
+         \________________ wrap_up (decline, failed check, end request) _________/
+```
+
+| Stage | Behaviour |
+| --- | --- |
+| `rpc` | Silently calls `start_call`, asks "Am I speaking with <first name>?", then the date of birth, and calls `confirm_right_party`. |
+| `offer` | Prices and negotiates with `calculate_indicative_loan_offer`; only an explicit "I accept" or "I decline" after the final readback is a decision. |
+| `offer_decision` | Records the exact words with `record_customer_offer_decision`. |
+| `charges_consent` | Calls `present_charges`, then speaks the charge disclosure and the credit-bureau consent question as one message, and records the answer with `capture_bureau_consent`. |
+| `appointment` | Books phone or onsite with `schedule_callback` and records `qualified_lead`, silently. |
+| `offer_summary` | Recaps the offer and appointment from `prepare_offer_summary`. |
+| `wrap_up` | Records the non-qualified outcome with `set_disposition`. |
+| `end` | Calls `end_conversation` only. |
+
+The greeting thanks the customer; when they first reply, the transfer into
+`rpc` explains the purpose and the identity check. After the recap the agent
+asks whether anything else is needed. Every edge into `end` speaks the fixed
+closing "Thank you for your time. Goodbye.", so the customer always hears it
+before the call ends. The charge
+disclosure shares the consent question's message because the Realtime model
+dropped it when it had to speak and hand off in the same response.
+
+Realtime and Cascade share the same graph, greeting and shared prompt; when the
+two runtimes favoured different spoken styles, the Realtime choice was kept.
+Cascade waits for an LLM call on every tool and handoff, so it alone adds
+latency cover: a short spoken lead-in before confirming the date of birth,
+recording consent and booking; rotating static interim responses on offer
+pricing; and transfer messages into charges, the appointment and the recap.
+This cut silent waiting in text-driven accept-and-book calls from about 53 s
+to 37 s per call. Realtime answers quickly enough without it.
+
+## Conversation style
+
+The shared prompt asks the agent to respond first to what the customer just
+said, especially a worry, correction, hesitation or frustration, in one short
+specific clause, then take one next step. "I understand" or an apology alone
+does not count, and the agent must not invent feelings or praise. The opening
+thanks the customer, explains the identity check, and asks for the date of
+birth "to keep your account secure". Tool amounts are sent as plain integers
+of rupees.
 
 ## Configure and run
 
@@ -65,28 +99,33 @@ Realtime**, then select a **Version**:
 
 | Version | Meaning |
 | --- | --- |
-| **Default** | Same bytes as `revised`, with `gpt-realtime` and 400 ms Semantic VAD. |
-| `backups/20261020T040235Z/original` | Preserved original speech and business definition with current runtime settings. |
-| `backups/20261020T040235Z/revised` | Continuation round-02 candidate content with the current runtime settings; the default since 2026-10-21. |
-| `backups/20261021T064258Z/previous_default` | The replaced default: original business flow with concise speech. |
+| **Default** | The reworked flow above. |
+| `backups/20261021T094717Z/emotional_response` | Kept for its improved emotional responses; Cascade without latency cover. |
+| `backups/20261021T094257Z/fluency_tested` | The first fluency candidate tried in the Portal, before plain-integer tool arguments. |
+| `backups/20261021T091708Z/business_warm_opening` | Business rework with the warm opening, before fluency changes. |
+| `backups/20261021T081510Z/pre_fluency` | First business rework: direct identity check, charges with consent, fixed closing. |
+| `backups/20261021T074447Z/previous_default` | The default before the rework: dial assessment, IVR, voicemail and separate charges and consent stages. |
 
-The revised version reduces some duplicate waiting narration but still has
-missing spoken charges, filtered happy-path output, and incomplete closing.
-Waiting/latency and listening acceptance are not established. It was promoted
-to the default because it performed best in hands-on use. Loading any version
-creates a working copy without changing the default.
+Loading a version creates a working copy without changing the default. Older
+backups were removed on 2026-10-21; they remain in Git history. Fingerprints
+are in each backup's `manifest.json`.
 
-Every selectable version uses the current runtime policy. Exact pre-update
-bytes remain in each affected version's `agent.source.json`, which is not
-discovered as a selectable version. Historical voice results apply to that
-earlier runtime, not proof of this configuration's latency or VAD safety.
+## Validation
 
-Fingerprints and source provenance are in the
-[backup manifest](backups/20261020T040235Z/manifest.json).
+Business rework: 12 of 12 text-driven Voice WebSocket conversations passed
+deterministic checks (accept-and-book and a decline flow with a worry, a
+correction and frustration, three times per runtime): `start_call` first,
+charges spoken, tools in business order, closing spoken and
+`end_conversation` completed. The current defaults passed the same checks.
 
-## Conclusion
+Fluency used the existing Luna judge (`fluency-first`) on the worry,
+correction and frustration turns, three repeats each:
 
-Realtime and Cascade have independent directories and version histories.
-The default is the revised candidate, preferred in hands-on use. The
-bounded evaluation findings above still apply; it is not a claim of completed
-business disclosure or latency acceptance.
+| Version | Realtime pass, score | Cascade pass, score |
+| --- | --- | --- |
+| Business rework (`pre_fluency`) | 5/9, 3.78 | 7/9, 4.81 |
+| Default | 6/9, 4.69 | 7/9, 4.89 |
+
+Most remaining judge failures add a period question after answering a rate
+question. Text turns do not establish audio quality, latency under real
+speech recognition, or VAD behaviour.

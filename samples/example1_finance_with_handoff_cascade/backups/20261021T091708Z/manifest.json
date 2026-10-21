@@ -1,0 +1,14 @@
+{
+  "captured_at_utc": "2026-10-21T09:17:08.119406+00:00",
+  "version_id": "20261021T091708Z",
+  "reason": "Business version 2, before fluency changes: pre_fluency plus the restored warm opening (greeting thanks the customer; the transfer into rpc explains the identity check) and a recap that asks whether anything else is needed before the closing.",
+  "files": [
+    {
+      "version": "business_warm_opening",
+      "file": "business_warm_opening/agent.json",
+      "source": "built from backups/20261021T074447Z/previous_default",
+      "bytes": 47076,
+      "sha256": "6af8bbbe70114b6d8bd68c875042406af40ec84e525706ae87b206260cdcee4f"
+    }
+  ]
+}

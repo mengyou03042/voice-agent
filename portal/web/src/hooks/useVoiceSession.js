@@ -78,6 +78,7 @@ import {
   STRUCTURED_INPUT_QUERY_PARAMETER,
   normalizeStructuredInputJson,
 } from "../lib/structuredInput.mjs";
+import { debugModeRequested } from "../lib/debugMode.mjs";
 
 let _seq = 0;
 const nextLocalId = () => `local-${Date.now()}-${_seq++}`;
@@ -102,7 +103,7 @@ export function useVoiceSession() {
   const [sessionReady, setSessionReady] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
   const [messages, setMessages] = useState([]);
-  const [verbose, setVerbose] = useState(false);
+  const [verbose, setVerbose] = useState(debugModeRequested);
   /* The raw frame stream, shown beside the chat. The transcript says what was said; this says what
    * the protocol did -- which is the thing you actually debug. Audio frames are dropped (they are
    * base64 PCM arriving every few tens of ms) and the list is capped, so a long call cannot grow

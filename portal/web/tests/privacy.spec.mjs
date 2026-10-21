@@ -151,8 +151,8 @@ test("known historical IDs can still be opened when listing is unavailable", asy
   await expect(page.locator("#turns")).toContainText(`SYNTHETIC_TRANSCRIPT_${ownId}`);
 });
 
-async function endWebRtc(page, api, capturedId = null) {
-  await page.goto("/static/demo/webrtc.html");
+async function endWebRtc(page, api, capturedId = null, path = "/static/demo/webrtc.html") {
+  await page.goto(path);
   await page.getByLabel("Agent", { exact: true }).fill(agentName);
   await page.getByRole("button", { name: "Start WebRTC session" }).click();
   await expect.poll(() => api.sockets.length).toBe(1);
@@ -189,15 +189,19 @@ test("WebRTC captured conversation and recording controls still work directly", 
   await expect(page.locator(".wrtc-recording audio")).toHaveAttribute("src", `${base}/${ownId}/audio/content?api-version=v1`);
 });
 
-test("WebRTC review hides latency and raw cost metadata until Debug mode is enabled", async ({ page }) => {
+test("WebRTC review hides latency and raw cost metadata without Debug mode", async ({ page }) => {
   const api = await reviewFixture(page, { capturedId: ownId });
   await endWebRtc(page, api, ownId);
-  const debug = page.getByRole("checkbox", { name: "Debug mode", exact: true });
-  await expect(debug).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Debug mode", exact: true })).toHaveCount(0);
   await expect(page.locator(".mp-chat")).toContainText(`SYNTHETIC_TRANSCRIPT_${ownId}`);
   await expect(page.locator(".mp-tabs, .mp-row, .mp-detail")).toHaveCount(0);
   await expect(page.locator(".mp-topbar")).not.toContainText("1.10s");
-  await debug.check();
+  expect(api.calls).not.toContain(base);
+});
+
+test("WebRTC review shows latency and cost metadata with ?debug=1", async ({ page }) => {
+  const api = await reviewFixture(page, { capturedId: ownId });
+  await endWebRtc(page, api, ownId, "/static/demo/webrtc.html?debug=1");
   await expect(page.getByRole("button", { name: "Trajectories", exact: true })).toBeVisible();
   await page.locator(".mp-row").filter({ hasText: "Speech_to_text" }).click();
   await expect(page.locator(".mp-detail")).toContainText("STT latency");
@@ -205,8 +209,5 @@ test("WebRTC review hides latency and raw cost metadata until Debug mode is enab
   await page.getByRole("button", { name: "User view", exact: true }).click();
   await page.locator(".mp-bubble.assistant").click();
   await expect(page.locator(".mp-json")).toContainText('"cost": 0.25');
-  await debug.uncheck();
-  await expect(page.locator(".mp-tabs, .mp-row, .mp-detail")).toHaveCount(0);
-  await expect(page.locator(".mp-chat")).toContainText("Synthetic response");
   expect(api.calls).not.toContain(base);
 });

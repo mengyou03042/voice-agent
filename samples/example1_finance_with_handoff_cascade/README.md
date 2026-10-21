@@ -1,31 +1,64 @@
-# Finance with Handoff - Cascade Luna
+# Finance with Handoff - Cascade
 
 ## Overview
 
-This sample owns the standalone Cascade Finance template. Its root
-[`agent.json`](agent.json) is the revised round-14 candidate of the business workflow
-from the former `example1_finance_with_handoff/agent.cascade-luna.json`: `gpt-5.6-luna`,
-`azure-speech`, and `en-IN-Diya:DragonHDLatestNeural`.
-It retains the original 13-node, 24-edge graph and existing smart end-of-turn
-configuration. Semantic VAD silence is now explicitly 400 ms; the Cascade model
-is unchanged.
+This sample owns the Cascade Finance template: an outbound personal-loan call
+that verifies the customer, negotiates an indicative offer, discloses charges,
+captures credit-bureau consent and books a loan-officer appointment. Its root
+[`agent.json`](agent.json) uses `gpt-5.6-luna`, `azure-speech` transcription and `en-IN-Diya:DragonHDLatestNeural`, with 400 ms Semantic VAD and, like Realtime, no Smart Turn end-of-utterance detection.
 
 The [Realtime sample](../example1_finance_with_handoff_realtime/README.md)
-is maintained separately. There is no shared base/profile generation step.
-The Portal template ID and Agent name remain `finance-example-cascade-luna`;
-selecting a backup here cannot select a Realtime definition.
+has its own directory and version history. Portal template IDs and Agent names
+remain `finance-example-realtime` and `finance-example-cascade-luna`.
 
-## Spoken responses
+## Call flow
 
-Since 2026-10-21 the default is a byte-for-byte copy of
-`backups/20261020T040235Z/revised`, chosen because it performed best in
-hands-on use. It keeps the business transfer messages on startup, identity,
-offer, decision, recap, voicemail, decline and bureau-consent edges.
+The greeting identifies Virtual Finance and the generic purpose. When the
+customer first speaks, the call enters identity verification directly; there
+is no dial assessment, IVR navigation or voicemail stage.
 
-The previous default, a speech-only cleanup that removed process-only handoff
-announcements and static tool-wait responses, remains selectable as
-`backups/20261021T064258Z/previous_default`.
-These local definition changes do not establish live audio quality or latency.
+```text
+rpc -> offer -> offer_decision -> charges_consent -> appointment -> offer_summary -> end
+         \________________ wrap_up (decline, failed check, end request) _________/
+```
+
+| Stage | Behaviour |
+| --- | --- |
+| `rpc` | Silently calls `start_call`, asks "Am I speaking with <first name>?", then the date of birth, and calls `confirm_right_party`. |
+| `offer` | Prices and negotiates with `calculate_indicative_loan_offer`; only an explicit "I accept" or "I decline" after the final readback is a decision. |
+| `offer_decision` | Records the exact words with `record_customer_offer_decision`. |
+| `charges_consent` | Calls `present_charges`, then speaks the charge disclosure and the credit-bureau consent question as one message, and records the answer with `capture_bureau_consent`. |
+| `appointment` | Books phone or onsite with `schedule_callback` and records `qualified_lead`, silently. |
+| `offer_summary` | Recaps the offer and appointment from `prepare_offer_summary`. |
+| `wrap_up` | Records the non-qualified outcome with `set_disposition`. |
+| `end` | Calls `end_conversation` only. |
+
+The greeting thanks the customer; when they first reply, the transfer into
+`rpc` explains the purpose and the identity check. After the recap the agent
+asks whether anything else is needed. Every edge into `end` speaks the fixed
+closing "Thank you for your time. Goodbye.", so the customer always hears it
+before the call ends. The charge
+disclosure shares the consent question's message because the Realtime model
+dropped it when it had to speak and hand off in the same response.
+
+Realtime and Cascade share the same graph, greeting and shared prompt; when the
+two runtimes favoured different spoken styles, the Realtime choice was kept.
+Cascade waits for an LLM call on every tool and handoff, so it alone adds
+latency cover: a short spoken lead-in before confirming the date of birth,
+recording consent and booking; rotating static interim responses on offer
+pricing; and transfer messages into charges, the appointment and the recap.
+This cut silent waiting in text-driven accept-and-book calls from about 53 s
+to 37 s per call. Realtime answers quickly enough without it.
+
+## Conversation style
+
+The shared prompt asks the agent to respond first to what the customer just
+said, especially a worry, correction, hesitation or frustration, in one short
+specific clause, then take one next step. "I understand" or an apology alone
+does not count, and the agent must not invent feelings or praise. The opening
+thanks the customer, explains the identity check, and asks for the date of
+birth "to keep your account secure". Tool amounts are sent as plain integers
+of rupees.
 
 ## Configure and run
 
@@ -61,32 +94,40 @@ listening quality or VAD safety. Cloud calls may incur charges. See the
 ## Template versions
 
 In Portal **Load from templates**, choose **Example 1: Finance with Handoff -
-Cascade Luna**, then choose **Version**:
+Cascade**, then select a **Version**:
 
 | Version | Meaning |
 | --- | --- |
-| **Default** | Same bytes as `revised`, with the existing Cascade model and 400 ms Semantic VAD. |
-| `backups/20261020T040235Z/original` | Preserved original speech and business definition with current runtime settings. |
-| `backups/20261020T040235Z/revised` | Preserved round-14 candidate content with current runtime settings; the default since 2026-10-21. |
-| `backups/20261021T064258Z/previous_default` | The replaced default: original business flow with concise speech. |
+| **Default** | The reworked flow above. |
+| `backups/20261021T110524Z/gpt_4_1_mini` | The same Cascade definition on `gpt-4.1-mini`: about twice as fast in text tests, but it skipped `start_call` and `schedule_callback`. |
+| `backups/20261021T104820Z/luna_no_smart_turn` | Identical to the default. |
+| `backups/20261021T104350Z/latency_cover_smart_turn` | The same Cascade definition with Smart Turn end-of-utterance detection (medium, 2000 ms), which held each turn up to two seconds after the 400 ms silence. |
+| `backups/20261021T094717Z/emotional_response` | Kept for its improved emotional responses; Cascade without latency cover. |
+| `backups/20261021T094257Z/fluency_tested` | The first fluency candidate tried in the Portal, before plain-integer tool arguments. |
+| `backups/20261021T091708Z/business_warm_opening` | Business rework with the warm opening, before fluency changes. |
+| `backups/20261021T081510Z/pre_fluency` | First business rework: direct identity check, charges with consent, fixed closing. |
+| `backups/20261021T074447Z/previous_default` | The default before the rework: dial assessment, IVR, voicemail and separate charges and consent stages. |
 
-The revised candidate has observed content/business improvements, including
-actual charges, consent and recap, but retains unresolved handoff preparation
-waits and long gaps. Later faster runs do not erase the preserved slow cases.
-It was promoted to the default because it performed best in hands-on use; it
-is not a latency-approved replacement. Loading a version does not rewrite the
-default or automatically deploy an Agent.
+Loading a version creates a working copy without changing the default. Older
+backups were removed on 2026-10-21; they remain in Git history. Fingerprints
+are in each backup's `manifest.json`.
 
-All selectable versions use 400 ms Semantic VAD without changing `gpt-5.6-luna`.
-Pre-update source bytes are retained as `agent.source.json` and the previous
-manifest is archived. Historical results are not new validation of the
-400 ms configuration.
+## Validation
 
-See the [backup manifest](backups/20261020T040235Z/manifest.json) for exact
-file fingerprints and provenance.
+Business rework: 12 of 12 text-driven Voice WebSocket conversations passed
+deterministic checks (accept-and-book and a decline flow with a worry, a
+correction and frustration, three times per runtime): `start_call` first,
+charges spoken, tools in business order, closing spoken and
+`end_conversation` completed. The current defaults passed the same checks.
 
-## Conclusion
+Fluency used the existing Luna judge (`fluency-first`) on the worry,
+correction and frustration turns, three repeats each:
 
-Cascade has its own authored source and backups. The default is the revised
-candidate, preferred in hands-on use, without claiming that the unresolved
-waiting behavior has passed acceptance.
+| Version | Realtime pass, score | Cascade pass, score |
+| --- | --- | --- |
+| Business rework (`pre_fluency`) | 5/9, 3.78 | 7/9, 4.81 |
+| Default | 6/9, 4.69 | 7/9, 4.89 |
+
+Most remaining judge failures add a period question after answering a rate
+question. Text turns do not establish audio quality, latency under real
+speech recognition, or VAD behaviour.

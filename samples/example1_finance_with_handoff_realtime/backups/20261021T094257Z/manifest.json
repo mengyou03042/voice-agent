@@ -1,0 +1,14 @@
+{
+  "captured_at_utc": "2026-10-21T09:42:57.567183+00:00",
+  "version_id": "20261021T094257Z",
+  "reason": "Fluency candidate tried in the Portal on 2026-10-21 (warm opening, response-first shared prompt, no tool preambles, warmer date-of-birth question, response reminder). The next default only adds plain-integer tool argument guidance to offer after a Realtime tool_execution_error.",
+  "files": [
+    {
+      "version": "fluency_tested",
+      "file": "fluency_tested/agent.json",
+      "source": "samples/example1_finance_with_handoff_realtime/agent.json",
+      "bytes": 59961,
+      "sha256": "9eb2aab6ff3463ed019204613b81d759c1d12951a7e17282bb2e80c756e8fe72"
+    }
+  ]
+}

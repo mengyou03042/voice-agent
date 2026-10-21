@@ -1,0 +1,14 @@
+{
+  "captured_at_utc": "2026-10-21T09:47:17.090618+00:00",
+  "version_id": "20261021T094717Z",
+  "reason": "Kept at the owner's request: noticeably better emotional responses (response-first shared prompt, warm opening, plain-integer tool arguments). Realtime stays on this definition; Cascade continues with latency masking.",
+  "files": [
+    {
+      "version": "emotional_response",
+      "file": "emotional_response/agent.json",
+      "source": "samples/example1_finance_with_handoff_realtime/agent.json",
+      "bytes": 60277,
+      "sha256": "6d262d4a6ebbb028c4d7a5ebebb9a55372b2abe6ff5ee773c33907d6cf308f83"
+    }
+  ]
+}

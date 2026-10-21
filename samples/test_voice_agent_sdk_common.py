@@ -292,8 +292,8 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
 
         self.assertEqual(finance["model_type"], "managed")
         self.assertEqual(finance["model"], "gpt-realtime")
-        self.assertEqual(len(finance["handoff"]["nodes"]), 13)
-        self.assertEqual(len(finance["handoff"]["edges"]), 24)
+        self.assertEqual(len(finance["handoff"]["nodes"]), 8)
+        self.assertEqual(len(finance["handoff"]["edges"]), 13)
 
         self.assertEqual(otp_officer_search["model_type"], "managed")
         self.assertEqual(otp_officer_search["model"], "gpt-realtime")
@@ -418,7 +418,7 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
             },
         )
 
-    def test_example1_directories_preserve_original_workflow_and_runtime(self) -> None:
+    def test_example1_directories_share_the_direct_identity_workflow(self) -> None:
         samples = Path(__file__).resolve().parent
         settings = {
             "AZURE_AI_PROJECT_ENDPOINT": (
@@ -441,17 +441,10 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
                 settings,
                 prefer_document_name=True,
             )
-            # The reviewed speech-only defaults were replaced by the revised
-            # candidates and remain selectable as a backup version.
-            previous = "backups/20261021T064258Z/previous_default/agent.json"
+            # The default before the direct-identity rework stays selectable.
+            previous = "backups/20261021T074447Z/previous_default/agent.json"
             _, _, previous_realtime = load_materialized_agent(
                 samples / "example1_finance_with_handoff_realtime",
-                settings,
-                agent_file=previous,
-                prefer_document_name=True,
-            )
-            _, _, previous_cascade = load_materialized_agent(
-                samples / "example1_finance_with_handoff_cascade",
                 settings,
                 agent_file=previous,
                 prefer_document_name=True,
@@ -459,54 +452,57 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
 
         self.assertEqual("finance-example-realtime", realtime_name)
         self.assertEqual("finance-example-cascade-luna", cascade_name)
-        for definition in (realtime, cascade):
-            self.assertEqual(13, len(definition["handoff"]["nodes"]))
-            self.assertEqual(24, len(definition["handoff"]["edges"]))
+        self.assertEqual(13, len(previous_realtime["handoff"]["nodes"]))
+        # Cascade follows the realtime graph, greeting and shared prompt; it
+        # adds only latency cover for its slower tool and handoff turns.
+        self.assertEqual(realtime["instructions"], cascade["instructions"])
+        self.assertEqual(realtime["greeting"], cascade["greeting"])
         self.assertEqual(
-            [(edge["source"], edge["target"]) for edge in realtime["handoff"]["edges"]],
-            [(edge["source"], edge["target"]) for edge in cascade["handoff"]["edges"]],
+            [(edge["id"], edge["source"], edge["target"]) for edge in realtime["handoff"]["edges"]],
+            [(edge["id"], edge["source"], edge["target"]) for edge in cascade["handoff"]["edges"]],
         )
-        self.assertEqual(previous_realtime["handoff"], previous_cascade["handoff"])
-        self.assertEqual(previous_realtime["greeting"], previous_cascade["greeting"])
+        self.assertEqual(
+            [node["id"] for node in realtime["handoff"]["nodes"]],
+            [node["id"] for node in cascade["handoff"]["nodes"]],
+        )
         self.assertEqual(
             {
                 "type": "template",
                 "text": (
-                    "Hello, this is Virtual Finance calling "
-                    "about a personal loan offer."
+                    "Hello, thank you for taking the call. "
+                    "This is Virtual Finance calling."
                 ),
             },
-            previous_realtime["greeting"],
+            realtime["greeting"],
         )
-        edges = {
-            edge["id"]: edge for edge in previous_realtime["handoff"]["edges"]
-        }
-        for edge_id in (
-            "entrypoint_to_dial_assess",
-            "dial_assess_to_rpc",
-            "ivr_to_rpc",
-            "rpc_to_offer",
-            "offer_to_offer_decision",
-            "appointment_to_offer_summary",
-        ):
-            with self.subTest(edge=edge_id):
-                self.assertNotIn("transfer_message", edges[edge_id])
-                self.assertEqual("auto", edges[edge_id]["target_response"])
+        nodes = {node["id"]: node for node in realtime["handoff"]["nodes"]}
+        self.assertEqual(
+            [
+                "rpc", "offer", "offer_decision", "charges_consent",
+                "wrap_up", "appointment", "offer_summary", "end",
+            ],
+            list(nodes),
+        )
+        edges = {edge["id"]: edge for edge in realtime["handoff"]["edges"]}
+        self.assertEqual(13, len(edges))
+        self.assertEqual("rpc", edges["entrypoint_to_rpc"]["target"])
+        closing = "Thank you for your time. Goodbye."
         self.assertEqual(
             {
-                "dial_assess_to_voicemail": (
-                    "A calling assistant tried to reach you and will try again later."
+                "entrypoint_to_rpc": (
+                    "This is Virtual Finance calling about a personal loan offer. "
+                    "Before I share the details, I need to confirm who I'm speaking with."
                 ),
-                "ivr_to_voicemail": (
-                    "A calling assistant tried to reach you and will try again later."
-                ),
+                "rpc_to_offer": "That matches our records.",
+                "offer_to_offer_decision": "Thank you. Saving your decision now.",
                 "offer_decision_to_wrap_up": (
                     "Because you did not accept our offer, we can talk again next time."
                 ),
-                "charges_to_bureau_consent": (
-                    "Do you consent to a credit-bureau check for this application? "
-                    'Please say "I consent" or "I decline".'
+                "appointment_to_offer_summary": (
+                    "Sure, let's confirm your offer and appointment details."
                 ),
+                "offer_summary_to_end": closing,
+                "wrap_up_to_end": closing,
             },
             {
                 edge_id: edge["transfer_message"]
@@ -514,38 +510,63 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
                 if "transfer_message" in edge
             },
         )
-        self.assertEqual("none", edges["charges_to_bureau_consent"]["target_response"])
-        nodes = {node["id"]: node for node in previous_realtime["handoff"]["nodes"]}
-        self.assertEqual(13, len(nodes))
-        self.assertEqual(24, len(edges))
         for node_id, node in nodes.items():
             with self.subTest(node=node_id):
                 self.assertIsNone(node["config"]["interim_response"])
-        rpc = nodes["rpc"]
-        self.assertIn(
-            "Am I speaking with <calling_first_name>?",
-            " ".join(rpc["config"]["instructions"].split()),
+        cascade_nodes = {node["id"]: node for node in cascade["handoff"]["nodes"]}
+        cascade_edges = {edge["id"]: edge for edge in cascade["handoff"]["edges"]}
+        self.assertEqual(
+            {"offer"},
+            {
+                node_id for node_id, node in cascade_nodes.items()
+                if node["config"]["interim_response"]
+            },
         )
-        self.assertIn(
-            "Could you please tell me your date of birth?",
-            " ".join(rpc["config"]["instructions"].split()),
+        self.assertEqual(
+            ["tool"], cascade_nodes["offer"]["config"]["interim_response"]["triggers"],
         )
+        for edge_id, message in (
+            ("offer_decision_to_charges_consent",
+             "Your decision is saved. Next, let me take you through the charges."),
+            ("charges_consent_to_appointment",
+             "Now let's book your appointment with a loan officer."),
+            ("appointment_to_offer_summary",
+             "Your appointment is booked. Let me confirm your offer and appointment details."),
+        ):
+            with self.subTest(cascade_edge=edge_id):
+                self.assertEqual(message, cascade_edges[edge_id]["transfer_message"])
         self.assertIn(
-            "Call tools without a spoken lead-in.",
-            nodes["offer"]["config"]["instructions"],
+            "Let me book that for you.",
+            cascade_nodes["appointment"]["config"]["instructions"],
         )
-        for node_id in ("offer", "appointment"):
-            self.assertNotIn(
-                "The handoff edge alone says",
-                nodes[node_id]["config"]["instructions"],
-            )
+        self.assertEqual(
+            ["start_call", "confirm_right_party"],
+            nodes["rpc"]["config"]["tools"][0]["allowed_tools"],
+        )
+        rpc = " ".join(nodes["rpc"]["config"]["instructions"].split())
+        self.assertIn("call start_call once", rpc)
+        self.assertIn("Am I speaking with <calling_first_name>?", rpc)
+        self.assertIn("could you please tell me your date of birth?", rpc)
+        charges = nodes["charges_consent"]
+        self.assertEqual(
+            ["present_charges", "capture_bureau_consent"],
+            charges["config"]["tools"][0]["allowed_tools"],
+        )
+        disclosure = " ".join(charges["config"]["instructions"].split())
+        self.assertIn("processing fee of <processing_fee_inr> rupees", disclosure)
+        self.assertIn(
+            'Do you consent to a credit-bureau check for this application? '
+            'Please say "I consent" or "I decline".',
+            disclosure,
+        )
         for phrase in (
             "I'm checking those details now.",
             "Confirming your identity, just a second.",
             "Checking your offer, one moment.",
             "Saving your appointment info",
+            "Let me check that time and arrange your appointment.",
         ):
-            self.assertNotIn(phrase, json.dumps(previous_realtime))
+            self.assertNotIn(phrase, json.dumps(realtime))
         end = nodes["end"]
         self.assertEqual(
             {
@@ -553,11 +574,8 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
                 "name": "end_conversation",
                 "description": (
                     "End the active conversation only after its business "
-                    "disposition has been recorded. First say one brief, "
-                    "context-appropriate closing sentence, then call "
-                    "end_conversation as a separate final output item in the "
-                    "same response with only a non-empty reason. Produce no "
-                    "content after the tool call."
+                    "disposition has been recorded and the closing has been "
+                    "spoken. Call it with only a non-empty reason."
                 ),
             },
             end["config"]["tools"][0],
@@ -586,12 +604,8 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
             "azure-speech",
             cascade["audio"]["input"]["transcription"]["model"],
         )
-        self.assertEqual(
-            {
-                "model": "smart_end_of_turn_detection",
-                "threshold_level": "medium",
-                "timeout_ms": 2000,
-            },
+        # Smart Turn end-of-utterance detection is off for both runtimes.
+        self.assertIsNone(
             cascade["audio"]["input"]["turn_detection"][
                 "end_of_utterance_detection"
             ],

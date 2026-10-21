@@ -25,8 +25,7 @@ for (const width of [1440, 390]) {
     page.on("pageerror", (error) => errors.push(error.message));
     await page.setViewportSize({ width, height: 1000 });
     await page.goto("/editor/");
-    const debug = page.getByRole("checkbox", { name: "Debug mode", exact: true });
-    await expect(debug).not.toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "Debug mode", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Create blank", exact: true }).click();
     const dirty = await page.locator("#dirty-badge").innerText();
     await expect(page.locator(".node-card")).toHaveCount(1);
@@ -45,7 +44,9 @@ for (const width of [1440, 390]) {
       await page.getByRole("button", { name: "Close component configuration" }).click();
     }
     await page.getByRole("button", { name: "Save node", exact: true }).click();
-    await debug.check();
+    // Debug mode has no visible toggle; it is requested per page load with ?debug=1.
+    await page.goto("/editor/?debug=1");
+    await page.getByRole("button", { name: "Create blank", exact: true }).click();
     await expect(page.locator(".node-metric-details")).toHaveCount(1);
     await page.locator("#node-outline button").first().click();
     await expect(page.locator(".component-metrics")).toHaveCount(3);
@@ -59,20 +60,9 @@ for (const width of [1440, 390]) {
       await page.getByRole("button", { name: "Close component configuration" }).click();
     }
     await page.getByRole("button", { name: "Save node", exact: true }).click();
-    await debug.uncheck();
-    await expect(page.locator(".node-metric-details")).toHaveCount(0);
-    await expect(page.locator("#dirty-badge")).toHaveText(dirty);
-    await page.locator("#node-outline button").first().click();
-    await expect(page.locator(".pipeline-overview, .component-metrics")).toHaveCount(0);
-    await page.locator('[data-node-component="model"]').click();
-    await expect(panel.getByRole("button", { name: "Sort by Model", exact: true })).toHaveClass(/active/);
-    await expect(panel.locator(".component-table th")).toHaveCount(2);
-    await page.getByRole("button", { name: "Close component configuration" }).click();
-    await page.getByRole("button", { name: "Save node", exact: true }).click();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await debug.check();
     await page.reload();
-    await expect(debug).not.toBeChecked();
+    await expect(page.locator(".node-metric-details")).toHaveCount(0);
     expect(errors).toEqual([]);
   });
 }
@@ -130,7 +120,8 @@ for (const playground of [false, true]) {
         await expect(page.locator("#definition-output")).toContainText("azure-speech");
       }
       await page.getByRole("button", { name: "Close definition" }).click();
-      await page.getByRole("checkbox", { name: "Debug mode", exact: true }).check();
+      await page.goto("/editor/?debug=1");
+      await blank.click();
       const details = page.locator(".node-card .node-metric-details").first();
       await details.locator("summary").click();
       await expect(details.locator(".node-metric-breakdown")).toHaveText(
@@ -508,7 +499,7 @@ test("Template data remains available without exposing a Templates navigation it
   await page.goto("/templates/");
   await expect(page.getByText("35 available", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example 1: Finance with Handoff — Realtime/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Example 1: Finance with Handoff — Cascade Luna/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Example 1: Finance with Handoff — Cascade/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example 2: Finance with OTP and Officer Search/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example 3: Elevator Service with Safety, Zendesk, and Handoff/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example 4: Front Desk with Fluency and Handoff/ })).toBeVisible();
@@ -527,8 +518,7 @@ for (const [architecture, model] of [
   test(`${architecture} node selectors display a short disclaimer and plain column titles`, async ({ page }) => {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
-    await page.goto("/editor/");
-    await page.getByRole("checkbox", { name: "Debug mode", exact: true }).check();
+    await page.goto("/editor/?debug=1");
     await page.getByRole("button", { name: /Load from templates/ }).click();
     await page.locator('[data-template-id="elevator-service-example"]').click();
     await page.locator("#node-outline button").first().click();
@@ -592,7 +582,7 @@ test("Handoff Graph loads a Portal template, publishes it, and opens the runtime
   await page.goto("/");
   await expect(page).toHaveURL(/\/editor\/$/);
   await expect(page.getByRole("heading", { name: "Agents", exact: true })).toBeVisible();
-  await page.getByRole("checkbox", { name: "Debug mode", exact: true }).check();
+  await page.goto("/editor/?debug=1");
 
   await page.getByRole("button", { name: /Load from templates/ }).click();
   const choices = page.locator(".template-choice");
@@ -752,6 +742,7 @@ test("Handoff Graph loads a Portal template, publishes it, and opens the runtime
 
   await expect(page.locator("#publish-run-action")).toBeEnabled();
   await page.locator("#publish-run-action").click();
+  await page.getByRole("button", { name: "Publish and try it", exact: true }).click();
   const progress = page.getByRole("dialog", { name: "Try it now" });
   await expect(progress).toBeVisible();
   await expect(progress).toContainText("Validate working copy");
@@ -787,6 +778,7 @@ test("Handoff Graph progress stops on publication failure and preserves the work
   }));
 
   await page.locator("#publish-run-action").click();
+  await page.getByRole("button", { name: "Publish and try it", exact: true }).click();
   const progress = page.getByRole("dialog", { name: "Try it now" });
   await expect(progress.locator('[data-publish-step="publish"]')).toHaveAttribute(
     "data-status",
@@ -805,7 +797,7 @@ test("WebRTC uses the Foundry project directly and session logs can be disabled"
   await expect(page.getByRole("button", { name: "Start WebRTC session" })).toBeEnabled();
   expect(await page.evaluate(() => window.microphoneCalls)).toBe(0);
   await page.getByRole("link", { name: "Return to studio" }).click();
-  await page.getByRole("checkbox", { name: "Debug mode", exact: true }).check();
+  await page.goto("/demo/?debug=1");
   await page.getByRole("link", { name: "Local session logs" }).click();
   await expect(page.getByRole("heading", { name: "Demo session log" })).toBeVisible();
   await expect(page.getByText("session recording is disabled", { exact: true })).toBeVisible();

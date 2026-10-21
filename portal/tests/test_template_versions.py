@@ -31,16 +31,21 @@ ORIGINAL_TEMPLATE_IDS = (
 )
 # These templates default to their revised backup.
 REVISED_DEFAULT_TEMPLATE_IDS = (
-    "finance-example-realtime",
-    "finance-example-cascade-luna",
     "finance-with-otp-and-officer-search",
     "elevator-service-example",
 )
-# The replaced reviewed speech-only Finance defaults stay selectable.
-FINANCE_PREVIOUS_DEFAULT = "backups/20261021T064258Z/previous_default"
+# The Example 1 Finance defaults were reworked from these exact prior defaults;
+# their older backups were removed at the owner's request.
+FINANCE_FOLDERS = {
+    "finance-example-realtime": "example1_finance_with_handoff_realtime",
+    "finance-example-cascade-luna": "example1_finance_with_handoff_cascade",
+}
+FINANCE_PREVIOUS_DEFAULT = "backups/20261021T074447Z/previous_default"
+# Cascade backups that deliberately trial another model.
+CASCADE_MODEL_TRIALS = {"gpt_4_1_mini": "gpt-4.1-mini"}
 FINANCE_PREVIOUS_DEFAULT_SHA256 = {
-    "finance-example-realtime": "cbecf6c7e57ef89b7462214bc9b60ec5b9a680f4369247c6e7c65cc0cf712713",
-    "finance-example-cascade-luna": "819ce43b646a696b1fa66d31b622b859b3dca65b13c3124d6579b9a1c083d1f7",
+    "finance-example-realtime": "7def9d0ac49611645a7268c0dbd99bf8c2b568a882ae6f4c579db395697c6855",
+    "finance-example-cascade-luna": "b551c6d3c01f9871963d1482abd6db0489c974daa80c9bce2b5a955750103fbe",
 }
 
 
@@ -209,8 +214,6 @@ class TemplateVersionCatalogTests(TemplateVersionFixture, unittest.TestCase):
             set(ORIGINAL_TEMPLATE_IDS).issubset(card["id"] for card in catalog.cards()),
         )
         for template_id in (
-            "finance-example-realtime",
-            "finance-example-cascade-luna",
             "finance-with-otp-and-officer-search",
             "elevator-service-example",
             "frontdesk-receptionist-example",
@@ -225,7 +228,7 @@ class TemplateVersionCatalogTests(TemplateVersionFixture, unittest.TestCase):
                 default_bytes = source.path.read_bytes()
                 if template_id in REVISED_DEFAULT_TEMPLATE_IDS:
                     self.assertNotEqual(original_bytes, default_bytes)
-                    self.assertEqual(revised_bytes, default_bytes)
+                    self.assertEqual(json.loads(revised_bytes), json.loads(default_bytes))
                 else:
                     self.assertEqual(original_bytes, default_bytes)
                 default = catalog.document(template_id)
@@ -245,6 +248,36 @@ class TemplateVersionCatalogTests(TemplateVersionFixture, unittest.TestCase):
                     )
                     self.assertEqual(record["bytes"], path.stat().st_size)
 
+    def test_finance_rework_keeps_its_prior_defaults_selectable(self) -> None:
+        catalog = template_portal.TemplateCatalog()
+        self.assertEqual([], catalog.errors)
+        for template_id, folder in FINANCE_FOLDERS.items():
+            with self.subTest(template_id=template_id):
+                root = template_portal.SAMPLES_DIR / folder
+                previous = root / FINANCE_PREVIOUS_DEFAULT / "agent.json"
+                self.assertEqual(
+                    FINANCE_PREVIOUS_DEFAULT_SHA256[template_id],
+                    hashlib.sha256(previous.read_bytes()).hexdigest(),
+                )
+                self.assertEqual(
+                    json.loads(previous.read_bytes()),
+                    catalog.document(template_id, FINANCE_PREVIOUS_DEFAULT),
+                )
+                self.assertNotEqual(
+                    catalog.document(template_id)["definition"]["handoff"],
+                    catalog.document(template_id, FINANCE_PREVIOUS_DEFAULT)["definition"]["handoff"],
+                )
+                manifests = sorted((root / "backups").glob("*/manifest.json"))
+                self.assertIn("20261021T074447Z", {m.parent.name for m in manifests})
+                for manifest_path in manifests:
+                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    for record in manifest["files"]:
+                        path = manifest_path.parent / record["file"]
+                        self.assertEqual(
+                            record["sha256"], hashlib.sha256(path.read_bytes()).hexdigest(),
+                        )
+                        self.assertEqual(record["bytes"], path.stat().st_size)
+
     def test_finance_version_roots_and_models_remain_separate(self) -> None:
         catalog = template_portal.TemplateCatalog()
         realtime = catalog.source("finance-example-realtime")
@@ -259,7 +292,7 @@ class TemplateVersionCatalogTests(TemplateVersionFixture, unittest.TestCase):
             for version in card["versions"]:
                 with self.subTest(template_id=template_id, version=version["id"]):
                     self.assertEqual(
-                        model,
+                        CASCADE_MODEL_TRIALS.get(version["id"].rsplit("/", 1)[-1], model),
                         catalog.document(template_id, version["id"])["definition"]["model"],
                     )
 
@@ -276,7 +309,10 @@ class TemplateVersionCatalogTests(TemplateVersionFixture, unittest.TestCase):
             for version in card["versions"]:
                 with self.subTest(template_id=card["id"], version=version["id"]):
                     definition = catalog.document(card["id"], version["id"])["definition"]
-                    self.assertEqual(model, definition["model"])
+                    trial = CASCADE_MODEL_TRIALS.get(version["id"].rsplit("/", 1)[-1])
+                    if card["id"] != "finance-example-cascade-luna":
+                        trial = None
+                    self.assertEqual(trial or model, definition["model"])
                     turn_detection = definition["audio"]["input"]["turn_detection"]
                     self.assertTrue(
                         turn_detection["type"].startswith("azure_semantic_vad"),
@@ -285,8 +321,6 @@ class TemplateVersionCatalogTests(TemplateVersionFixture, unittest.TestCase):
 
     def test_defaults_and_original_sources_match_reviewed_content(self) -> None:
         expected_sources = {
-            "finance-example-realtime": "79ef261b4fdea3006cf0c4677bcb939b0e5f629a70a4aa9077952830c5b0b1e7",
-            "finance-example-cascade-luna": "8e7e190a6e7e6a65f2f277663ca196ee73ed9f774f89fa1b68fd13d5180bf310",
             "finance-with-otp-and-officer-search": "c6a4cb02b00bcba62fb5385bfa650772eba3994872d042715c574648cba8e523",
             "elevator-service-example": "d099f64afb7ee6238889267b46f7f3d01b3dac19caf5eba6393fde1f32c53c1e",
             "frontdesk-receptionist-example": "7ee36c0aa082cd3ab1a526c6b89511e0ced6418f326801ca4be93544048ea752",
@@ -301,16 +335,6 @@ class TemplateVersionCatalogTests(TemplateVersionFixture, unittest.TestCase):
                     archived = original / "agent.json"
                 raw = archived.read_bytes()
                 self.assertEqual(expected_sha, hashlib.sha256(raw).hexdigest())
-                if template_id in FINANCE_PREVIOUS_DEFAULT_SHA256:
-                    previous = source.path.parent / FINANCE_PREVIOUS_DEFAULT / "agent.json"
-                    self.assertEqual(
-                        FINANCE_PREVIOUS_DEFAULT_SHA256[template_id],
-                        hashlib.sha256(previous.read_bytes()).hexdigest(),
-                    )
-                    self.assertEqual(
-                        json.loads(previous.read_bytes()),
-                        catalog.document(template_id, FINANCE_PREVIOUS_DEFAULT),
-                    )
                 if template_id in REVISED_DEFAULT_TEMPLATE_IDS:
                     revised = source.path.parent / "backups/20261020T040235Z/revised/agent.json"
                     expected = json.loads(revised.read_bytes())

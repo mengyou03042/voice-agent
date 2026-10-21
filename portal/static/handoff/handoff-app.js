@@ -1,6 +1,7 @@
 import {
   ENTRYPOINT_ID,
   PIPELINE_METRICS_DISCLAIMER,
+  PIPELINE_COMPONENTS,
   PIPELINE_PRESETS,
   createBlankDefinition,
   deepClone,
@@ -68,7 +69,8 @@ const state = {
   selected: { kind: "graph", id: "" },
   outlineTab: "nodes",
   nodeComponentPanel: "",
-  debugMode: false,
+  // No visible toggle: open the page with ?debug=1 to show latency and cost estimates.
+  debugMode: new URLSearchParams(window.location.search).get("debug") === "1",
   componentSort: {
     stt: { key: "name", direction: "asc" },
     model: { key: "name", direction: "asc" },
@@ -84,6 +86,7 @@ const state = {
   publishing: false,
   templates: [],
   templateQuery: "",
+  pipelineAvailability: null,
   templateVersions: new Map(),
   templateCatalogLoaded: false,
   templateCatalogLoading: false,
@@ -650,6 +653,31 @@ async function loadConfig() {
   state.cfg = cfg;
   document.body.classList.toggle("playground-mode", cfg.playground === true);
   $("#environment").textContent = `${cfg.backend} · ${cfg.project} · API ${cfg.apiVersion}`;
+  void loadPipelineAvailability();
+}
+
+// Choices probed against one Project by portal/tools/probe_pipeline_availability.py.
+async function loadPipelineAvailability() {
+  try {
+    const response = await fetch("/static/handoff/pipeline-availability.json");
+    if (!response.ok) return;
+    const data = await response.json();
+    if (!data?.project || data.project !== state.cfg?.project) return;
+    state.pipelineAvailability = data;
+    if (!$("#node-component-panel").hidden) renderNodeComponentPanel();
+  } catch {
+    // Without probe results every catalog choice stays visible.
+  }
+}
+
+// Hide choices the hosted policy rejects or the probe found unavailable; unknown stays visible.
+function pipelineChoiceAvailable(kind, id) {
+  if (
+    kind === "model" && state.cfg?.playground && Array.isArray(state.cfg.models)
+    && !state.cfg.models.includes(id)
+  ) return false;
+  const key = { model: "models", stt: "stt", voice: "voices" }[kind];
+  return state.pipelineAvailability?.[key]?.[id]?.available !== false;
 }
 
 function sortedAgents(agentMap) {
@@ -2571,7 +2599,15 @@ function renderEdgeEditor() {
   });
 }
 
+// The service accepts a bare name only for OpenAI voices; Azure voices must be {type, name}.
+function voiceDefinitionValue(voice) {
+  if (typeof voice !== "string") return voice;
+  const known = PIPELINE_COMPONENTS.voice.find((item) => item.id === voice);
+  return !known || known.type === "openai" ? voice : { type: known.type, name: voice };
+}
+
 function setNodeVoice(definition, config, entry, voice) {
+  voice = voiceDefinitionValue(voice);
   if (entry) {
     definition.audio ||= {};
     definition.audio.output ||= {};
@@ -2801,6 +2837,7 @@ function renderNodeComponentPanel() {
   $("#component-panel-kicker").textContent = "Node pipeline";
   $("#component-panel-title").textContent = titles[kind];
   const availableComponents = pipelineComponentOptions(kind, selection)
+    .filter((component) => component.id === current || pipelineChoiceAvailable(kind, component.id))
     .map((component) => ({
       ...component,
       locked: component.compatible === false,
@@ -2924,7 +2961,8 @@ function renderNodeComponentPanel() {
       } else if (kind === "model") {
         applyNodeModelSelection(value);
       } else {
-        applyNodeFieldChange(kind, value);
+        const voice = voiceDefinitionValue(value);
+        applyNodeFieldChange(kind, typeof voice === "string" ? voice : JSON.stringify(voice));
       }
       renderNodeEditor();
     });
@@ -3854,6 +3892,8 @@ function renderHeader() {
   const errors = problems.filter((item) => item.severity === "error").length;
   const dirty = isDirty();
   $("#agent-title").textContent = state.agentName || "No Agent selected";
+  // Draw attention to templates until something is loaded into the canvas.
+  $("#template-action").classList.toggle("attention", !state.definition);
   $("#version-badge").textContent = state.definition
     ? `${state.draft ? "Draft " : "Version "}${state.version || "local"}`
     : "Version —";
@@ -4217,6 +4257,9 @@ function openAgentInDemo(agentName, { startSession = false } = {}) {
 const AUTO_AGENT_NAME_KEY = "voice-agent-editor-auto-name";
 const AGENT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
 let agentNameResolve = null;
+// The automatic name offered when the dialog opened, and what the user typed before choosing it.
+let agentNameAutomatic = "";
+let agentNameTyped = "";
 
 function autoAgentNameEnabled() {
   try {
@@ -4242,6 +4285,12 @@ function existingAgentNamed(name) {
 }
 
 function updateAgentNameHint() {
+  if ($("#agent-name-auto").checked) {
+    $("#agent-name-hint").textContent = "";
+    $("#agent-name-hint").classList.remove("error");
+    $("#confirm-agent-name").disabled = false;
+    return;
+  }
   const name = $("#agent-name-input").value.trim();
   const problem = agentNameProblem(name);
   const hint = $("#agent-name-hint");
@@ -4257,7 +4306,10 @@ function requestAgentName() {
   return new Promise((resolve) => {
     agentNameResolve = resolve;
     const input = $("#agent-name-input");
+    agentNameAutomatic = state.agentName;
+    agentNameTyped = state.agentName;
     input.value = state.agentName;
+    input.disabled = false;
     $("#agent-name-auto").checked = false;
     updateAgentNameHint();
     $("#agent-name-dialog").hidden = false;
@@ -4276,14 +4328,30 @@ function closeAgentNameDialog(name = null) {
   resolve?.(name);
 }
 
+// Automatic naming shows the generated name, greyed out, instead of the editable one.
+function toggleAutomaticAgentName() {
+  const input = $("#agent-name-input");
+  if ($("#agent-name-auto").checked) {
+    agentNameTyped = input.value;
+    input.value = agentNameAutomatic;
+    input.disabled = true;
+  } else {
+    input.value = agentNameTyped;
+    input.disabled = false;
+    input.focus();
+  }
+  updateAgentNameHint();
+}
+
 function submitAgentName(event) {
   event.preventDefault();
-  const name = $("#agent-name-input").value.trim();
-  if (agentNameProblem(name)) {
+  const automatic = $("#agent-name-auto").checked;
+  const name = automatic ? agentNameAutomatic : $("#agent-name-input").value.trim();
+  if (!automatic && agentNameProblem(name)) {
     updateAgentNameHint();
     return;
   }
-  if ($("#agent-name-auto").checked) {
+  if (automatic) {
     try {
       window.sessionStorage.setItem(AUTO_AGENT_NAME_KEY, "1");
     } catch {
@@ -4328,19 +4396,6 @@ async function publishAndRun() {
 }
 
 function bindEvents() {
-  $("#debug-mode").checked = state.debugMode;
-  $("#debug-mode").addEventListener("change", (event) => {
-    state.debugMode = event.target.checked;
-    if (!state.debugMode) {
-      for (const kind of ["stt", "model", "voice"]) {
-        if (["latency", "cost"].includes(state.componentSort[kind].key)) {
-          state.componentSort[kind] = { key: "name", direction: "asc" };
-        }
-      }
-    }
-    renderGraph();
-    if (!$("#node-editor").hidden) renderNodeEditor();
-  });
   let canvasSize = null;
   new ResizeObserver(([entry]) => {
     const { width, height } = entry.contentRect;
@@ -4398,6 +4453,7 @@ function bindEvents() {
   $("#publish-run-action").addEventListener("click", publishAndRun);
   $("#agent-name-form").addEventListener("submit", submitAgentName);
   $("#agent-name-input").addEventListener("input", updateAgentNameHint);
+  $("#agent-name-auto").addEventListener("change", toggleAutomaticAgentName);
   $("#close-agent-name-dialog").addEventListener("click", () => closeAgentNameDialog());
   $("#cancel-agent-name").addEventListener("click", () => closeAgentNameDialog());
   $("#agent-name-dialog").addEventListener("click", (event) => {

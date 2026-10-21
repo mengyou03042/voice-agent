@@ -104,6 +104,7 @@ test("Template versions retain the source version when Editor publishes a workin
   const publication = page.waitForRequest((request) =>
     request.method() === "POST" && new URL(request.url()).pathname.endsWith("/versions"));
   await page.locator("#publish-run-action").click();
+  await page.getByRole("button", { name: "Publish and try it", exact: true }).click();
   const body = (await publication).postDataJSON();
   expect(configuredVersion).toBe(version);
   expect(body.metadata.source_template_version).toBe(version);

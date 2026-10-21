@@ -9,7 +9,7 @@ import {
 } from "../lib/projectPicker.mjs";
 import { Icon } from "./ConfigControls.jsx";
 
-export function StudioHeader({ cfg, disabled, debugMode = false, onDebugModeChange }) {
+export function StudioHeader({ cfg, disabled, debugMode = false }) {
   const [projects, setProjects] = useState([]);
   const [projectInput, setProjectInput] = useState(cfg.backend);
   const [resultsOpen, setResultsOpen] = useState(false);
@@ -80,11 +80,6 @@ export function StudioHeader({ cfg, disabled, debugMode = false, onDebugModeChan
       <nav className="portal-page-nav" aria-label="Portal pages">
         <a href="/editor/">Editor</a>
         <span aria-current="page">AgentRuntime</span>
-        <label className="debug-mode-toggle">
-          <input type="checkbox" checked={debugMode}
-            onChange={(event) => onDebugModeChange(event.target.checked)} />
-          Debug mode
-        </label>
       </nav>
       <div className="studio-backend">
         <label htmlFor="studio-backend">Foundry project</label>

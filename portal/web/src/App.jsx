@@ -631,7 +631,7 @@ export function App() {
   return (
     <div className="studio">
       <StudioHeader cfg={cfg} disabled={session.isConnected}
-        debugMode={session.verbose} onDebugModeChange={session.setVerbose} />
+        debugMode={session.verbose} />
       <div
         ref={shellRef}
         className={`shell${resizingWorkspace ? " is-resizing" : ""}`}

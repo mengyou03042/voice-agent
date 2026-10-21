@@ -126,10 +126,12 @@ try {
   await page.getByRole("button", { name: "Create blank", exact: true }).click();
   await expect(page.locator(".node-card")).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Try it now", exact: true })).toBeEnabled();
-  const debugMode = page.getByRole("checkbox", { name: "Debug mode", exact: true });
-  await expect(debugMode).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Debug mode", exact: true })).toHaveCount(0);
   await expect(page.locator(".node-metric-details")).toHaveCount(0);
-  await debugMode.check();
+  // Debug mode has no visible toggle; it is requested per page load with ?debug=1.
+  await page.goto(`${baseURL}/editor/?debug=1`, { waitUntil: "networkidle", timeout: 90_000 });
+  await page.getByRole("button", { name: "Create blank", exact: true }).click();
+  await expect(page.locator(".node-card")).toHaveCount(1);
   await page.locator(".node-metrics").click();
   await expect(page.locator(".node-metric-breakdown")).toHaveText(
     `Disclaimer ${PIPELINE_METRICS_DISCLAIMER}`,
@@ -184,7 +186,8 @@ try {
       fullPage: true,
     });
   }
-  await debugMode.uncheck();
+  await page.goto(`${baseURL}/editor/`, { waitUntil: "networkidle", timeout: 90_000 });
+  await page.getByRole("button", { name: "Create blank", exact: true }).click();
   await expect(page.locator(".node-metric-details")).toHaveCount(0);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole("button", { name: "Load from templates", exact: true }).click();
@@ -226,7 +229,7 @@ try {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole("link", { name: "AgentRuntime", exact: true }).click();
   await page.getByRole("heading", { name: "Voice agent studio" }).waitFor();
-  await expect(page.getByRole("checkbox", { name: "Debug mode", exact: true })).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Debug mode", exact: true })).toHaveCount(0);
   await expect(page.locator(".runtime-node-breakdown, .turn-metrics")).toHaveCount(0);
   const runtimeSplitChecks = [];
   for (const width of [1440, 1920]) {

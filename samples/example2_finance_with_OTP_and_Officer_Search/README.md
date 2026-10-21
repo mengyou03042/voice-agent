@@ -28,7 +28,7 @@ OTP verification, loan calculation, interest capture, officer assignment or
 search, confirmation, and call completion. It has no handoff graph.
 
 Use [Example 1 Realtime](../example1_finance_with_handoff_realtime/README.md) or
-[Example 1 Cascade Luna](../example1_finance_with_handoff_cascade/README.md)
+[Example 1 Cascade](../example1_finance_with_handoff_cascade/README.md)
 instead when the goal is to validate multi-node handoff topology, target
 activation, and stage-specific tool access. Both handoff variants and this
 example use the same shared MCP service; this example targets

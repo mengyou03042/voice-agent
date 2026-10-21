@@ -6,7 +6,7 @@
       "folder": "../samples/example1_finance_with_handoff_realtime",
       "name": "Example 1: Finance with Handoff \u2014 Realtime",
       "category": "Financial services",
-      "summary": "The original Finance handoff workflow using gpt-realtime, Whisper, and Diya Dragon HD, with separate backup versions.",
+      "summary": "Outbound Finance handoff workflow: direct identity check, offer, charges with bureau consent, and appointment, using gpt-realtime, Whisper, and Diya Dragon HD.",
       "accent_color": "#147d64",
       "lock_runtime": true,
       "mcp": {
@@ -19,9 +19,9 @@
     {
       "id": "finance-example-cascade-luna",
       "folder": "../samples/example1_finance_with_handoff_cascade",
-      "name": "Example 1: Finance with Handoff \u2014 Cascade Luna",
+      "name": "Example 1: Finance with Handoff \u2014 Cascade",
       "category": "Financial services",
-      "summary": "The original Finance handoff workflow using GPT-5.6 Luna, Azure Speech, and Diya Dragon HD, with separate backup versions.",
+      "summary": "Outbound Finance handoff workflow: direct identity check, offer, charges with bureau consent, and appointment, using GPT-5.6 Luna, Azure Speech, and Diya Dragon HD.",
       "accent_color": "#6b5dd3",
       "lock_runtime": true,
       "mcp": {

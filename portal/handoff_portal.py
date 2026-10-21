@@ -13,6 +13,8 @@ HANDOFF_ASSETS = frozenset({
     "handoff-app.js",
     "handoff-core.mjs",
     "handoff.css",
+    # Optional: written by tools/probe_pipeline_availability.py.
+    "pipeline-availability.json",
 })
 
 
@@ -27,7 +29,7 @@ async def legacy_handoff_redirect(request: web.Request) -> web.Response:
 
 async def handoff_asset(request: web.Request) -> web.FileResponse:
     name = request.match_info["asset"]
-    if name not in HANDOFF_ASSETS:
+    if name not in HANDOFF_ASSETS or not (STATIC_DIR / name).is_file():
         raise web.HTTPNotFound()
     return web.FileResponse(STATIC_DIR / name)
 
