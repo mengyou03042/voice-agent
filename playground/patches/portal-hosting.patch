@@ -1,5 +1,5 @@
 diff --git a/portal/demo_server.py b/portal/demo_server.py
-index 12f6b8c..754f379 100644
+index 98db93c..d37ebde 100644
 --- a/portal/demo_server.py
 +++ b/portal/demo_server.py
 @@ -14,6 +14,7 @@ import json
@@ -25,7 +25,7 @@ index 12f6b8c..754f379 100644
  # Read only this portal's ignored .env, never an ancestor or the sibling samples.
  load_dotenv(Path(__file__).with_name(".env"), override=False)
  
-@@ -164,7 +171,7 @@ def _error_response(
+@@ -166,7 +173,7 @@ def _error_response(
  
  async def _request_config(request: web.Request) -> AgentsConfig:
      default = request.app[DEFAULT_CONFIG_KEY]
@@ -34,7 +34,7 @@ index 12f6b8c..754f379 100644
      if endpoint:
          try:
              endpoint = validate_project_endpoint(endpoint)
-@@ -313,12 +320,30 @@ async def service_proxy(request: web.Request) -> web.StreamResponse:
+@@ -315,12 +322,30 @@ async def service_proxy(request: web.Request) -> web.StreamResponse:
      cfg = await _request_config(request)
      _log_api(request, cfg)
  
@@ -68,7 +68,7 @@ index 12f6b8c..754f379 100644
  
      try:
          headers.update(await asyncio.to_thread(cfg.auth_headers))
-@@ -334,6 +359,14 @@ async def service_proxy(request: web.Request) -> web.StreamResponse:
+@@ -336,6 +361,14 @@ async def service_proxy(request: web.Request) -> web.StreamResponse:
          }, status=502)
      if 300 <= resp.status_code < 400:
          return web.json_response({"error": "Upstream redirects are not followed by this credentialed proxy."}, status=502)
@@ -83,7 +83,7 @@ index 12f6b8c..754f379 100644
  
      out_headers = {k: v for k, v in resp.headers.items() if k.lower() in _SERVICE_RESPONSE_HEADERS}
      return web.Response(status=resp.status_code, body=resp.content, headers=out_headers)
-@@ -409,7 +442,7 @@ async def config(request: web.Request) -> web.Response:
+@@ -411,7 +444,7 @@ async def config(request: web.Request) -> web.Response:
      """Selectable models/voices + defaults for the UI."""
      cfg = await _request_config(request)
      deployed = list_byom_deployments(cfg)
@@ -92,7 +92,7 @@ index 12f6b8c..754f379 100644
          "models": list(dict.fromkeys([cfg.voice_model, *MODELS])),
          "realtimeModels": REALTIME_MODELS,
          "cascadedModels": CASCADED_MODELS,
-@@ -460,12 +493,53 @@ async def config(request: web.Request) -> web.Response:
+@@ -462,12 +495,53 @@ async def config(request: web.Request) -> web.Response:
          "apiVersion": cfg.api_version,
          "foundryFeatures": FOUNDRY_FEATURES,
          "inputTranscriptionModel": INPUT_TRANSCRIPTION_MODEL,
@@ -147,7 +147,7 @@ index 12f6b8c..754f379 100644
      return web.json_response(list_byom_deployments(cfg))
  
  
-@@ -589,6 +663,10 @@ def build_upstream_ws_url(
+@@ -591,6 +665,10 @@ def build_upstream_ws_url(
  async def bridge(request: web.Request) -> web.WebSocketResponse:
      """Step 2: bridge the browser WebSocket to the chosen agent's protocols/voice endpoint."""
      cfg = await _request_config(request)
@@ -158,7 +158,7 @@ index 12f6b8c..754f379 100644
      _log_api(request, cfg)
      voice_override = (request.query.get("voiceOverride") or "").strip()
      try:
-@@ -612,8 +690,8 @@ async def bridge(request: web.Request) -> web.WebSocketResponse:
+@@ -614,8 +692,8 @@ async def bridge(request: web.Request) -> web.WebSocketResponse:
      # carried in headers instead. The remaining service query parameters keep their native shape.
      url, session_id = build_upstream_ws_url(
          cfg,
@@ -169,7 +169,7 @@ index 12f6b8c..754f379 100644
          voice_ws_base=request.app[VOICE_WS_BASE_KEY],
      )
      LOGGER.info(
-@@ -668,6 +746,8 @@ async def bridge(request: web.Request) -> web.WebSocketResponse:
+@@ -672,6 +750,8 @@ async def bridge(request: web.Request) -> web.WebSocketResponse:
              async def browser_to_upstream():
                  async for msg in browser_ws:
                      if msg.type in (WSMsgType.TEXT, WSMsgType.BINARY):
@@ -177,8 +177,8 @@ index 12f6b8c..754f379 100644
 +                            playground.validate_frame(msg.data)
                          if recorder:
                              recorder.record("up", msg.data)
-                         await upstream.send(msg.data)
-@@ -692,7 +772,19 @@ async def bridge(request: web.Request) -> web.WebSocketResponse:
+                         try:
+@@ -706,7 +786,19 @@ async def bridge(request: web.Request) -> web.WebSocketResponse:
              t1 = asyncio.create_task(browser_to_upstream())
              t2 = asyncio.create_task(upstream_to_browser())
              try:
@@ -199,7 +199,7 @@ index 12f6b8c..754f379 100644
                  for task in done:
                      task.result()
              finally:
-@@ -743,27 +835,38 @@ async def bridge(request: web.Request) -> web.WebSocketResponse:
+@@ -757,27 +849,38 @@ async def bridge(request: web.Request) -> web.WebSocketResponse:
  
  @web.middleware
  async def local_boundary(request: web.Request, handler):
@@ -257,7 +257,7 @@ index 12f6b8c..754f379 100644
          return _error_response(
              request,
              "Cross-origin requests are not allowed.",
-@@ -793,16 +896,25 @@ async def local_boundary(request: web.Request, handler):
+@@ -807,16 +910,25 @@ async def local_boundary(request: web.Request, handler):
              code="json_required",
          )
      try:
@@ -285,7 +285,7 @@ index 12f6b8c..754f379 100644
      except Exception as exc:  # noqa: BLE001 - convert backend failures into a visible API contract
          detail = _safe_exception_text(exc)
          request_id = _request_id(request)
-@@ -828,6 +940,8 @@ async def security_headers(request: web.Request, response: web.StreamResponse) -
+@@ -842,6 +954,8 @@ async def security_headers(request: web.Request, response: web.StreamResponse) -
              "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
          ),
      })
@@ -294,7 +294,7 @@ index 12f6b8c..754f379 100644
      request_id = _request_id(request)
      if request_id:
          response.headers[PORTAL_REQUEST_ID_HEADER] = request_id
-@@ -840,6 +954,14 @@ async def health(request: web.Request) -> web.Response:
+@@ -854,6 +968,14 @@ async def health(request: web.Request) -> web.Response:
  
  async def list_foundry_projects(request: web.Request) -> web.Response:
      cfg = await _request_config(request)
@@ -309,7 +309,7 @@ index 12f6b8c..754f379 100644
      try:
          projects = await asyncio.to_thread(discover_projects, cfg, cfg.host)
      except Exception as error:
-@@ -854,6 +976,8 @@ async def list_foundry_projects(request: web.Request) -> web.Response:
+@@ -868,6 +990,8 @@ async def list_foundry_projects(request: web.Request) -> web.Response:
  
  
  async def select_foundry_project(request: web.Request) -> web.Response:
@@ -318,7 +318,7 @@ index 12f6b8c..754f379 100644
      try:
          body = await request.json()
          if not isinstance(body, dict):
-@@ -912,7 +1036,11 @@ def configure_file_logging(data_dir: Path) -> None:
+@@ -926,7 +1050,11 @@ def configure_file_logging(data_dir: Path) -> None:
      LOGGER.propagate = False
  
  
@@ -331,7 +331,7 @@ index 12f6b8c..754f379 100644
      cfg = AgentsConfig.from_endpoint(
          args.project_endpoint,
          credential_mode=args.credential_mode,
-@@ -921,8 +1049,13 @@ def build_app(args) -> web.Application:
+@@ -935,8 +1063,13 @@ def build_app(args) -> web.Application:
          cfg.voice_model = args.model
      if args.voice:
          cfg.voice = args.voice
@@ -345,7 +345,7 @@ index 12f6b8c..754f379 100644
      app[PROJECT_CONFIGS_KEY] = {}
      app[LIVE_SOCKETS_KEY] = set()
      app[VOICE_WS_BASE_KEY] = _local_voice_ws_base(
-@@ -950,6 +1083,8 @@ def build_app(args) -> web.Application:
+@@ -964,6 +1097,8 @@ def build_app(args) -> web.Application:
          config_resolver=_request_config,
          model_override=args.model or "",
          template_config_path=args.template_config,
@@ -354,7 +354,7 @@ index 12f6b8c..754f379 100644
      )
      install_handoff_routes(app)
      app.router.add_get("/api/demo/sessions", demo_sessions)
-@@ -1007,6 +1142,15 @@ def parse_args(argv=None):
+@@ -1021,6 +1156,15 @@ def parse_args(argv=None):
              or str(DEFAULT_TEMPLATE_CONFIG)
          ).expanduser(),
      )
@@ -370,7 +370,7 @@ index 12f6b8c..754f379 100644
      parser.add_argument(
          "--model",
          default=os.getenv("VOICE_AGENT_MODEL"),
-@@ -1041,6 +1185,10 @@ def parse_args(argv=None):
+@@ -1055,6 +1199,10 @@ def parse_args(argv=None):
      if not args.template_config.is_absolute():
          args.template_config = Path(__file__).parent / args.template_config
      args.template_config = args.template_config.resolve()
@@ -382,7 +382,7 @@ index 12f6b8c..754f379 100644
  
  
 diff --git a/portal/template_portal.py b/portal/template_portal.py
-index b4844d8..62f8cc5 100644
+index f2fbcf9..ebc0107 100644
 --- a/portal/template_portal.py
 +++ b/portal/template_portal.py
 @@ -7,6 +7,7 @@ import asyncio
@@ -527,7 +527,7 @@ index b4844d8..62f8cc5 100644
              self._documents[source.path] = document
          return self._documents[source.path]
  
-@@ -1503,7 +1566,10 @@ async def probe_published_mcp(request: web.Request) -> web.Response:
+@@ -1555,7 +1618,10 @@ async def probe_published_mcp(request: web.Request) -> web.Response:
                  "Agent name must be 1-63 characters and contain only letters, "
                  "numbers, '.', '_', or '-'."
              )
@@ -538,7 +538,7 @@ index b4844d8..62f8cc5 100644
      except (json.JSONDecodeError, ValueError) as error:
          raise web.HTTPBadRequest(text=str(error)) from error
      except Exception as error:
-@@ -1533,6 +1599,13 @@ async def probe_published_mcp(request: web.Request) -> web.Response:
+@@ -1585,6 +1651,13 @@ async def probe_published_mcp(request: web.Request) -> web.Response:
          })
      server_url = str(tool.get("server_url") or "")
      allowed_tools = [str(name) for name in tool.get("allowed_tools") or []]
@@ -552,7 +552,7 @@ index b4844d8..62f8cc5 100644
      report = {
          "ok": False,
          "reached": False,
-@@ -1805,7 +1878,11 @@ async def publish_template(request: web.Request) -> web.Response:
+@@ -1857,7 +1930,11 @@ async def publish_template(request: web.Request) -> web.Response:
          body = await request.json()
          if not isinstance(body, dict):
              raise ValueError("Expected a JSON object.")
@@ -565,7 +565,7 @@ index b4844d8..62f8cc5 100644
          require_template_backend(source, cfg.backend)
          connection_name = await ensure_template_mcp_connection(
              cfg,
-@@ -1824,6 +1901,9 @@ async def publish_template(request: web.Request) -> web.Response:
+@@ -1876,6 +1953,9 @@ async def publish_template(request: web.Request) -> web.Response:
              mcp_connection_id=connection_name,
              mcp_public=source.connection_mode == "public",
          )
@@ -575,7 +575,7 @@ index b4844d8..62f8cc5 100644
          result = await asyncio.to_thread(
              publish_agent,
              cfg,
-@@ -1831,6 +1911,8 @@ async def publish_template(request: web.Request) -> web.Response:
+@@ -1884,6 +1964,8 @@ async def publish_template(request: web.Request) -> web.Response:
              description=str(document.get("description") or ""),
              definition=definition,
          )
@@ -584,7 +584,7 @@ index b4844d8..62f8cc5 100644
      except (json.JSONDecodeError, ValueError) as error:
          raise web.HTTPBadRequest(text=str(error)) from error
      except Exception as error:
-@@ -1855,10 +1937,16 @@ def install_template_routes(
+@@ -1908,10 +1990,16 @@ def install_template_routes(
      config_resolver,
      model_override: str = "",
      template_config_path: Path = DEFAULT_TEMPLATE_CONFIG,

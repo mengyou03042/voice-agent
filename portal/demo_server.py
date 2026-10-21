@@ -99,6 +99,8 @@ MAX_STRUCTURED_INPUT_BYTES = 32 * 1024
 REDACTED_QUERY_VALUE = "<redacted>"
 VOICE_WS_BASE_ENV = "VOICE_DEMO_VOICE_WS_BASE"
 PORTAL_REQUEST_ID_HEADER = "X-Portal-Request-Id"
+# Upper bound for forwarding already-received service events after the service closes.
+UPSTREAM_CLOSE_DRAIN_SECONDS = 10
 _SENSITIVE_QUERY_KEYS = frozenset({
     STRUCTURED_INPUT_QUERY_PARAMETER, "authorization", "access_token", "token",
     "api_key", "api-key", "key", "sig", "password", "client_secret",
@@ -665,12 +667,23 @@ async def bridge(request: web.Request) -> web.WebSocketResponse:
             "ping_timeout": 60,
         }
         async with ProjectWebSocketConnect(url, additional_headers=headers, **connect_kwargs) as upstream:
+            downstream_done = asyncio.Event()
+
             async def browser_to_upstream():
                 async for msg in browser_ws:
                     if msg.type in (WSMsgType.TEXT, WSMsgType.BINARY):
                         if recorder:
                             recorder.record("up", msg.data)
-                        await upstream.send(msg.data)
+                        try:
+                            await upstream.send(msg.data)
+                        except websockets.exceptions.ConnectionClosed:
+                            # The service closed while the microphone was still streaming,
+                            # e.g. after end_conversation. Let upstream_to_browser forward
+                            # what the service sent before closing, such as the final audio.
+                            await asyncio.wait_for(
+                                downstream_done.wait(), UPSTREAM_CLOSE_DRAIN_SECONDS,
+                            )
+                            raise
                     elif msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSING, WSMsgType.ERROR):
                         break
 
@@ -688,6 +701,7 @@ async def bridge(request: web.Request) -> web.WebSocketResponse:
                     if upstream.close_code is not None:
                         upstream_close_code = int(upstream.close_code)
                     upstream_close_reason = upstream.close_reason or ""
+                    downstream_done.set()
 
             t1 = asyncio.create_task(browser_to_upstream())
             t2 = asyncio.create_task(upstream_to_browser())

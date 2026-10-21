@@ -167,6 +167,36 @@
       </section>
     </main>
 
+    <section id="agent-name-dialog" class="node-mcp-dialog agent-name-dialog" aria-label="Name this Agent" hidden>
+      <form id="agent-name-form" class="node-mcp-dialog-shell" role="dialog" aria-modal="true"
+        aria-labelledby="agent-name-dialog-title" novalidate>
+        <header class="node-mcp-dialog-header">
+          <div class="node-mcp-dialog-title-group">
+            <div>
+              <span class="kicker">Try it now</span>
+              <h2 id="agent-name-dialog-title">Name this Agent</h2>
+              <p>The name appears in your Agent list. Use letters, numbers, dots, hyphens or underscores.</p>
+            </div>
+          </div>
+          <button id="close-agent-name-dialog" class="icon-button" type="button" aria-label="Cancel naming">×</button>
+        </header>
+        <div class="node-mcp-dialog-body">
+          <label class="agent-name-field" for="agent-name-input">Agent name</label>
+          <input id="agent-name-input" type="text" autocomplete="off" spellcheck="false" maxlength="63"
+            aria-describedby="agent-name-hint" required>
+          <p id="agent-name-hint" class="agent-name-hint" role="status"></p>
+          <label class="agent-name-auto">
+            <input id="agent-name-auto" type="checkbox">
+            Name Agents automatically for the rest of this session
+          </label>
+          <div class="agent-name-actions">
+            <button id="cancel-agent-name" class="button" type="button">Cancel</button>
+            <button id="confirm-agent-name" class="button publish" type="submit">Publish and try it</button>
+          </div>
+        </div>
+      </form>
+    </section>
+
     <section id="publish-progress" class="publish-progress" aria-label="Try it now progress" hidden>
       <div class="publish-progress-shell" role="dialog" aria-modal="true" aria-labelledby="publish-progress-title">
         <header class="publish-progress-header">
@@ -280,6 +310,10 @@
         <div class="template-picker-toolbar">
           <p id="template-picker-status" role="status">Loading the template catalog…</p>
           <div>
+            <input id="template-picker-search" type="search" autocomplete="off"
+              placeholder="Search templates" aria-label="Search templates"
+              aria-controls="template-picker-grid">
+            <span id="template-picker-count" aria-live="polite"></span>
             <button id="reload-template-picker" type="button">Reload</button>
           </div>
         </div>

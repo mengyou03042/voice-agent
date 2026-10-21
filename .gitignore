@@ -5,7 +5,8 @@ DevTunnels/
 samples/.env
 samples/.env.tip
 samples/subagent/**/.env
-samples/__pycache__/
+__pycache__/
+*.py[cod]
 agent-reply-*.wav
 voice-agent-output/
 samples/CSharp/.packages/

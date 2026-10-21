@@ -83,6 +83,7 @@ const state = {
   format: "yaml",
   publishing: false,
   templates: [],
+  templateQuery: "",
   templateVersions: new Map(),
   templateCatalogLoaded: false,
   templateCatalogLoading: false,
@@ -877,9 +878,23 @@ function loadBlank() {
   window.history.replaceState(null, "", url);
 }
 
+// Every whitespace-separated search term must appear in the card's visible text.
+function templateMatchesQuery(template, query) {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return true;
+  const systems = Array.isArray(template.tool_systems) ? template.tool_systems : [];
+  const text = [
+    template.name, template.id, template.category, template.summary,
+    ...systems.map((system) => system.label),
+  ].filter(Boolean).join(" ").toLowerCase();
+  return terms.every((term) => text.includes(term));
+}
+
 function renderTemplateCatalog() {
   const root = $("#template-picker-grid");
   root.replaceChildren();
+  const count = $("#template-picker-count");
+  count.textContent = "";
   if (state.templateCatalogLoading) {
     root.innerHTML = `
       <div class="template-picker-loading">
@@ -896,7 +911,18 @@ function renderTemplateCatalog() {
       </div>`;
     return;
   }
-  for (const template of state.templates) {
+  const query = state.templateQuery.trim();
+  const matches = state.templates.filter((template) => templateMatchesQuery(template, query));
+  if (query) count.textContent = `${matches.length} of ${state.templates.length}`;
+  if (!matches.length) {
+    root.innerHTML = `
+      <div class="template-picker-empty">
+        <strong>No templates match “${escapeHtml(query)}”.</strong>
+        <span>Try another name, category or system.</span>
+      </div>`;
+    return;
+  }
+  for (const template of matches) {
     const card = document.createElement("div");
     card.className = "template-choice-card";
     const button = document.createElement("button");
@@ -1014,7 +1040,7 @@ function openTemplatePicker() {
   $("#template-picker").hidden = false;
   renderTemplateCatalog();
   void loadTemplateCatalog();
-  requestAnimationFrame(() => $("#close-template-picker").focus());
+  requestAnimationFrame(() => $("#template-picker-search").focus());
 }
 
 function closeTemplatePicker() {
@@ -2545,39 +2571,6 @@ function renderEdgeEditor() {
   });
 }
 
-function applyNodePreset(presetId) {
-  const preset = PIPELINE_PRESETS.find((item) => item.id === presetId);
-  if (!preset || state.selected.kind !== "node") return;
-  const selectedId = state.selected.id;
-  const entry = selectedId === ENTRYPOINT_ID;
-  const compatibleStt = pipelineComponentOptions("stt", {
-    model: preset.model.id,
-    models: graphModelIds(selectedId, preset.model.id),
-    stt: preset.stt.id,
-    voice: preset.voice.id,
-  }).filter((component) => component.compatible !== false);
-  const nextStt = compatibleStt.some((component) => component.id === preset.stt.id)
-    ? preset.stt.id
-    : compatibleStt[0]?.id;
-  if (!nextStt) {
-    setMessage("The preset was not applied.", "No transcription model is compatible with every model in this graph.");
-    return;
-  }
-  const presetMessage = nextStt === preset.stt.id
-    ? `Applied ${preset.label} preset to ${selectedId}`
-    : `Applied ${preset.label} to ${selectedId}; kept graph-wide STT compatible with ${nextStt}`;
-  mutate(presetMessage, (definition) => {
-    const node = entry
-      ? null
-      : definition.handoff.nodes.find((item) => item.id === selectedId);
-    const config = entry ? definition : (node.config ||= {});
-    config.model = preset.model.id;
-    setRootSttModel(definition, nextStt);
-    setNodeVoice(definition, config, entry, preset.voice.id);
-  });
-  renderNodeEditor();
-}
-
 function setNodeVoice(definition, config, entry, voice) {
   if (entry) {
     definition.audio ||= {};
@@ -3408,23 +3401,6 @@ function renderNodeEditor() {
         <p>Disclaimer: ${PIPELINE_METRICS_DISCLAIMER}</p>
       </div>
     </section>` : ""}
-    <section class="preset-section">
-      <div class="preset-heading">
-        <div>
-          <span class="kicker">Pipeline presets</span>
-          <strong>Choose a compatible model · STT · voice combination</strong>
-        </div>
-        <span>Model families and tiers follow Foundry capabilities and Voice Live configuration.</span>
-      </div>
-      <div class="preset-grid">
-        ${PIPELINE_PRESETS.map((item) => `
-          <button type="button" class="preset-button${item.id === preset?.id ? " selected" : ""}"
-            data-node-preset="${item.id}" aria-pressed="${item.id === preset?.id}">
-            ${pipelineIcon(item.icon)}
-            <span><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(item.summary)}</small></span>
-          </button>`).join("")}
-      </div>
-    </section>
     <section class="node-icon-section">
       <div class="preset-heading">
         <div>
@@ -3623,9 +3599,6 @@ function renderNodeEditor() {
         open();
       }
     });
-  });
-  $$("[data-node-preset]", nodeEditorBody).forEach((button) => {
-    button.addEventListener("click", () => applyNodePreset(button.dataset.nodePreset));
   });
   $$("[data-node-icon]", nodeEditorBody).forEach((button) => {
     button.addEventListener("click", () => {
@@ -4241,12 +4214,100 @@ function openAgentInDemo(agentName, { startSession = false } = {}) {
   window.location.assign(`/demo/?agent=${encodeURIComponent(agentName)}&view=handoff`);
 }
 
+const AUTO_AGENT_NAME_KEY = "voice-agent-editor-auto-name";
+const AGENT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
+let agentNameResolve = null;
+
+function autoAgentNameEnabled() {
+  try {
+    return window.sessionStorage.getItem(AUTO_AGENT_NAME_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function agentNameProblem(name) {
+  if (!name) return "Enter a name for the Agent.";
+  if (!AGENT_NAME_PATTERN.test(name)) {
+    return "Use up to 63 letters, numbers, dots, hyphens or underscores, starting with a letter or number.";
+  }
+  // The hosted Playground reserves pg- for its per-user Agent prefix.
+  if (state.cfg?.playground && /^pg-/i.test(name)) return "Names cannot start with pg-.";
+  return "";
+}
+
+function existingAgentNamed(name) {
+  return (state.agents || []).some((agent) =>
+    agent.name === name || agent.name.replace(/^pg-[0-9a-f]+-/, "") === name);
+}
+
+function updateAgentNameHint() {
+  const name = $("#agent-name-input").value.trim();
+  const problem = agentNameProblem(name);
+  const hint = $("#agent-name-hint");
+  hint.textContent = problem || (existingAgentNamed(name)
+    ? `You already have an Agent named ${name}. Publishing adds a new version to it.`
+    : "");
+  hint.classList.toggle("error", Boolean(problem));
+  $("#confirm-agent-name").disabled = Boolean(problem);
+}
+
+// Resolves with the chosen name, or null when the user cancels.
+function requestAgentName() {
+  return new Promise((resolve) => {
+    agentNameResolve = resolve;
+    const input = $("#agent-name-input");
+    input.value = state.agentName;
+    $("#agent-name-auto").checked = false;
+    updateAgentNameHint();
+    $("#agent-name-dialog").hidden = false;
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+  });
+}
+
+function closeAgentNameDialog(name = null) {
+  if ($("#agent-name-dialog").hidden) return;
+  $("#agent-name-dialog").hidden = true;
+  const resolve = agentNameResolve;
+  agentNameResolve = null;
+  resolve?.(name);
+}
+
+function submitAgentName(event) {
+  event.preventDefault();
+  const name = $("#agent-name-input").value.trim();
+  if (agentNameProblem(name)) {
+    updateAgentNameHint();
+    return;
+  }
+  if ($("#agent-name-auto").checked) {
+    try {
+      window.sessionStorage.setItem(AUTO_AGENT_NAME_KEY, "1");
+    } catch {
+      // Without session storage the dialog simply asks again next time.
+    }
+  }
+  closeAgentNameDialog(name);
+}
+
 async function publishAndRun() {
-  if (!state.definition || state.publishing) return;
+  if (!state.definition || state.publishing || !$("#agent-name-dialog").hidden) return;
   const startSession = state.remoteSource;
   if (startSession && !state.draft && !isDirty()) {
     openAgentInDemo(state.agentName, { startSession: true });
     return;
+  }
+  // A new working copy becomes a new Agent, so let the user name it first.
+  if (!state.remoteSource && !autoAgentNameEnabled()) {
+    const name = await requestAgentName();
+    if (!name) return;
+    if (name !== state.agentName) {
+      state.agentName = name;
+      render();
+    }
   }
   openPublishProgress();
   const published = await publishDefinition();
@@ -4335,6 +4396,13 @@ function bindEvents() {
     }
   });
   $("#publish-run-action").addEventListener("click", publishAndRun);
+  $("#agent-name-form").addEventListener("submit", submitAgentName);
+  $("#agent-name-input").addEventListener("input", updateAgentNameHint);
+  $("#close-agent-name-dialog").addEventListener("click", () => closeAgentNameDialog());
+  $("#cancel-agent-name").addEventListener("click", () => closeAgentNameDialog());
+  $("#agent-name-dialog").addEventListener("click", (event) => {
+    if (event.target === $("#agent-name-dialog")) closeAgentNameDialog();
+  });
   $("#close-publish-progress").addEventListener("click", closePublishProgress);
   $("#publish-progress-done").addEventListener("click", closePublishProgress);
   $("#close-node-mcp-dialog").addEventListener("click", closeNodeMcpDialog);
@@ -4343,6 +4411,10 @@ function bindEvents() {
   });
   $("#close-template-picker").addEventListener("click", closeTemplatePicker);
   $("#reload-template-picker").addEventListener("click", () => loadTemplateCatalog({ force: true }));
+  $("#template-picker-search").addEventListener("input", (event) => {
+    state.templateQuery = event.target.value;
+    renderTemplateCatalog();
+  });
   $("#template-picker").addEventListener("click", (event) => {
     if (event.target === $("#template-picker")) closeTemplatePicker();
   });
@@ -4456,6 +4528,8 @@ function bindEvents() {
     if (state.panning?.pointerId === event.pointerId) state.panning = null;
   });
   window.addEventListener("keydown", (event) => {
+    // The naming dialog is modal: graph shortcuts must not edit the canvas behind it.
+    if (!$("#agent-name-dialog").hidden && event.key !== "Escape") return;
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
       event.preventDefault();
       if (event.shiftKey) redo();
@@ -4474,6 +4548,10 @@ function bindEvents() {
       return;
     }
     if (event.key === "Escape") {
+      if (!$("#agent-name-dialog").hidden) {
+        closeAgentNameDialog();
+        return;
+      }
       if (!$("#node-mcp-dialog").hidden) {
         closeNodeMcpDialog();
         return;

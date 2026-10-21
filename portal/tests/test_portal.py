@@ -466,6 +466,11 @@ class LiveProxyTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_normal_upstream_close_during_browser_send_is_not_an_error(self):
         close = Close(1001, "Conversation ended by agent")
+        final_audio = [
+            json.dumps({"type": "response.output_audio.delta", "delta": "final-1"}),
+            json.dumps({"type": "response.output_audio.delta", "delta": "final-2"}),
+        ]
+        sent = asyncio.Event()
 
         class ClosingUpstream:
             close_code = close.code
@@ -475,10 +480,15 @@ class LiveProxyTests(unittest.IsolatedAsyncioTestCase):
                 return self
 
             async def __anext__(self):
-                await asyncio.sleep(10)
+                # Like websockets, deliver frames received before the close, then stop.
+                await sent.wait()
+                if final_audio:
+                    await asyncio.sleep(0.05)
+                    return final_audio.pop(0)
                 raise StopAsyncIteration
 
             async def send(self, _data):
+                sent.set()
                 raise ConnectionClosedOK(close, close, True)
 
         class ClosingConnect:
@@ -491,6 +501,9 @@ class LiveProxyTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(server, "ProjectWebSocketConnect", return_value=ClosingConnect()):
             async with self.client.ws_connect(VOICE_PATH) as ws:
                 await ws.send_json({"type": "input_audio_buffer.append", "audio": "fixture"})
+                # The microphone send fails first; the final audio must still arrive.
+                for expected in ("final-1", "final-2"):
+                    self.assertEqual(expected, (await ws.receive_json(timeout=3))["delta"])
                 message = await ws.receive(timeout=3)
                 self.assertEqual(message.type, WSMsgType.CLOSE)
                 self.assertEqual(message.data, 1001)
