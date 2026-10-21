@@ -1056,18 +1056,26 @@ function renderToolBanner() {
   );
 }
 
-function openToolConnections() {
+function openToolConnections({ fromPicker = false } = {}) {
   if (!state.definition) return;
   state.toolDrafts = {};
   state.toolSummaryOpen = false;
+  // Opened from Load with my MCP: closing returns to the template list.
+  state.toolDialogFromPicker = fromPicker === true;
+  $("#close-tool-connections").setAttribute(
+    "aria-label", state.toolDialogFromPicker ? "Back to templates" : "Close tool connections",
+  );
   $("#tool-connections").hidden = false;
   $("#tool-connections-status").textContent = "Reading the working copy's tools…";
   void refreshToolGroups();
   requestAnimationFrame(() => $("#close-tool-connections").focus());
 }
 
-function closeToolConnections() {
+function closeToolConnections({ returnToPicker = true } = {}) {
   $("#tool-connections").hidden = true;
+  const fromPicker = state.toolDialogFromPicker;
+  state.toolDialogFromPicker = false;
+  if (fromPicker && returnToPicker === true) openTemplatePicker();
 }
 
 function shortToolName(name) {
@@ -1140,7 +1148,7 @@ function finishToolConnections() {
     return;
   }
   state.toolSummaryOpen = false;
-  closeToolConnections();
+  closeToolConnections({ returnToPicker: false });
   if (!$("#publish-run-action").disabled) void publishAndRun();
 }
 
@@ -1396,7 +1404,7 @@ async function loadTemplateIntoGraph(templateId, version = ".", { connectTools =
     url.searchParams.delete("agent");
     window.history.replaceState(null, "", url);
     closeTemplatePicker();
-    if (connectTools) openToolConnections();
+    if (connectTools) openToolConnections({ fromPicker: true });
   } catch (error) {
     $("#template-picker-status").textContent = `Could not load ${templateId}: ${error.message}`;
   } finally {

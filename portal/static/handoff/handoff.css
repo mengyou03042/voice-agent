@@ -615,7 +615,7 @@ a:focus-visible, [tabindex]:focus-visible {
 .app {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 48px auto minmax(0, 1fr);
+  grid-template-rows: 48px auto auto minmax(0, 1fr);
   width: 100vw;
   height: 100vh;
   min-height: 620px;
@@ -3370,7 +3370,7 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
 
 @media (max-width: 820px) {
   body { overflow: auto; }
-  .app { grid-template-rows: auto auto minmax(700px, 1fr); height: auto; min-height: 100vh; }
+  .app { grid-template-rows: auto auto auto minmax(700px, 1fr); height: auto; min-height: 100vh; }
   .product-nav { min-height: 52px; flex-wrap: wrap; padding: 9px 14px; }
   .product-nav nav { order: 3; width: 100%; height: 30px; gap: 18px; overflow-x: auto; }
   .environment { max-width: 44vw; }
@@ -3499,6 +3499,9 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
   }
 }
 
+/* Row 3 of .app; it collapses to nothing while the banner is hidden. */
+.app > .mock-tools-banner { grid-row: 3; align-self: start; }
+.app > .workspace { grid-row: 4; }
 .mock-tools-banner {
   display: flex;
   align-items: center;
