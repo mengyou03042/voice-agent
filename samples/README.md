@@ -1,40 +1,37 @@
 # Voice Agent samples
 
-> [!IMPORTANT]
-> Every future example intended for the portal Templates page must follow
-> [Add an example to Portal Templates](./PORTAL_TEMPLATE_EXAMPLES.md). New
-> sample directories are not discovered automatically; they require the
-> documented portable `agent.json`, explicit allowlist entry, security rules,
-> tests, and source-sync update when applicable.
+Choose a sample to learn how to create, connect, and extend a Foundry Voice
+Agent. This directory includes Python, C#, Java, browser, and end-to-end
+application samples, plus a design guide.
 
-## Conclusion
-
-This directory owns the runnable Python, .NET, Finance, Knowledge IQ, and avatar
-samples. Use the common setup below for the top-level Python
-scripts. The Finance directories and C# application have separate dependencies
-and their own documentation.
+Start with the sample's linked documentation for its prerequisites, supported
+regions, model choices, and run commands. The [common Python setup](#common-python-sample-setup)
+below applies to the top-level Python scripts; directory-based samples may have
+their own dependencies and setup.
 
 For the general browser UI, use the local
 [`portal/`](../portal/README.md). For the Finance CLI samples and the
 independent shared MCP reference implementation, start with the
 [Finance documentation index](../docs/README.md).
 
-Use underscores between words in sample directory names, including subagent examples.
-
 ## Choose a sample
 
-| Sample | Lifecycle |
+| Sample | What it demonstrates |
 | --- | --- |
+| [Add voice to an existing customer agent](existing_agent_voice_design/README.md) | Design guide: use a Hosted Agent as the Foundry Voice Agent conversation engine to connect managed voice to an existing customer agent or API endpoint. Includes a high-level architecture diagram; not a runnable sample. |
 | [Voice Live to Voice Agent migration](voice_live_to_voice_agent/README.md) | Compare the same Azure Speech -> GPT-4.1 mini -> Azure TTS cascade and shared local functions before and after migration. Includes dynamic session context and mid-session instruction-update examples. |
 | [Vehicle voice agent with local tools](vehicle_local_tools/README.md) | Web cockpit with cloud voice interaction and locally executed simulated climate, media, and navigation functions. Includes an offline dashboard, local policy enforcement, and a tool execution log. |
+| [Long tool waits with spoken reminders](long_tool_wait/README.md) | Keep callers informed during slow local tools using out-of-band Voice Agent speech, with both GPT Realtime and an Azure Speech / GPT-5.4 pipeline. |
 | [Language learning with pronunciation assessment](language_learning/README.md) | Have a hands-free conversation with a voice coach that asks you to read specified sentences, then gives per-sentence and word-level feedback through an Azure Speech Pronunciation Assessment function tool. Supports spoken retries and a WAV-file mode. |
+| [Spoken identifiers with digit recognition](digit_recognition/README.md) | Use the server-managed `digit_recognition` tool with GPT Realtime and MAI Transcribe 2, silent tool calls, digit-by-digit readback, and caller confirmation. Includes language selection and an explicit Azure Speech alternative. |
 | [Realtime STT agent](realtime_stt/README.md) | Create or reuse a voice-first agent with VAD, disabled LLM responses, MAI Transcribe 2 or Azure Speech, microphone or paced WAV input, and final usage collection with explicit completeness status. |
 | [Agent-based transcript refinement, summary, and translation](audio_transcribe_and_translate/README.md) | Transcribe a WAV recording with mai-transcribe-2 and process it with a gpt-5.4 Voice Agent. Includes refinement and translation modes, guidance for adapting the instructions to summarization, and a 60-second input limit. Supports native Windows PowerShell. |
 | [Knowledge, Andrew Dragon HD, and Harry Business](create_agent_with_iq_avatar_voice/README.md) | Portal creation is recommended; optional Python validation/create/readback is included. Supports optional custom photo avatar and Personal Voice workflows. |
 | [`simple_rest_lifecycle.py`](simple_rest_lifecycle.py) | Create a simple Agent with REST, or retrieve an existing Agent. |
 | [`basic_voice_agent.py`](basic_voice_agent.py) | Create and version a basic Agent, or connect to an existing Agent, then converse through the microphone. |
-| [US Data Zone / Japan East / Central India voice-first agents](realtime_datazone_voice_agent.md) | Select `gpt-realtime-2.1-datazone`, `azure-realtime`, or Central India `gpt-realtime` (requires confirmed Voice Agent eligibility), then converse through the microphone. |
-| [Foundry GPT Live / OpenAI Python SDK sample](gpt_live/README.md) | Create an English-teacher agent or reuse `AGENT_NAME`, stream microphone audio with Responses delegation, and print the conversation ID and download command after close. |
+| [Data Zone and regional realtime Voice Agents](realtime_datazone_voice_agent.md) | Create or reuse a voice-first Agent with an explicit managed model and hands-free microphone conversation. See the sample guide for region/model combinations and routing prerequisites. |
+| [Foundry GPT Live with Responses delegation](gpt_live/README.md) | Create an English-teacher agent or reuse `AGENT_NAME`, stream microphone audio with Responses delegation, and print the conversation ID and download command after close. |
+| [Foundry GPT Live with managed prompt-agent delegation](gpt_live/README.md#managed-prompt-agent-delegation) | Create a prompt agent first, pin its version to a new GPT Live voice agent, then stream microphone audio with Foundry-managed delegation. |
 | [`voice_agent_with_mcp.py`](voice_agent_with_mcp.py) | Create an MCP Agent, converse through the microphone, and display tool arguments and output. |
 | [`voice_agent_with_foundry_iq.py`](voice_agent_with_foundry_iq.py) | Create a Foundry IQ Agent, converse through the microphone, and display tool activity. |
 | [`voice_agent_with_local_function.py`](voice_agent_with_local_function.py) | Execute `add_numbers` in the client, return its output, and hear the response. |
@@ -115,12 +112,14 @@ For Central India, use the exact `gpt-realtime` model, not `gpt-realtime-2.1`
 does not list Agent support in Central India; confirm enablement before running
 this voice-first Agent sample.
 
-The Voice Live migration, Finance, Elevator, language-learning, vehicle-local-tools, and documentation-generated voice web
+## Choose the right setup
+
+The Voice Live migration, Finance, Elevator, language-learning, vehicle-local-tools, long-tool-wait, and documentation-generated voice web
 samples use their own `requirements.txt` files. The voice web sample uses a standalone HTTP/WebSocket
 backend and does not require the Projects SDK; follow its README for setup.
 The common Python SDK samples require `azure-ai-projects>=2.7.0` from PyPI.
 
-The GPT Live terminal sample uses the shared `VoiceAgent/.venv` with additional
+The GPT Live terminal samples use the shared repository-root `.venv` with additional
 pinned packages and the OpenAI Live SDK. Follow its own README for configuration
 and installation.
 
@@ -392,7 +391,20 @@ URIs instead of downloading WAV data through the service.
 Conversation and audio download requires the Agent to have been created with
 `store=true`. All Agents created by these common samples enable it.
 
-## Reusable coding-agent skills
+## Contributor resources
+
+### Adding samples and portal templates
+
+Use underscores between words in sample directory names, including subagent
+examples.
+
+Every example intended for the portal Templates page must follow
+[Add an example to Portal Templates](./PORTAL_TEMPLATE_EXAMPLES.md). New
+sample directories are not discovered automatically; they require the
+documented portable `agent.json`, explicit allowlist entry, security rules,
+tests, and source-sync update when applicable.
+
+### Reusable coding-agent skills
 
 The related workflows are under [`../skills/`](../skills/):
 
@@ -404,7 +416,7 @@ The related workflows are under [`../skills/`](../skills/):
 - `provision-foundry-toolbox` creates an Azure AI Search index and Foundry
   Toolbox.
 
-## Validate without Azure access
+### Validate without Azure access
 
 With the common sample dependencies installed, run from `VoiceAgent`:
 
