@@ -920,24 +920,34 @@ function renderTemplateCatalog() {
       button.querySelector(".template-choice-metrics").hidden = select.value !== (template.default_version || ".");
     });
     label.append(select);
-    card.append(button, label);
-    let toolsSelect = null;
+    const options = document.createElement("div");
+    options.className = "template-choice-options";
+    options.append(label);
     if (systems.some((system) => system.connectable)) {
-      const toolsLabel = document.createElement("label");
-      toolsLabel.className = "template-choice-version";
-      toolsLabel.textContent = "Tools";
-      toolsSelect = document.createElement("select");
-      toolsSelect.setAttribute("aria-label", `Tools for ${template.name || template.id}`);
-      toolsSelect.disabled = Boolean(state.templateLoadingId);
-      toolsSelect.add(new Option("Mock tools (default)", "mock"));
-      toolsSelect.add(new Option("Connect my real tools after loading", "real"));
-      toolsSelect.value = state.templateToolModes.get(template.id) || "mock";
-      toolsSelect.addEventListener("change", () => state.templateToolModes.set(template.id, toolsSelect.value));
-      toolsLabel.append(toolsSelect);
-      card.append(toolsLabel);
+      const mode = state.templateToolModes.get(template.id) || "mock";
+      const toggle = document.createElement("div");
+      toggle.className = "template-choice-tools";
+      toggle.setAttribute("role", "radiogroup");
+      toggle.setAttribute("aria-label", `Tools for ${template.name || template.id}`);
+      toggle.innerHTML = `<span>Tools</span>${[["mock", "Mock data"], ["real", "My MCP"]].map(([value, text]) => `
+        <button type="button" role="radio" data-mode="${value}" aria-checked="${mode === value}"
+          title="${value === "mock" ? "Fictional data from the shared mock MCP server" : "Connect your own MCP server for each system after loading"}"
+          ${state.templateLoadingId ? "disabled" : ""}>${text}</button>`).join("")}`;
+      toggle.addEventListener("click", (event) => {
+        const choice = event.target.closest("[data-mode]");
+        if (!choice) return;
+        state.templateToolModes.set(template.id, choice.dataset.mode);
+        toggle.querySelectorAll("[data-mode]").forEach((item) => {
+          item.setAttribute("aria-checked", String(item === choice));
+        });
+      });
+      options.append(toggle);
     }
+    card.append(button, options);
     button.addEventListener("click", () =>
-      loadTemplateIntoGraph(template.id, select.value, { connectTools: toolsSelect?.value === "real" }));
+      loadTemplateIntoGraph(template.id, select.value, {
+        connectTools: state.templateToolModes.get(template.id) === "real",
+      }));
     root.append(card);
   }
 }
@@ -1085,54 +1095,96 @@ function renderToolConnections() {
   $("#tool-connection-groups").innerHTML = groups.map(toolGroupCard).join("");
 }
 
+const TOOL_URL_STORAGE = "voice-agent.tool-url.";
+const TOOL_GUIDES = {
+  salesforce: "/guide/logic-apps-mcp",
+  zendesk: "/guide/logic-apps-mcp",
+};
+
+function rememberedToolUrl(groupId) {
+  try {
+    return window.localStorage.getItem(TOOL_URL_STORAGE + groupId) || "";
+  } catch {
+    return "";
+  }
+}
+
+function rememberToolUrl(groupId, url) {
+  try {
+    window.localStorage.setItem(TOOL_URL_STORAGE + groupId, url);
+  } catch {
+    // Storage can be unavailable; the URL is simply not prefilled next time.
+  }
+}
+
+function toolDraft(groupId) {
+  if (!state.toolDrafts[groupId]) {
+    state.toolDrafts[groupId] = {
+      url: rememberedToolUrl(groupId), tools: null, mapping: {}, message: "", error: false, busy: false,
+    };
+  }
+  return state.toolDrafts[groupId];
+}
+
+function serverHost(url) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 function toolGroupCard(group) {
-  const draft = state.toolDrafts[group.id];
   const connected = group.connected;
-  const status = connected ? "Connected" : group.connectable ? "Mock" : "Mock only";
-  const tools = (connected ? [...group.tools, ...connected.tools] : group.tools).map(shortToolName);
+  const status = connected ? "Connected" : group.connectable ? "Mock data" : "Mock only";
+  const id = escapeHtml(group.id);
   let body = "";
   if (!group.connectable) {
     body = `<p class="tool-group-note">${escapeHtml(group.note)}</p>`;
   } else if (connected) {
     const known = Boolean(state.toolConnections[group.id]);
     body = `
-      <p class="tool-group-state good">Calls <code>${escapeHtml(connected.server_url)}</code></p>
-      ${known
-        ? `<button type="button" class="tool-group-link" data-tool-action="disconnect" data-group="${escapeHtml(group.id)}">Use mock data again</button>`
-        : `<p class="tool-group-hint">To switch back to mock data, use Undo or load the template again.</p>`}`;
-  } else if (!draft) {
-    body = `<button type="button" class="tool-group-action" data-tool-action="edit" data-group="${escapeHtml(group.id)}">Connect my MCP server</button>`;
+      <div class="tool-group-row">
+        <p class="tool-group-state good">Calls your MCP server at <strong>${escapeHtml(serverHost(connected.server_url))}</strong></p>
+        ${known
+          ? `<button type="button" class="tool-group-link" data-tool-action="disconnect" data-group="${id}">Use mock data again</button>`
+          : ""}
+      </div>
+      ${known ? "" : `<p class="tool-group-hint">To switch back to mock data, use Undo or load the template again.</p>`}`;
   } else {
-    const mapping = draft.tools
-      ? `<div class="tool-group-map">${group.tools.map((name) => `
-          <label><span title="${escapeHtml(name)}">${escapeHtml(shortToolName(name))}</span>
-            <select data-tool-map="${escapeHtml(name)}" data-group="${escapeHtml(group.id)}">
-              <option value="">Choose a tool…</option>
-              ${draft.tools.map((tool) => `<option value="${escapeHtml(tool)}" ${draft.mapping[name] === tool ? "selected" : ""}>${escapeHtml(tool)}</option>`).join("")}
-            </select>
-          </label>`).join("")}</div>`
+    const draft = toolDraft(group.id);
+    const missing = draft.tools ? group.tools.filter((name) => !draft.mapping[name]) : [];
+    const mapping = missing.length
+      ? `<details class="tool-group-map" open>
+          <summary>Match the tools by hand</summary>
+          <ul>${missing.map((name) => `
+            <li>
+              <code>${escapeHtml(shortToolName(name))}</code>
+              <span class="tool-map-arrow" aria-hidden="true">→</span>
+              <select data-tool-map="${escapeHtml(name)}" data-group="${id}"
+                aria-label="Server tool for ${escapeHtml(shortToolName(name))}">
+                <option value="">Choose a tool on your server…</option>
+                ${draft.tools.map((tool) => `<option value="${escapeHtml(tool)}">${escapeHtml(tool)}</option>`).join("")}
+              </select>
+            </li>`).join("")}</ul>
+        </details>`
       : "";
-    const missing = draft.tools ? group.tools.filter((name) => !draft.mapping[name]).length : group.tools.length;
+    const guide = TOOL_GUIDES[group.id] || "/guide/real-tools";
     body = `
       <div class="tool-group-row">
-        <input type="url" data-tool-url="${escapeHtml(group.id)}" value="${escapeHtml(draft.url)}"
-          placeholder="https://… MCP server for ${escapeHtml(group.label)}" autocomplete="off" spellcheck="false" maxlength="2048"
+        <input type="url" data-tool-url="${id}" value="${escapeHtml(draft.url)}"
+          placeholder="https://your-server.example.com/mcp" autocomplete="off" spellcheck="false" maxlength="2048"
           aria-label="${escapeHtml(group.label)} MCP server URL">
-        <button type="button" data-tool-action="discover" data-group="${escapeHtml(group.id)}" ${draft.busy ? "disabled" : ""}>
-          ${draft.busy ? "Connecting…" : "Discover tools"}</button>
+        <button type="button" class="tool-group-action" data-tool-action="connect" data-group="${id}"
+          ${draft.busy || !draft.url.trim() ? "disabled" : ""}>${draft.busy ? "Connecting…" : "Connect"}</button>
       </div>
       ${draft.message ? `<p class="tool-group-state ${draft.error ? "bad" : "good"}">${escapeHtml(draft.message)}</p>` : ""}
       ${mapping}
-      <div class="tool-group-row end">
-        <button type="button" class="tool-group-link" data-tool-action="cancel" data-group="${escapeHtml(group.id)}">Keep mock data</button>
-        <button type="button" class="tool-group-action" data-tool-action="connect" data-group="${escapeHtml(group.id)}"
-          ${draft.tools && !missing && !draft.busy ? "" : "disabled"}>Connect ${escapeHtml(group.label)}</button>
-      </div>`;
+      <a class="tool-group-guide" href="${guide}" target="_blank" rel="noreferrer">How to get a ${escapeHtml(group.label)} MCP URL</a>`;
   }
   return `
-    <article class="tool-group ${connected ? "connected" : ""}">
+    <article class="tool-group ${connected ? "connected" : group.connectable ? "" : "locked"}">
       <header><strong>${escapeHtml(group.label)}</strong><span class="tool-group-status ${connected ? "good" : group.connectable ? "" : "locked"}">${status}</span></header>
-      <p class="tool-group-tools">${tools.map((name) => `<code>${escapeHtml(name)}</code>`).join(" ")}</p>
       ${body}
     </article>`;
 }
@@ -1144,6 +1196,33 @@ function replaceWorkingDefinition(label, definition) {
   });
 }
 
+async function connectToolGroup(group, draft) {
+  const url = draft.url.trim();
+  if (!draft.tools || draft.discoveredUrl !== url) {
+    const result = await toolRequest("/api/tools/discover", { group: group.id, server_url: url });
+    if (!result.ok) throw new Error(result.error || "The MCP server could not be reached.");
+    Object.assign(draft, {
+      url: result.server_url, discoveredUrl: url, tools: result.tools, mapping: { ...result.mapping },
+    });
+  }
+  const missing = group.tools.filter((name) => !draft.mapping[name]);
+  if (missing.length) {
+    Object.assign(draft, {
+      message: `This server doesn't offer every ${group.label} action the template needs. Match the remaining tools below, then select Connect again.`,
+      error: true,
+    });
+    return;
+  }
+  const result = await toolRequest("/api/tools/connect", {
+    group: group.id, server_url: draft.url, tool_map: draft.mapping,
+  });
+  rememberToolUrl(group.id, draft.url);
+  state.toolConnections[group.id] = { server_url: draft.url, tool_map: result.tool_map };
+  delete state.toolDrafts[group.id];
+  replaceWorkingDefinition(`Connected ${group.label} to ${serverHost(draft.url)}`, result.definition);
+  state.toolGroups = result.groups;
+}
+
 async function handleToolAction(event) {
   const button = event.target.closest("[data-tool-action]");
   if (!button) return;
@@ -1151,51 +1230,16 @@ async function handleToolAction(event) {
   const group = (state.toolGroups || []).find((item) => item.id === groupId);
   if (!group) return;
   const action = button.dataset.toolAction;
-  if (action === "edit") {
-    state.toolDrafts[groupId] = { url: "", tools: null, mapping: {}, message: "", error: false, busy: false };
-    renderToolConnections();
-    requestAnimationFrame(() => $(`[data-tool-url="${CSS.escape(groupId)}"]`)?.focus());
-    return;
-  }
-  if (action === "cancel") {
-    delete state.toolDrafts[groupId];
-    renderToolConnections();
-    return;
-  }
   const draft = state.toolDrafts[groupId];
-  if (action === "discover" && draft) {
-    Object.assign(draft, { busy: true, tools: null, message: "", error: false });
+  if (action === "connect" && draft && !draft.busy) {
+    Object.assign(draft, { busy: true, message: "", error: false });
     renderToolConnections();
     try {
-      const result = await toolRequest("/api/tools/discover", { group: groupId, server_url: draft.url.trim() });
-      if (!result.ok) throw new Error(result.error || "The MCP server could not be reached.");
-      Object.assign(draft, { url: result.server_url, tools: result.tools, mapping: { ...result.mapping } });
-      const missing = result.unmapped.length;
-      draft.message = missing
-        ? `${result.tools.length} tools found · choose a server tool for ${missing} more`
-        : `${result.tools.length} tools found · every ${group.label} tool is mapped`;
-      draft.error = missing > 0;
+      await connectToolGroup(group, draft);
     } catch (error) {
-      Object.assign(draft, { message: `Error: ${error.message}`, error: true });
+      Object.assign(draft, { message: `Could not connect: ${error.message}`, error: true });
     } finally {
       draft.busy = false;
-      renderToolConnections();
-    }
-    return;
-  }
-  if (action === "connect" && draft?.tools) {
-    draft.busy = true;
-    renderToolConnections();
-    try {
-      const result = await toolRequest("/api/tools/connect", {
-        group: groupId, server_url: draft.url, tool_map: draft.mapping,
-      });
-      state.toolConnections[groupId] = { server_url: draft.url, tool_map: result.tool_map };
-      delete state.toolDrafts[groupId];
-      replaceWorkingDefinition(`Connected ${group.label} tools to ${draft.url}`, result.definition);
-      state.toolGroups = result.groups;
-    } catch (error) {
-      Object.assign(draft, { busy: false, message: `Error: ${error.message}`, error: true });
     }
     renderToolConnections();
     return;
@@ -1219,17 +1263,19 @@ function handleToolInput(event) {
   const url = event.target.closest("[data-tool-url]");
   if (url) {
     const draft = state.toolDrafts[url.dataset.toolUrl];
-    if (draft && url.value.trim() !== draft.url.trim()) {
-      Object.assign(draft, { url: url.value, tools: null, message: "" });
+    if (!draft) return;
+    draft.url = url.value;
+    if (url.value.trim() !== (draft.discoveredUrl || "")) {
+      Object.assign(draft, { tools: null, mapping: {}, message: "", error: false });
     }
+    const connect = url.closest(".tool-group")?.querySelector('[data-tool-action="connect"]');
+    if (connect) connect.disabled = draft.busy || !url.value.trim();
     return;
   }
   const select = event.target.closest("[data-tool-map]");
   if (select) {
     const draft = state.toolDrafts[select.dataset.group];
-    if (!draft) return;
-    draft.mapping[select.dataset.toolMap] = select.value;
-    renderToolConnections();
+    if (draft) draft.mapping[select.dataset.toolMap] = select.value;
   }
 }
 

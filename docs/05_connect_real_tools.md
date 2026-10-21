@@ -18,28 +18,29 @@ To run a Template against your real systems, use one of two paths:
 
 ## 1. Connect your own MCP servers in the Editor
 
-1. In **Editor**, choose **Load from templates** and load a Template. When its
-   tools are mocks, a banner says **This Agent uses mock tools** and names the
-   systems they stand for.
-2. Choose **Connect my tools**. The dialog lists one card per system the Agent
-   uses, for example Salesforce, Zendesk, and Twilio SMS, with the tools of each.
-3. On the card of a system you have a server for, choose **Connect my MCP
-   server**, enter its public HTTPS URL, for example
-   `https://crm.contoso.com/mcp`, and select **Discover tools**. Each system can
-   use a different server.
-4. The Editor maps each of that system's tools to the server tool with the same
-   name in any naming style (`FindMeetingTimes`, `find_meeting_times`,
-   `crm___find_meeting_times`). Choose a tool for any row that is still empty, then
-   select **Connect**.
-5. The working copy now calls your server for that system; every other system
-   stays on mock data. The stage instructions use your tool names. **Use mock data
-   again** or **Undo** reverts the change.
-6. Select **Try it now** to publish the working copy.
+1. In **Editor**, choose **Load from templates**. Cards whose tools are mocks
+   show **Mock tools** and the systems they stand for, for example Salesforce and
+   Zendesk. Set **Tools** to **My MCP** to open the connections right after loading,
+   or choose **Connect my tools** on the banner that says **This Agent uses mock
+   tools**.
+2. The dialog shows one card per system. Each system has its own URL box, so
+   Salesforce and Zendesk can be on different servers. Paste the public HTTPS URL
+   of the MCP server for a system, for example `https://crm.contoso.com/mcp`, and
+   select **Connect**. Each card links to how to get that system's MCP URL.
+3. The Portal checks the server and matches the template's tools to the server's
+   tools by name in any naming style (`FindMeetingTimes`, `find_meeting_times`,
+   `crm___find_meeting_times`). If a tool has no match, the card asks you to match
+   it by hand.
+4. The working copy now calls your server for that system; every other system
+   stays on mock data. **Use mock data again** or **Undo** reverts the change. The
+   Portal remembers the last URL you connected for each system in this browser.
+5. Select **Try it now** to publish the working copy.
 
-**Microsoft 365 (Work IQ)** calendar, presence, and mail tools are listed as
-**Mock only**: Work IQ acts as the signed-in user in your own Microsoft 365 tenant,
-and the shared Playground cannot hold that identity. Use a Work IQ Toolbox in your
-own Foundry Project instead (section 4).
+**Microsoft 365 (Work IQ)** calendar, Teams, and mail tools are listed as
+**Mock only**: Work IQ can't be connected with an MCP URL yet, because it acts as
+the signed-in user in your own Microsoft 365 tenant and the shared Playground
+cannot hold that identity. Use a Work IQ Toolbox in your own Foundry Project
+instead (section 4).
 
 Requirements in the hosted Playground:
 
@@ -170,8 +171,7 @@ because every Playground Agent lives in one shared Project.
 
 ## 5. Test
 
-1. Select **Discover tools** and confirm that every row maps to a tool, then
-   **Connect** the system.
+1. Paste the system's URL and select **Connect**; the card shows **Connected**.
 2. Select **Try it now** and follow the Template's try-it turns with your own data, for
    example a real ticket number or a contact email that exists in your sandbox.
 3. A failed call should return `ok: false` with an `error.message`; the Agent then

@@ -288,10 +288,10 @@ def mcp_handshake(url: str, bearer_token: str = "") -> dict[str, Any]:
 
 _TOOL_NAME_CHARS = re.compile(r"[^a-z0-9]")
 WORK_IQ_NOTE = (
-    "Work IQ calendar, Teams, and mail act as the signed-in user in your own Microsoft 365 "
-    "tenant through a Foundry Project connection. The shared Playground cannot hold your "
-    "identity or credentials, so these tools stay on mock data here. To call them for real, "
-    "attach a Work IQ Toolbox to this Agent in your own Foundry Project."
+    "Work IQ can't be connected with an MCP URL yet. Its calendar, Teams, and mail tools act as "
+    "the signed-in Microsoft 365 user, and the shared Playground can't hold that identity, so "
+    "this Agent keeps using mock data here. In your own Foundry Project, attach a Work IQ "
+    "Toolbox instead."
 )
 
 

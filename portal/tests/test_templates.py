@@ -283,7 +283,7 @@ class TemplateCatalogTests(unittest.TestCase):
         groups = {group["id"]: group for group in template_portal.tool_groups(definition)}
         self.assertEqual(["salesforce", "work_iq"], list(groups))
         self.assertFalse(groups["work_iq"]["connectable"])
-        self.assertIn("signed-in user", groups["work_iq"]["note"])
+        self.assertIn("can't be connected with an MCP URL", groups["work_iq"]["note"])
         rewritten = template_portal.apply_tool_servers(definition, {
             "salesforce": ("https://crm.example/mcp", {
                 "mock_tool_call_salesforce_search": "crm___search_contacts",
