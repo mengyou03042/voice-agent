@@ -54,8 +54,13 @@ export class ResponseAudioQueue {
         response.interrupted = true;
         response.items.clear();
       } else if (!response.interrupted) {
+        // The terminal output list may be ordered differently from the stream
+        // (an interim message is listed before the mcp_call it was streamed
+        // after), so streamed output_index values stay authoritative.
         for (const [index, item] of (event.response?.output || []).entries()) {
-          if (item.id) this._item(response, { item, output_index: index });
+          if (item.id && !response.positions.has(item.id) && !response.items.has(index)) {
+            this._item(response, { item, output_index: index });
+          }
         }
         for (const item of response.items.values()) this._finishItem(item);
       }

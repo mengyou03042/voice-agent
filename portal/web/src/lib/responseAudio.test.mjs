@@ -78,6 +78,26 @@ test("tool items do not block message playback or require tool completion", () =
   assert.deepEqual(values(queue.handleEvent(chunk("answer", 1, "audio"))), ["audio"]);
 });
 
+test("a terminal output list in a different order than the stream keeps streamed indexes", () => {
+  const queue = new ResponseAudioQueue();
+  queue.handleEvent(created());
+  queue.handleEvent(item("tool", 0, "mcp_call"));
+  queue.handleEvent(item("interim", 1));
+  assert.deepEqual(values(queue.handleEvent(chunk("interim", 1, "wait"))), ["wait"]);
+  queue.handleEvent(done("interim", 1));
+  assert.deepEqual(queue.handleEvent(ended("response", "completed", [
+    { id: "interim", type: "message" }, { id: "tool", type: "mcp_call" },
+  ])), []);
+  assert.equal(queue.responses.size, 0);
+});
+
+test("a streamed item that changes output_index still fails explicitly", () => {
+  const queue = new ResponseAudioQueue();
+  queue.handleEvent(created());
+  queue.handleEvent(item("moved", 0));
+  assert.throws(() => queue.handleEvent(chunk("moved", 1, "audio")), /changed output_index/);
+});
+
 test("text-only parts and empty message items can complete without audio", () => {
   const queue = new ResponseAudioQueue();
   queue.handleEvent(created());
