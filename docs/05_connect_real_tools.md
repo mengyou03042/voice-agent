@@ -21,33 +21,33 @@ MCP server and keep mock data for the others.
 
 | Path | Where | How the tools are authorized | Use it for |
 | --- | --- | --- | --- |
-| **Connect my tools** in the Editor | Hosted Playground or local Portal | Your MCP server for each system holds the credentials; the Agent calls it without any | Demos and pilots on sandbox data |
+| **Connect real tools** in the Editor | Hosted Playground or local Portal | Your MCP server for each system holds the credentials; the Agent calls it without any | Demos and pilots on sandbox data |
 | **Foundry Toolbox or Project connection** | Your own Foundry Project (local Portal or Foundry) | Foundry stores the credential or uses the signed-in user's identity | Anything with real customer data |
 
-## 1. Choose real or mock data for each system in the Editor
+## 1. Choose real tools or mock tool calls for each system in the Editor
 
 1. In **Editor**, choose **Load from templates**. Cards whose tools are mocks
    show **Mock tools** and the systems they stand for, for example Salesforce and
-   Zendesk. Select **Load with my MCP** under a card to load it and open the
-   connections at once, or select the card to load it with mock data; you can
-   still choose **Connect my tools** on the banner that says **This Agent uses mock
-   tools** later.
+   Zendesk. Select **Connect real tools** under a card to load it and open the
+   connections at once, or select **Load with mock tool calls** on the card; you can
+   still choose **Connect real tools** on the banner that says **This Agent uses mock
+   tool calls** later.
 2. The dialog shows one card per system, and every card starts at **Using mock
-   data**. Each system has its own URL box, so Salesforce and Zendesk can be on
+   tool calls**. Each system has its own URL box, so Salesforce and Zendesk can be on
    different servers.
 3. For each system that should use your data, paste the public HTTPS URL of its
-   MCP server, for example `https://crm.contoso.com/mcp`, and select **Connect**.
-   Pasting a URL alone does not switch the system: the card shows **URL not
-   connected** until you select **Connect**. When it succeeds, the card shows
-   **Using your MCP server**. Each card links to how to build that system's server.
-4. For each system that should keep mock data, leave the URL empty. **Use mock
-   data** clears a URL you entered, or switches a connected system back.
+   MCP server, for example `https://crm.contoso.com/mcp`, and select **Connect real
+   tool**. Pasting a URL alone does not switch the system: the card shows **URL not
+   connected** until you select **Connect real tool**. When it succeeds, the card shows
+   **Connected to real tool**. Each card links to how to build that system's server.
+4. For each system that should keep mock tool calls, leave the URL empty. **Use mock
+   tool calls** clears a URL you entered, or switches a connected system back.
 5. The Portal checks the server and matches the Template's tools to the server's
    tools by name in any naming style (`FindMeetingTimes`, `find_meeting_times`,
    `crm___find_meeting_times`). If a tool has no match, the card asks you to match
    it by hand.
-6. Select **Done**. A summary lists which systems use your MCP server and which use
-   mock data. Select **Confirm and try it now** to publish the working copy and start
+6. Select **Done**. A summary lists which systems use real tools and which use
+   mock tool calls. Select **Confirm and try it now** to publish the working copy and start
    a test session, **Back** to change a system, or **×** to close without publishing.
    **Undo** also reverts a connection.
    The Portal remembers the last URL you connected for each system in this browser.
@@ -187,8 +187,8 @@ because every Playground Agent lives in one shared Project.
 
 ## 5. Test
 
-1. Paste the system's URL and select **Connect**; the card shows **Using your MCP server**,
-   and the **Done** summary lists the system under real data.
+1. Paste the system's URL and select **Connect real tool**; the card shows **Connected to
+   real tool**, and the **Done** summary lists the system under real tools.
 2. Select **Try it now** and follow the Template's try-it turns with your own data, for
    example a real ticket number or a contact email that exists in your sandbox.
 3. A failed call should return `ok: false` with an `error.message`; the Agent then

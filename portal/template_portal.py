@@ -1235,8 +1235,12 @@ def publish_agent(
     name: str,
     description: str,
     definition: dict[str, Any],
+    metadata: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     preview_headers = {"Foundry-Features": FOUNDRY_FEATURES}
+    body: dict[str, Any] = {"definition": definition, "description": description}
+    if metadata:
+        body["metadata"] = metadata
     with AIProjectClient(
         endpoint=cfg.host,
         credential=cfg.credential(),
@@ -1244,7 +1248,7 @@ def publish_agent(
     ) as client:
         created = client.agents.create_version(
             name,
-            {"definition": definition, "description": description},
+            body,
             headers=preview_headers,
         )
         client.agents.enable(name, headers=preview_headers)
@@ -1876,6 +1880,7 @@ async def publish_template(request: web.Request) -> web.Response:
             publish_agent,
             cfg,
             name=name,
+            metadata={"source_template_id": template_id, "source_template_version": version},
             description=str(document.get("description") or ""),
             definition=definition,
         )

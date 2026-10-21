@@ -8,14 +8,14 @@ create the workflows and give you each server's **MCP URL**.
 
 A Logic Apps MCP server requires an `X-API-KEY` header. The shared Playground
 calls MCP servers **without credentials**, so put a small no-auth front in
-between before you use **Connect my tools**:
+between before you use **Connect real tools**:
 
 1. Deploy a proxy that keeps the Logic Apps key as a server-side secret, adds the
    `X-API-KEY` header, and forwards `initialize`, `tools/list`, and `tools/call`.
    Serve it on a public HTTPS URL that includes a long random path segment, for
    example `https://<proxy-host>/mcp/<random-token>`, and limit write tools to
    test data (for example, allow SMS only to verified numbers).
-2. In the Playground **Editor**, load a Template, choose **Connect my tools**, and
+2. In the Playground **Editor**, load a Template, choose **Connect real tools**, and
    enter the proxy URL on the Salesforce, Zendesk, or Twilio SMS card. One URL can
    serve several systems; connect it on each system's card.
 3. Work IQ acts as the signed-in user, so it stays on mock data in the shared

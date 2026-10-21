@@ -832,6 +832,10 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual("", (await response.json())["mcp_connection_name"])
                 create_connection.assert_not_called()
                 publish.assert_called_once()
+                self.assertEqual(
+                    {"source_template_id": template_id, "source_template_version": "."},
+                    publish.call_args.kwargs["metadata"],
+                )
                 self.assertEqual(2, validate_url.call_count)
                 validate_url.assert_called_with(MCP_BASE_URL + MCP_ROUTES[template_id])
                 for tool in template_portal.iter_mcp_tools(publish.call_args.kwargs["definition"]):

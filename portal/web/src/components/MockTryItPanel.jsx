@@ -35,7 +35,7 @@ export function MockTryItPanel({ agent }) {
     <details className="mock-try-it" open>
       <summary>Test data for mock tools</summary>
       <p>
-        This Agent uses mock tools with fixed, fictional test data. Use the names, numbers, and
+        This Agent uses mock tool calls with fixed, fictional test data. Use the names, numbers, and
         answers below; other values are treated as unknown records.
       </p>
       <ol>
