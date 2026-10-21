@@ -271,11 +271,11 @@ class SharedMcpTests(unittest.TestCase):
             report_instructions,
         )
         self.assertIn(
-            "address-and-postal-code turn is speech only",
+            "This confirmation response is speech only",
             report_instructions,
         )
         self.assertIn(
-            "caller_confirmed=false; false is invalid",
+            "caller_confirmed=true and the exact confirmed details. False is invalid.",
             report_instructions,
         )
         self.assertIn(
@@ -287,19 +287,19 @@ class SharedMcpTests(unittest.TestCase):
             open_call_instructions,
         )
         self.assertIn(
-            "directly to human_handoff as an emergency",
+            "Choose human_handoff immediately for an explicit trapped person",
             intent_router_instructions,
         )
         self.assertIn(
-            "highest priority",
+            "This emergency rule takes priority over every other route.",
             intent_router_instructions,
         )
         self.assertIn(
-            "handoff is the only business next step",
+            "output only the graph handoff tool call",
             intent_router_instructions,
         )
         self.assertIn(
-            "outgoing edge owns the first safety question",
+            "The report edge already asks the first safety question.",
             intent_router_instructions,
         )
         self.assertIn(
@@ -331,10 +331,10 @@ class SharedMcpTests(unittest.TestCase):
         )
         self.assertTrue(
             elevator_edges["intent_router_to_report_issue"]["transfer_message"].startswith(
-                "I understand this needs careful attention."
+                "First, is anyone trapped or unable to exit safely?"
             )
         )
-        self.assertIn("spoken_message", human_handoff_instructions)
+        self.assertIn("exact browser notice", human_handoff_instructions)
         self.assertIn("human_finalize", human_handoff_instructions)
         self.assertIn(
             "emergency for an explicit",

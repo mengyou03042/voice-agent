@@ -29,8 +29,16 @@ ORIGINAL_TEMPLATE_IDS = (
     "appointment-setter-example",
     "receptionist-messaging-example",
 )
-# Reviewed speech-only defaults are distinct from the immutable original backups.
-FINANCE_DEFAULT_SHA256 = {
+# These templates default to their revised backup.
+REVISED_DEFAULT_TEMPLATE_IDS = (
+    "finance-example-realtime",
+    "finance-example-cascade-luna",
+    "finance-with-otp-and-officer-search",
+    "elevator-service-example",
+)
+# The replaced reviewed speech-only Finance defaults stay selectable.
+FINANCE_PREVIOUS_DEFAULT = "backups/20261021T064258Z/previous_default"
+FINANCE_PREVIOUS_DEFAULT_SHA256 = {
     "finance-example-realtime": "cbecf6c7e57ef89b7462214bc9b60ec5b9a680f4369247c6e7c65cc0cf712713",
     "finance-example-cascade-luna": "819ce43b646a696b1fa66d31b622b859b3dca65b13c3124d6579b9a1c083d1f7",
 }
@@ -213,15 +221,18 @@ class TemplateVersionCatalogTests(TemplateVersionFixture, unittest.TestCase):
                 root = source.path.parent
                 stamp = root / "backups" / "20261020T040235Z"
                 original_bytes = (stamp / "original/agent.json").read_bytes()
+                revised_bytes = (stamp / "revised/agent.json").read_bytes()
                 default_bytes = source.path.read_bytes()
-                if template_id in FINANCE_DEFAULT_SHA256:
+                if template_id in REVISED_DEFAULT_TEMPLATE_IDS:
                     self.assertNotEqual(original_bytes, default_bytes)
+                    self.assertEqual(revised_bytes, default_bytes)
                 else:
                     self.assertEqual(original_bytes, default_bytes)
                 default = catalog.document(template_id)
                 revised = catalog.document(template_id, "backups/20261020T040235Z/revised")
                 self.assertIsNotNone(revised)
-                self.assertNotEqual(default["definition"], revised["definition"])
+                if template_id not in REVISED_DEFAULT_TEMPLATE_IDS:
+                    self.assertNotEqual(default["definition"], revised["definition"])
                 self.assertEqual(
                     default["definition"]["model"],
                     revised["definition"]["model"],
@@ -290,13 +301,19 @@ class TemplateVersionCatalogTests(TemplateVersionFixture, unittest.TestCase):
                     archived = original / "agent.json"
                 raw = archived.read_bytes()
                 self.assertEqual(expected_sha, hashlib.sha256(raw).hexdigest())
-                if template_id in FINANCE_DEFAULT_SHA256:
-                    default_bytes = source.path.read_bytes()
+                if template_id in FINANCE_PREVIOUS_DEFAULT_SHA256:
+                    previous = source.path.parent / FINANCE_PREVIOUS_DEFAULT / "agent.json"
                     self.assertEqual(
-                        FINANCE_DEFAULT_SHA256[template_id],
-                        hashlib.sha256(default_bytes).hexdigest(),
+                        FINANCE_PREVIOUS_DEFAULT_SHA256[template_id],
+                        hashlib.sha256(previous.read_bytes()).hexdigest(),
                     )
-                    expected = json.loads(default_bytes)
+                    self.assertEqual(
+                        json.loads(previous.read_bytes()),
+                        catalog.document(template_id, FINANCE_PREVIOUS_DEFAULT),
+                    )
+                if template_id in REVISED_DEFAULT_TEMPLATE_IDS:
+                    revised = source.path.parent / "backups/20261020T040235Z/revised/agent.json"
+                    expected = json.loads(revised.read_bytes())
                 else:
                     expected = json.loads(raw)
                     expected["definition"]["model"] = "gpt-realtime"

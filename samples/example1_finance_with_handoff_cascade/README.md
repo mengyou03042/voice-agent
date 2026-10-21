@@ -3,8 +3,8 @@
 ## Overview
 
 This sample owns the standalone Cascade Finance template. Its root
-[`agent.json`](agent.json) keeps the original business workflow from the former
-`example1_finance_with_handoff/agent.cascade-luna.json`: `gpt-5.6-luna`,
+[`agent.json`](agent.json) is the revised round-14 candidate of the business workflow
+from the former `example1_finance_with_handoff/agent.cascade-luna.json`: `gpt-5.6-luna`,
 `azure-speech`, and `en-IN-Diya:DragonHDLatestNeural`.
 It retains the original 13-node, 24-edge graph and existing smart end-of-turn
 configuration. Semantic VAD silence is now explicitly 400 ms; the Cascade model
@@ -17,19 +17,14 @@ selecting a backup here cannot select a Realtime definition.
 
 ## Spoken responses
 
-The default greeting identifies Virtual Finance and the generic personal-loan
-purpose once. Static tool-wait responses are disabled in `dial_assess`, `rpc`,
-`offer`, and `appointment`.
+Since 2026-10-21 the default is a byte-for-byte copy of
+`backups/20261020T040235Z/revised`, chosen because it performed best in
+hands-on use. It keeps the business transfer messages on startup, identity,
+offer, decision, recap, voicemail, decline and bureau-consent edges.
 
-Process-only handoff announcements are removed from startup, identity checks,
-offer entry, decision recording, and recap entry. The affected node instructions
-also require silent tool calls and transitions, rather than model-generated
-lookup or saving preambles.
-
-Identity questions, the authoritative offer illustration, charge disclosure,
-the edge-owned bureau-consent question, and the final recap remain required.
-Voicemail, consent, and decline transfer messages are preserved. Existing
-backups retain their recorded speech; this cleanup changes only the default.
+The previous default, a speech-only cleanup that removed process-only handoff
+announcements and static tool-wait responses, remains selectable as
+`backups/20261021T064258Z/previous_default`.
 These local definition changes do not establish live audio quality or latency.
 
 ## Configure and run
@@ -70,15 +65,17 @@ Cascade Luna**, then choose **Version**:
 
 | Version | Meaning |
 | --- | --- |
-| **Default** | Original business flow with concise speech, the existing Cascade model, and 400 ms Semantic VAD. |
+| **Default** | Same bytes as `revised`, with the existing Cascade model and 400 ms Semantic VAD. |
 | `backups/20261020T040235Z/original` | Preserved original speech and business definition with current runtime settings. |
-| `backups/20261020T040235Z/revised` | Preserved round-14 candidate content with current runtime settings; not accepted overall. |
+| `backups/20261020T040235Z/revised` | Preserved round-14 candidate content with current runtime settings; the default since 2026-10-21. |
+| `backups/20261021T064258Z/previous_default` | The replaced default: original business flow with concise speech. |
 
 The revised candidate has observed content/business improvements, including
 actual charges, consent and recap, but retains unresolved handoff preparation
 waits and long gaps. Later faster runs do not erase the preserved slow cases.
-It is a selectable comparison version, not a latency-approved replacement.
-Loading it does not rewrite the default or automatically deploy an Agent.
+It was promoted to the default because it performed best in hands-on use; it
+is not a latency-approved replacement. Loading a version does not rewrite the
+default or automatically deploy an Agent.
 
 All selectable versions use 400 ms Semantic VAD without changing `gpt-5.6-luna`.
 Pre-update source bytes are retained as `agent.source.json` and the previous
@@ -90,6 +87,6 @@ file fingerprints and provenance.
 
 ## Conclusion
 
-Cascade has its own authored source and backups. The default keeps the original
-business flow with shorter speech; the revised version preserves useful work
-without claiming that the unresolved waiting behavior has passed acceptance.
+Cascade has its own authored source and backups. The default is the revised
+candidate, preferred in hands-on use, without claiming that the unresolved
+waiting behavior has passed acceptance.

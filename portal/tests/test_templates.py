@@ -426,7 +426,12 @@ class TemplateCatalogTests(unittest.TestCase):
         assert second is not None and third is not None
         self.assertGreater(len(realtime["graph"]["nodes"]), 1)
         self.assertGreater(len(realtime["graph"]["edges"]), 1)
-        self.assertEqual(realtime["graph"], cascade["graph"])
+        # The revised defaults tune prompts per runtime but share one topology.
+        for key, fields in (("nodes", ("id", "kind")), ("edges", ("id", "from", "to"))):
+            self.assertEqual(
+                [[item[field] for field in fields] for item in realtime["graph"][key]],
+                [[item[field] for field in fields] for item in cascade["graph"][key]],
+            )
         self.assertTrue(realtime["requires_mcp"])
         self.assertTrue(cascade["requires_mcp"])
         self.assertTrue(second["requires_mcp"])

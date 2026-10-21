@@ -173,17 +173,19 @@ the Foundry MCP item ID with the OTP/officer business state.
 
 ## Template versions
 
-The root [`agent.json`](agent.json) keeps the original business content and
-remains the default (`.`), using `gpt-realtime` and 400 ms Semantic VAD.
-In the Portal **Version** field, select:
+The root [`agent.json`](agent.json) is the default (`.`). Since 2026-10-21 it is
+a byte-for-byte copy of the revised candidate-03, using `gpt-realtime` and
+400 ms Semantic VAD. In the Portal **Version** field, select:
 
 - [`backups/20261020T040235Z/original`](backups/20261020T040235Z/original/agent.json):
-  original business content with the current runtime settings.
+  original business content with the current runtime settings (the previous
+  default).
 - [`backups/20261020T040235Z/revised`](backups/20261020T040235Z/revised/agent.json):
-  experimental candidate-03, **not accepted**.
+  candidate-03, identical to the default.
 
-The revised candidate was rejected for repeated messages, premature pricing,
-and added waiting. Its evaluated MCP backend also failed to persist incomplete
+The revised candidate was chosen as the default because it performed best in
+hands-on use. The bounded evaluation recorded in the manifest still marks it
+not accepted: repeated messages, premature pricing, and added waiting. Its evaluated MCP backend also failed to persist incomplete
 or invalid OTP state; this snapshot does not fix that service.
 See the [version manifest](backups/20261020T040235Z/manifest.json) for provenance
 and separate file checksums and definition fingerprints.

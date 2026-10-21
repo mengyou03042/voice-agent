@@ -1,0 +1,14 @@
+{
+  "captured_at_utc": "2026-10-21T06:42:58.327274+00:00",
+  "version_id": "20261021T064258Z",
+  "reason": "Default agent.json switched to backups/20261020T040235Z/revised; the replaced default is preserved here.",
+  "files": [
+    {
+      "version": "previous_default",
+      "file": "previous_default/agent.json",
+      "source": "samples/example1_finance_with_handoff_cascade/agent.json",
+      "bytes": 65720,
+      "sha256": "819ce43b646a696b1fa66d31b622b859b3dca65b13c3124d6579b9a1c083d1f7"
+    }
+  ]
+}

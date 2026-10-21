@@ -441,11 +441,33 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
                 settings,
                 prefer_document_name=True,
             )
+            # The reviewed speech-only defaults were replaced by the revised
+            # candidates and remain selectable as a backup version.
+            previous = "backups/20261021T064258Z/previous_default/agent.json"
+            _, _, previous_realtime = load_materialized_agent(
+                samples / "example1_finance_with_handoff_realtime",
+                settings,
+                agent_file=previous,
+                prefer_document_name=True,
+            )
+            _, _, previous_cascade = load_materialized_agent(
+                samples / "example1_finance_with_handoff_cascade",
+                settings,
+                agent_file=previous,
+                prefer_document_name=True,
+            )
 
         self.assertEqual("finance-example-realtime", realtime_name)
         self.assertEqual("finance-example-cascade-luna", cascade_name)
-        self.assertEqual(realtime["handoff"], cascade["handoff"])
-        self.assertEqual(realtime["greeting"], cascade["greeting"])
+        for definition in (realtime, cascade):
+            self.assertEqual(13, len(definition["handoff"]["nodes"]))
+            self.assertEqual(24, len(definition["handoff"]["edges"]))
+        self.assertEqual(
+            [(edge["source"], edge["target"]) for edge in realtime["handoff"]["edges"]],
+            [(edge["source"], edge["target"]) for edge in cascade["handoff"]["edges"]],
+        )
+        self.assertEqual(previous_realtime["handoff"], previous_cascade["handoff"])
+        self.assertEqual(previous_realtime["greeting"], previous_cascade["greeting"])
         self.assertEqual(
             {
                 "type": "template",
@@ -454,10 +476,10 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
                     "about a personal loan offer."
                 ),
             },
-            realtime["greeting"],
+            previous_realtime["greeting"],
         )
         edges = {
-            edge["id"]: edge for edge in realtime["handoff"]["edges"]
+            edge["id"]: edge for edge in previous_realtime["handoff"]["edges"]
         }
         for edge_id in (
             "entrypoint_to_dial_assess",
@@ -493,7 +515,7 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
             },
         )
         self.assertEqual("none", edges["charges_to_bureau_consent"]["target_response"])
-        nodes = {node["id"]: node for node in realtime["handoff"]["nodes"]}
+        nodes = {node["id"]: node for node in previous_realtime["handoff"]["nodes"]}
         self.assertEqual(13, len(nodes))
         self.assertEqual(24, len(edges))
         for node_id, node in nodes.items():
@@ -523,7 +545,7 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
             "Checking your offer, one moment.",
             "Saving your appointment info",
         ):
-            self.assertNotIn(phrase, json.dumps(realtime))
+            self.assertNotIn(phrase, json.dumps(previous_realtime))
         end = nodes["end"]
         self.assertEqual(
             {
