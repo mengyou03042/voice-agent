@@ -615,7 +615,7 @@ a:focus-visible, [tabindex]:focus-visible {
 .app {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 48px auto minmax(0, 1fr);
+  grid-template-rows: 48px auto auto minmax(0, 1fr);
   width: 100vw;
   height: 100vh;
   min-height: 620px;
@@ -1447,35 +1447,20 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
   align-items: center;
 }
 .template-choice-options .template-choice-version { flex: 1 1 auto; margin-top: 0; }
-.template-choice-tools {
-  display: inline-flex;
+.template-choice-real {
   flex: 0 0 auto;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--line);
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid #16856b;
   border-radius: 7px;
-  background: #f6f8f7;
-  color: var(--muted);
-  font-size: .56rem;
-}
-.template-choice-tools > span { padding: 0 6px 0 4px; }
-.template-choice-tools button {
-  padding: 4px 9px;
-  border: 0;
-  border-radius: 5px;
-  color: #536d66;
-  background: transparent;
-  font: inherit;
-  font-weight: 680;
+  color: #fff;
+  background: #16856b;
+  font-size: .58rem;
+  font-weight: 760;
   cursor: pointer;
 }
-.template-choice-tools button[aria-checked="true"] {
-  color: #0f5f4a;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(32, 58, 51, .16);
-}
-.template-choice-tools button:disabled { cursor: default; opacity: .6; }
+.template-choice-real:hover:not(:disabled) { background: #0f6f58; }
+.template-choice-real:disabled { cursor: default; opacity: .55; }
 .template-picker-footer a { color: #075e7a; font-weight: 700; }
 .tool-connections .template-picker-toolbar div { display: flex; gap: 14px; }
 .template-choice-load {
@@ -3385,7 +3370,7 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
 
 @media (max-width: 820px) {
   body { overflow: auto; }
-  .app { grid-template-rows: auto auto minmax(700px, 1fr); height: auto; min-height: 100vh; }
+  .app { grid-template-rows: auto auto auto minmax(700px, 1fr); height: auto; min-height: 100vh; }
   .product-nav { min-height: 52px; flex-wrap: wrap; padding: 9px 14px; }
   .product-nav nav { order: 3; width: 100%; height: 30px; gap: 18px; overflow-x: auto; }
   .environment { max-width: 44vw; }
@@ -3514,6 +3499,9 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
   }
 }
 
+/* Row 3 of .app; it collapses to nothing while the banner is hidden. */
+.app > .mock-tools-banner { grid-row: 3; align-self: start; }
+.app > .workspace { grid-row: 4; }
 .mock-tools-banner {
   display: flex;
   align-items: center;

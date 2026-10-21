@@ -837,6 +837,10 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual("", (await response.json())["mcp_connection_name"])
                 create_connection.assert_not_called()
                 publish.assert_called_once()
+                self.assertEqual(
+                    {"source_template_id": template_id, "source_template_version": "."},
+                    publish.call_args.kwargs["metadata"],
+                )
                 self.assertEqual(2, validate_url.call_count)
                 validate_url.assert_called_with(MCP_BASE_URL + MCP_ROUTES[template_id])
                 for tool in template_portal.iter_mcp_tools(publish.call_args.kwargs["definition"]):
@@ -931,6 +935,17 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
         for system in ("Salesforce", "Zendesk", "Twilio"):
             self.assertIn(system, text)
         self.assertIn('<a href="/guide/logic-apps-mcp"', text)
+
+    async def test_try_it_turns_come_from_the_sample_readme(self) -> None:
+        response = await self.client.get("/api/templates/collections-payment-recovery-agent-example/try-it")
+        self.assertEqual(200, response.status)
+        payload = await response.json()
+        self.assertEqual("collections-payment-recovery-agent-example", payload["id"])
+        self.assertGreaterEqual(len(payload["turns"]), 3)
+        self.assertIn("4821", payload["turns"][0])
+        self.assertFalse(any("mock_tool_call_" in turn for turn in payload["turns"]))
+        missing = await self.client.get("/api/templates/no-such-template/try-it")
+        self.assertEqual(404, missing.status)
 
     async def test_logic_apps_mcp_guide_is_served(self) -> None:
         response = await self.client.get("/guide/logic-apps-mcp")

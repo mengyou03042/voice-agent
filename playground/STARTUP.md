@@ -370,21 +370,28 @@ python ../12_noauth_mcp/scripts/validate_live.py \
 
 Do not declare success from `/healthz` alone.
 
-The current Portal release is `voice-agent-playground--0000035`, image digest
-`sha256:ae0564a9...`, built by ACR run `cc1w` on 2026-10-21 from this repository
+The current Portal release is `voice-agent-playground--0000041`, image digest
+`sha256:e5deb69f...`, built by ACR run `cc2a` on 2026-10-21 from this repository
 (`build_context.py`) with 35 cards. Examples 5-34 run on the `mock-tool-call` route of
-the shared no-auth MCP service. In **Load from templates**, each card marks **Mock
-tools** and the systems it uses, and its **Tools** toggle (**Mock data** or **My MCP**)
-can open **Connect my tools** right after loading. That dialog shows one card per
-system with a status (**Using mock data**, **URL not connected**, **Using your MCP
-server**, or **Mock only** for Work IQ), its own URL box, **Connect** and **Use mock
-data**, and a link to how to build that system's MCP server. **Done** shows a summary
-of which systems use real and mock data before closing. `/guide/real-tools` and
-`/guide/logic-apps-mcp` are rendered as HTML. It replaced revision `0000034`
-(`sha256:24421f00...`), the rollback image. Only the image changed: environment
-variable names were compared before and after, and the revision is Healthy with two
-replicas and 100% traffic. The hosted regression suite ran 47 tests: 46 passed and the
-opt-in Kusto check was skipped.
+the shared no-auth MCP service. In **Load from templates**, **Load with mock tool calls**
+loads a card as is, and **Connect real tools** under a card with connectable systems
+loads it and opens **Connect real tools**; closing that dialog returns to the template
+list. The dialog shows one card per system with a status (**Using mock tool calls**,
+**URL not connected**, **Connected to real tool**, or **Mock only** for Work IQ), its own
+URL box, **Connect real tool** and **Use mock tool calls**, and a link to how to build
+that system's server. **Done** shows a summary of which systems use real tools and mock
+tool calls, and **Confirm and try it now** publishes the working copy and starts a test
+session. The mock-tools banner has its own row above the canvas. `/guide/real-tools` and
+`/guide/logic-apps-mcp` are rendered as HTML. On the conversation page, an agent
+published from a template, from the Editor or the Templates page, that still calls mock
+tools shows **Test data for mock tools**, the "Try these turns" lines from the sample
+README (`/api/templates/{id}/try-it`). The conversation page opens the microphone before
+it connects, so the greeting plays without the device switch that dropped part of it,
+and Examples 5-34 keep speaking English unless the caller asks for another language. It
+replaced revision `0000040` (`sha256:561b5da9...`), the rollback image, whose Editor
+said MCP for real tools and whose Templates page publications had no template id. Only
+the image changed: environment variable names were compared before and after, and the
+revision is Healthy with two replicas and 100% traffic.
 
 The earlier release was `voice-agent-playground--0000026`, image digest
 `sha256:932691d8...`, built by ACR run `cc13` from the Portal working-copy snapshot

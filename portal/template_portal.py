@@ -1235,8 +1235,12 @@ def publish_agent(
     name: str,
     description: str,
     definition: dict[str, Any],
+    metadata: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     preview_headers = {"Foundry-Features": FOUNDRY_FEATURES}
+    body: dict[str, Any] = {"definition": definition, "description": description}
+    if metadata:
+        body["metadata"] = metadata
     with AIProjectClient(
         endpoint=cfg.host,
         credential=cfg.credential(),
@@ -1244,7 +1248,7 @@ def publish_agent(
     ) as client:
         created = client.agents.create_version(
             name,
-            {"definition": definition, "description": description},
+            body,
             headers=preview_headers,
         )
         client.agents.enable(name, headers=preview_headers)
@@ -1305,6 +1309,43 @@ async def examples_guide(_: web.Request) -> web.FileResponse:
 async def real_tools_guide(_: web.Request) -> web.Response:
     markdown = (DOCS_DIR / "05_connect_real_tools.md").read_text(encoding="utf-8")
     return web.Response(text=render_page(markdown), content_type="text/html")
+
+
+TRY_TURNS_HEADING = "## Try these turns"
+
+
+def try_it_turns(readme: Path) -> list[str]:
+    """The bullets under a sample README's "Try these turns" heading, one string per turn."""
+    try:
+        lines = readme.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    turns: list[str] = []
+    inside = False
+    for line in lines:
+        if line.strip() == TRY_TURNS_HEADING:
+            inside = True
+            continue
+        if not inside:
+            continue
+        if line.startswith("## "):
+            break
+        if line.startswith("- "):
+            turns.append(line[2:].strip())
+        elif turns and line.startswith((" ", "\t")) and line.strip():
+            turns[-1] = f"{turns[-1]} {line.strip()}"
+    return [turn.replace("mock_tool_call_", "") for turn in turns]
+
+
+async def template_try_it(request: web.Request) -> web.Response:
+    """Sample turns and test data for a Template's mock tools, for the conversation page."""
+    source = _catalog(request).source(request.match_info["template_id"])
+    if source is None:
+        raise web.HTTPNotFound(text="Unknown template.")
+    turns = try_it_turns(source.path.parent / "README.md")
+    if not turns:
+        raise web.HTTPNotFound(text="This template has no sample turns.")
+    return web.json_response({"id": source.id, "name": source.name, "turns": turns})
 
 
 async def logic_apps_mcp_guide(_: web.Request) -> web.Response:
@@ -1839,6 +1880,7 @@ async def publish_template(request: web.Request) -> web.Response:
             publish_agent,
             cfg,
             name=name,
+            metadata={"source_template_id": template_id, "source_template_version": version},
             description=str(document.get("description") or ""),
             definition=definition,
         )
@@ -1880,6 +1922,7 @@ def install_template_routes(
     app.router.add_get("/api/templates", list_templates)
     app.router.add_get("/api/templates/env", templates_env)
     app.router.add_get("/api/templates/{template_id}", get_template)
+    app.router.add_get("/api/templates/{template_id}/try-it", template_try_it)
     app.router.add_get(
         "/api/templates/{template_id}/mcp/probe",
         probe_template_mcp,

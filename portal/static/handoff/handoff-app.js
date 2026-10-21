@@ -82,7 +82,6 @@ const state = {
   publishing: false,
   templates: [],
   templateVersions: new Map(),
-  templateToolModes: new Map(),
   templateCatalogLoaded: false,
   templateCatalogLoading: false,
   templateLoadingId: "",
@@ -886,7 +885,7 @@ function renderTemplateCatalog() {
       <span class="template-choice-summary">${escapeHtml(template.summary || "Voice Agent template.")}</span>
       ${systems.length ? `<span class="template-choice-systems">${systems.map((system) => `
         <span class="${system.connectable ? "" : "mock-only"}" title="${system.connectable
-          ? "Mock by default; connect your own MCP server"
+          ? "Mock tool calls by default; you can connect a real tool"
           : "Mock only in the shared Playground"}">${escapeHtml(system.label)}${system.connectable ? "" : " · mock only"}</span>`).join("")}
       </span>` : ""}
       <span class="template-choice-metrics">
@@ -895,7 +894,7 @@ function renderTemplateCatalog() {
         <span>${Number(template.tool_count || 0)} tools</span>
       </span>
       <span class="template-choice-load">
-        ${state.templateLoadingId === template.id ? "Loading…" : "Load into canvas"}
+        ${state.templateLoadingId === template.id ? "Loading…" : systems.some((system) => system.connectable) ? "Load with mock tool calls" : "Load into canvas"}
         <span aria-hidden="true">→</span>
       </span>`;
     const versions = template.versions || [{ id: ".", name: "Default" }];
@@ -923,31 +922,20 @@ function renderTemplateCatalog() {
     const options = document.createElement("div");
     options.className = "template-choice-options";
     options.append(label);
-    if (systems.some((system) => system.connectable)) {
-      const mode = state.templateToolModes.get(template.id) || "mock";
-      const toggle = document.createElement("div");
-      toggle.className = "template-choice-tools";
-      toggle.setAttribute("role", "radiogroup");
-      toggle.setAttribute("aria-label", `Tools for ${template.name || template.id}`);
-      toggle.innerHTML = `<span>Tools</span>${[["mock", "Mock data"], ["real", "My MCP"]].map(([value, text]) => `
-        <button type="button" role="radio" data-mode="${value}" aria-checked="${mode === value}"
-          title="${value === "mock" ? "Fictional data from the shared mock MCP server" : "Connect your own MCP server for each system after loading"}"
-          ${state.templateLoadingId ? "disabled" : ""}>${text}</button>`).join("")}`;
-      toggle.addEventListener("click", (event) => {
-        const choice = event.target.closest("[data-mode]");
-        if (!choice) return;
-        state.templateToolModes.set(template.id, choice.dataset.mode);
-        toggle.querySelectorAll("[data-mode]").forEach((item) => {
-          item.setAttribute("aria-checked", String(item === choice));
-        });
-      });
-      options.append(toggle);
+    const loadWithTools = systems.some((system) => system.connectable);
+    if (loadWithTools) {
+      const real = document.createElement("button");
+      real.type = "button";
+      real.className = "template-choice-real";
+      real.disabled = Boolean(state.templateLoadingId);
+      real.title = "Load this template and connect a real tool for each system";
+      real.innerHTML = 'Connect real tools <span aria-hidden="true">→</span>';
+      real.addEventListener("click", () =>
+        loadTemplateIntoGraph(template.id, select.value, { connectTools: true }));
+      options.append(real);
     }
     card.append(button, options);
-    button.addEventListener("click", () =>
-      loadTemplateIntoGraph(template.id, select.value, {
-        connectTools: state.templateToolModes.get(template.id) === "real",
-      }));
+    button.addEventListener("click", () => loadTemplateIntoGraph(template.id, select.value));
     root.append(card);
   }
 }
@@ -1063,23 +1051,31 @@ function renderToolBanner() {
     ? labels[0] || "business"
     : `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
   $("#mock-tools-banner-text").textContent = (
-    `Its ${systems} tools return fictional data from a mock MCP server, so nothing real is booked, `
-    + "sent, or saved. Connect your own MCP server per system to use them for real."
+    `Its ${systems} tools make mock tool calls with fictional data, so nothing real is booked, `
+    + "sent, or saved. Connect a real tool per system to use them for real."
   );
 }
 
-function openToolConnections() {
+function openToolConnections({ fromPicker = false } = {}) {
   if (!state.definition) return;
   state.toolDrafts = {};
   state.toolSummaryOpen = false;
+  // Opened from Connect real tools: closing returns to the template list.
+  state.toolDialogFromPicker = fromPicker === true;
+  $("#close-tool-connections").setAttribute(
+    "aria-label", state.toolDialogFromPicker ? "Back to templates" : "Close tool connections",
+  );
   $("#tool-connections").hidden = false;
   $("#tool-connections-status").textContent = "Reading the working copy's tools…";
   void refreshToolGroups();
   requestAnimationFrame(() => $("#close-tool-connections").focus());
 }
 
-function closeToolConnections() {
+function closeToolConnections({ returnToPicker = true } = {}) {
   $("#tool-connections").hidden = true;
+  const fromPicker = state.toolDialogFromPicker;
+  state.toolDialogFromPicker = false;
+  if (fromPicker && returnToPicker === true) openTemplatePicker();
 }
 
 function shortToolName(name) {
@@ -1093,8 +1089,8 @@ function toolGroupMode(group) {
 }
 
 const TOOL_MODE_LABELS = {
-  real: "Using your MCP server",
-  mock: "Using mock data",
+  real: "Connected to real tool",
+  mock: "Using mock tool calls",
   pending: "URL not connected",
   locked: "Mock only",
 };
@@ -1102,7 +1098,7 @@ const TOOL_MODE_LABELS = {
 function toolConnectionsSummary(groups) {
   const real = groups.filter((group) => group.connected);
   const mock = groups.filter((group) => !group.connected);
-  return { real, mock, text: `${real.length} on your MCP server · ${mock.length} on mock data` };
+  return { real, mock, text: `${real.length} real · ${mock.length} mock tool calls` };
 }
 
 function renderToolSummary(groups) {
@@ -1112,22 +1108,22 @@ function renderToolSummary(groups) {
     const detail = group.connected
       ? escapeHtml(serverHost(group.connected.server_url))
       : mode === "pending"
-        ? "The URL you entered was not connected, so this system uses mock data."
-        : mode === "locked" ? "Can't be connected with an MCP URL yet." : "Fictional data from the shared mock MCP server.";
+        ? "The URL you entered was not connected, so this system uses mock tool calls."
+        : mode === "locked" ? "Can't be connected with an MCP URL yet." : "Mock tool calls with fictional data.";
     return `<li class="${mode}"><strong>${escapeHtml(group.label)}</strong><span>${detail}</span></li>`;
   };
   return `
     <section class="tool-summary">
       <h3>Review before you continue</h3>
       <div class="tool-summary-column real">
-        <h4>Real data · your MCP server</h4>
-        ${real.length ? `<ul>${real.map(row).join("")}</ul>` : `<p>None. Every system uses mock data.</p>`}
+        <h4>Real tools</h4>
+        ${real.length ? `<ul>${real.map(row).join("")}</ul>` : `<p>None. Every system uses mock tool calls.</p>`}
       </div>
       <div class="tool-summary-column mock">
-        <h4>Mock data · nothing real is booked, sent, or saved</h4>
+        <h4>Mock tool calls · nothing real is booked, sent, or saved</h4>
         ${mock.length ? `<ul>${mock.map(row).join("")}</ul>` : `<p>None.</p>`}
       </div>
-      <p class="tool-summary-next">Select Confirm, then Try it now to publish the Agent with these choices.</p>
+      <p class="tool-summary-next">Confirm and try it now publishes the Agent with these choices and starts a test session. Select Back to change a system, or × to close without publishing.</p>
     </section>`;
 }
 
@@ -1142,7 +1138,7 @@ function renderToolConnections() {
   $("#tool-connection-groups").innerHTML = summaryOpen ? renderToolSummary(groups) : groups.map(toolGroupCard).join("");
   $("#tool-connections-summary").textContent = groups.length ? toolConnectionsSummary(groups).text : "";
   $("#tool-connections-back").hidden = !summaryOpen;
-  $("#tool-connections-done").textContent = summaryOpen ? "Confirm" : "Done";
+  $("#tool-connections-done").textContent = summaryOpen ? "Confirm and try it now" : "Done";
 }
 
 function finishToolConnections() {
@@ -1152,7 +1148,8 @@ function finishToolConnections() {
     return;
   }
   state.toolSummaryOpen = false;
-  closeToolConnections();
+  closeToolConnections({ returnToPicker: false });
+  if (!$("#publish-run-action").disabled) void publishAndRun();
 }
 
 function backToToolConnections() {
@@ -1201,8 +1198,8 @@ function serverHost(url) {
 
 function toolGroupHint(mode) {
   return mode === "pending"
-    ? "Not connected yet. Select Connect to use this URL, or Use mock data to clear it."
-    : "Leave the URL empty to keep mock data for this system.";
+    ? "Not connected yet. Select Connect real tool to use this URL, or Use mock tool calls to clear it."
+    : "Leave the URL empty to keep mock tool calls for this system.";
 }
 
 function toolGroupCard(group) {
@@ -1216,12 +1213,12 @@ function toolGroupCard(group) {
     const known = Boolean(state.toolConnections[group.id]);
     body = `
       <div class="tool-group-row">
-        <p class="tool-group-state good">Calls your MCP server at <strong>${escapeHtml(serverHost(connected.server_url))}</strong></p>
+        <p class="tool-group-state good">Calls your real tool at <strong>${escapeHtml(serverHost(connected.server_url))}</strong></p>
         ${known
-          ? `<button type="button" data-tool-action="use-mock" data-group="${id}">Use mock data</button>`
+          ? `<button type="button" data-tool-action="use-mock" data-group="${id}">Use mock tool calls</button>`
           : ""}
       </div>
-      ${known ? "" : `<p class="tool-group-hint">To switch back to mock data, use Undo or load the template again.</p>`}`;
+      ${known ? "" : `<p class="tool-group-hint">To switch back to mock tool calls, use Undo or load the template again.</p>`}`;
   } else {
     const draft = toolDraft(group.id);
     const missing = draft.tools ? group.tools.filter((name) => !draft.mapping[name]) : [];
@@ -1249,8 +1246,8 @@ function toolGroupCard(group) {
           placeholder="https://your-server.example.com/mcp" autocomplete="off" spellcheck="false" maxlength="2048"
           aria-label="${escapeHtml(group.label)} MCP server URL">
         <button type="button" class="tool-group-action" data-tool-action="connect" data-group="${id}"
-          ${draft.busy || empty ? "disabled" : ""}>${draft.busy ? "Connecting…" : "Connect"}</button>
-        <button type="button" data-tool-action="use-mock" data-group="${id}" ${draft.busy || empty ? "disabled" : ""}>Use mock data</button>
+          ${draft.busy || empty ? "disabled" : ""}>${draft.busy ? "Connecting…" : "Connect real tool"}</button>
+        <button type="button" data-tool-action="use-mock" data-group="${id}" ${draft.busy || empty ? "disabled" : ""}>Use mock tool calls</button>
       </div>
       ${draft.message
         ? `<p class="tool-group-state ${draft.error ? "bad" : "good"}">${escapeHtml(draft.message)}</p>`
@@ -1337,7 +1334,7 @@ async function handleToolAction(event) {
       state.toolDrafts[groupId] = {
         url: "", tools: null, mapping: {}, message: "", error: false, busy: false,
       };
-      replaceWorkingDefinition(`Moved ${group.label} tools back to mock data`, result.definition);
+      replaceWorkingDefinition(`Moved ${group.label} tools back to mock tool calls`, result.definition);
       state.toolGroups = result.groups;
     } catch (error) {
       $("#tool-connections-status").textContent = `Could not switch back: ${error.message}`;
@@ -1407,7 +1404,7 @@ async function loadTemplateIntoGraph(templateId, version = ".", { connectTools =
     url.searchParams.delete("agent");
     window.history.replaceState(null, "", url);
     closeTemplatePicker();
-    if (connectTools) openToolConnections();
+    if (connectTools) openToolConnections({ fromPicker: true });
   } catch (error) {
     $("#template-picker-status").textContent = `Could not load ${templateId}: ${error.message}`;
   } finally {
