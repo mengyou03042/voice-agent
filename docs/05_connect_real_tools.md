@@ -28,9 +28,10 @@ MCP server and keep mock data for the others.
 
 1. In **Editor**, choose **Load from templates**. Cards whose tools are mocks
    show **Mock tools** and the systems they stand for, for example Salesforce and
-   Zendesk. Set **Tools** to **My MCP** to open the connections right after loading,
-   or choose **Connect my tools** on the banner that says **This Agent uses mock
-   tools**.
+   Zendesk. Select **Load with my MCP** under a card to load it and open the
+   connections at once, or select the card to load it with mock data; you can
+   still choose **Connect my tools** on the banner that says **This Agent uses mock
+   tools** later.
 2. The dialog shows one card per system, and every card starts at **Using mock
    data**. Each system has its own URL box, so Salesforce and Zendesk can be on
    different servers.
@@ -46,8 +47,9 @@ MCP server and keep mock data for the others.
    `crm___find_meeting_times`). If a tool has no match, the card asks you to match
    it by hand.
 6. Select **Done**. A summary lists which systems use your MCP server and which use
-   mock data; select **Back** to change it or **Confirm** to close. Then select
-   **Try it now** to publish the working copy. **Undo** also reverts a connection.
+   mock data. Select **Confirm and try it now** to publish the working copy and start
+   a test session, **Back** to change a system, or **×** to close without publishing.
+   **Undo** also reverts a connection.
    The Portal remembers the last URL you connected for each system in this browser.
 
 **Microsoft 365 (Work IQ)** calendar, Teams, and mail tools are listed as

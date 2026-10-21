@@ -370,21 +370,22 @@ python ../12_noauth_mcp/scripts/validate_live.py \
 
 Do not declare success from `/healthz` alone.
 
-The current Portal release is `voice-agent-playground--0000035`, image digest
-`sha256:ae0564a9...`, built by ACR run `cc1w` on 2026-10-21 from this repository
+The current Portal release is `voice-agent-playground--0000037`, image digest
+`sha256:b0a477c0...`, built by ACR run `cc26` on 2026-10-21 from this repository
 (`build_context.py`) with 35 cards. Examples 5-34 run on the `mock-tool-call` route of
-the shared no-auth MCP service. In **Load from templates**, each card marks **Mock
-tools** and the systems it uses, and its **Tools** toggle (**Mock data** or **My MCP**)
-can open **Connect my tools** right after loading. That dialog shows one card per
-system with a status (**Using mock data**, **URL not connected**, **Using your MCP
-server**, or **Mock only** for Work IQ), its own URL box, **Connect** and **Use mock
-data**, and a link to how to build that system's MCP server. **Done** shows a summary
-of which systems use real and mock data before closing. `/guide/real-tools` and
-`/guide/logic-apps-mcp` are rendered as HTML. It replaced revision `0000034`
-(`sha256:24421f00...`), the rollback image. Only the image changed: environment
-variable names were compared before and after, and the revision is Healthy with two
-replicas and 100% traffic. The hosted regression suite ran 47 tests: 46 passed and the
-opt-in Kusto check was skipped.
+the shared no-auth MCP service. In **Load from templates**, selecting a card loads it
+with mock data, and **Load with my MCP** under a card with connectable systems loads it
+and opens **Connect my tools**. That dialog shows one card per system with a status
+(**Using mock data**, **URL not connected**, **Using your MCP server**, or **Mock
+only** for Work IQ), its own URL box, **Connect** and **Use mock data**, and a link to
+how to build that system's MCP server. **Done** shows a summary of which systems use
+real and mock data, and **Confirm and try it now** publishes the working copy and starts
+a test session. `/guide/real-tools` and `/guide/logic-apps-mcp` are rendered as HTML.
+It replaced revision `0000036` (`sha256:e659ba22...`, Confirm and try it now without
+Load with my MCP), which replaced `0000035` (`sha256:ae0564a9...`); both are rollback
+images. Only the image changed: environment variable names were compared before and
+after, and the revision is Healthy with two replicas and 100% traffic. The hosted
+regression suite ran 47 tests: 46 passed and the opt-in Kusto check was skipped.
 
 The earlier release was `voice-agent-playground--0000026`, image digest
 `sha256:932691d8...`, built by ACR run `cc13` from the Portal working-copy snapshot

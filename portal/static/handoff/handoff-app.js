@@ -82,7 +82,6 @@ const state = {
   publishing: false,
   templates: [],
   templateVersions: new Map(),
-  templateToolModes: new Map(),
   templateCatalogLoaded: false,
   templateCatalogLoading: false,
   templateLoadingId: "",
@@ -895,7 +894,7 @@ function renderTemplateCatalog() {
         <span>${Number(template.tool_count || 0)} tools</span>
       </span>
       <span class="template-choice-load">
-        ${state.templateLoadingId === template.id ? "Loading…" : "Load into canvas"}
+        ${state.templateLoadingId === template.id ? "Loading…" : systems.some((system) => system.connectable) ? "Load with mock data" : "Load into canvas"}
         <span aria-hidden="true">→</span>
       </span>`;
     const versions = template.versions || [{ id: ".", name: "Default" }];
@@ -923,31 +922,20 @@ function renderTemplateCatalog() {
     const options = document.createElement("div");
     options.className = "template-choice-options";
     options.append(label);
-    if (systems.some((system) => system.connectable)) {
-      const mode = state.templateToolModes.get(template.id) || "mock";
-      const toggle = document.createElement("div");
-      toggle.className = "template-choice-tools";
-      toggle.setAttribute("role", "radiogroup");
-      toggle.setAttribute("aria-label", `Tools for ${template.name || template.id}`);
-      toggle.innerHTML = `<span>Tools</span>${[["mock", "Mock data"], ["real", "My MCP"]].map(([value, text]) => `
-        <button type="button" role="radio" data-mode="${value}" aria-checked="${mode === value}"
-          title="${value === "mock" ? "Fictional data from the shared mock MCP server" : "Connect your own MCP server for each system after loading"}"
-          ${state.templateLoadingId ? "disabled" : ""}>${text}</button>`).join("")}`;
-      toggle.addEventListener("click", (event) => {
-        const choice = event.target.closest("[data-mode]");
-        if (!choice) return;
-        state.templateToolModes.set(template.id, choice.dataset.mode);
-        toggle.querySelectorAll("[data-mode]").forEach((item) => {
-          item.setAttribute("aria-checked", String(item === choice));
-        });
-      });
-      options.append(toggle);
+    const loadWithTools = systems.some((system) => system.connectable);
+    if (loadWithTools) {
+      const real = document.createElement("button");
+      real.type = "button";
+      real.className = "template-choice-real";
+      real.disabled = Boolean(state.templateLoadingId);
+      real.title = "Load this template and connect your own MCP server for each system";
+      real.innerHTML = 'Load with my MCP <span aria-hidden="true">→</span>';
+      real.addEventListener("click", () =>
+        loadTemplateIntoGraph(template.id, select.value, { connectTools: true }));
+      options.append(real);
     }
     card.append(button, options);
-    button.addEventListener("click", () =>
-      loadTemplateIntoGraph(template.id, select.value, {
-        connectTools: state.templateToolModes.get(template.id) === "real",
-      }));
+    button.addEventListener("click", () => loadTemplateIntoGraph(template.id, select.value));
     root.append(card);
   }
 }
@@ -1127,7 +1115,7 @@ function renderToolSummary(groups) {
         <h4>Mock data · nothing real is booked, sent, or saved</h4>
         ${mock.length ? `<ul>${mock.map(row).join("")}</ul>` : `<p>None.</p>`}
       </div>
-      <p class="tool-summary-next">Select Confirm, then Try it now to publish the Agent with these choices.</p>
+      <p class="tool-summary-next">Confirm and try it now publishes the Agent with these choices and starts a test session. Select Back to change a system, or × to close without publishing.</p>
     </section>`;
 }
 
@@ -1142,7 +1130,7 @@ function renderToolConnections() {
   $("#tool-connection-groups").innerHTML = summaryOpen ? renderToolSummary(groups) : groups.map(toolGroupCard).join("");
   $("#tool-connections-summary").textContent = groups.length ? toolConnectionsSummary(groups).text : "";
   $("#tool-connections-back").hidden = !summaryOpen;
-  $("#tool-connections-done").textContent = summaryOpen ? "Confirm" : "Done";
+  $("#tool-connections-done").textContent = summaryOpen ? "Confirm and try it now" : "Done";
 }
 
 function finishToolConnections() {
@@ -1153,6 +1141,7 @@ function finishToolConnections() {
   }
   state.toolSummaryOpen = false;
   closeToolConnections();
+  if (!$("#publish-run-action").disabled) void publishAndRun();
 }
 
 function backToToolConnections() {
