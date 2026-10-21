@@ -928,6 +928,8 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
   overflow-y: auto;
   scrollbar-width: thin;
 }
+.agent-load-more { margin: -4px 0 10px; }
+.agent-load-more[hidden] { display: none; }
 .agent-option {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) 16px;

@@ -189,7 +189,9 @@ for (const playground of [false, true]) {
       } },
     });
     await page.route("**/agents?*", (route) => {
-      const after = new URL(route.request().url()).searchParams.get("after");
+      const params = new URL(route.request().url()).searchParams;
+      const after = params.get("after");
+      expect(params.get("limit")).toBe("10");
       cursors.push(after);
       return route.fulfill({ json: after ? {
         data: [resource("customer-concierge"), resource("not-a-voice-agent", "prompt")],
@@ -212,8 +214,15 @@ for (const playground of [false, true]) {
     const concierge = library.getByRole("option", { name: "customer-concierge", exact: true });
     const search = rail.getByRole("searchbox", { name: "Search Agents" });
     const open = rail.getByRole("button", { name: "Open selected Agent" });
-    await expect(library.getByRole("option")).toHaveCount(2);
+    const more = rail.getByRole("button", { name: "Load more Agents" });
+    await expect(library.getByRole("option")).toHaveCount(1);
     await expect(library).toHaveAttribute("aria-busy", "false");
+    await expect(rail.locator("#agent-result-count")).toHaveText("1 loaded");
+    expect(cursors).toEqual([null]);
+    await more.click();
+    await expect(library.getByRole("option")).toHaveCount(2);
+    await expect(more).toBeHidden();
+    await expect(rail.locator("#agent-result-count")).toHaveText("2 available");
     expect(cursors).toEqual([null, "page-two"]);
     await expect(rail.locator(".problems")).toBeHidden();
     await expect(fixture).toHaveAttribute("aria-selected", "true");
@@ -261,7 +270,8 @@ for (const playground of [false, true]) {
     await expect(page.locator("#node-editor")).toBeHidden();
     await page.reload();
     await expect(page.locator("#agent-title")).toHaveText("fixture-agent");
-    await expect(library.getByRole("option")).toHaveCount(2);
+    await expect(library.getByRole("option")).toHaveCount(1);
+    await expect(more).toBeVisible();
     await expect(fixture).toHaveAttribute("aria-selected", "true");
     await expect.poll(() => opens).toBe(4);
     await page.setViewportSize({ width: 390, height: 1000 });

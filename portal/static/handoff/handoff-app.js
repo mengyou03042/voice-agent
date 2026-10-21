@@ -52,6 +52,8 @@ const state = {
   agentListLoading: false,
   agentListError: "",
   agentListPageCount: 0,
+  agentListAfter: "",
+  agentListHasMore: false,
   definition: null,
   agentName: "",
   version: "",
@@ -657,6 +659,10 @@ function sortedAgents(agentMap) {
 
 function renderAgentLoadState() {
   $("#agent-select").setAttribute("aria-busy", String(state.agentListLoading));
+  const more = $("#load-more-agents");
+  more.hidden = !state.agentListHasMore;
+  more.disabled = state.agentListLoading;
+  more.textContent = state.agentListLoading && state.agentListPageCount ? "Loading…" : "Load more Agents";
   const status = $("#agent-load-state");
   if (state.agentListError) {
     status.textContent = "Load failed";
@@ -673,6 +679,34 @@ function renderAgentLoadState() {
   }
 }
 
+// Each list page carries full Agent definitions, so load the newest few and
+// fetch older ones only on request.
+const AGENT_PAGE_SIZE = 10;
+
+async function loadAgentPage(agents) {
+  const params = { kind: "voice", limit: String(AGENT_PAGE_SIZE) };
+  if (state.agentListAfter) params.after = state.agentListAfter;
+  const payload = await serviceRequest(serviceUrl("/agents", params));
+  for (const resource of payload.data || []) {
+    const latest = resource?.versions?.latest || resource;
+    if (resource?.name && latest?.definition?.kind === "voice") {
+      agents.set(resource.name, {
+        name: resource.name,
+        version: String(latest.version || ""),
+        createdAt: Number(latest.created_at) || 0,
+      });
+    }
+  }
+  const after = payload.has_more ? String(payload.last_id || "") : "";
+  if (payload.has_more && (!after || after === state.agentListAfter)) {
+    throw new Error("Agent list returned an unusable pagination cursor.");
+  }
+  state.agentListPageCount += 1;
+  state.agentListAfter = after;
+  state.agentListHasMore = Boolean(payload.has_more);
+  state.agents = sortedAgents(agents);
+}
+
 async function loadAgentList({ force = false, announce = true } = {}) {
   if (!state.cfg) return;
   if (state.agentListLoading || (state.agentListLoaded && !force)) return;
@@ -680,6 +714,8 @@ async function loadAgentList({ force = false, announce = true } = {}) {
   state.agentListLoaded = false;
   state.agentListError = "";
   state.agentListPageCount = 0;
+  state.agentListAfter = "";
+  state.agentListHasMore = false;
   $("#refresh-agents").disabled = true;
   const agents = new Map(
     (force ? state.agents.filter((item) => item.name === state.agentName) : state.agents)
@@ -687,38 +723,14 @@ async function loadAgentList({ force = false, announce = true } = {}) {
   );
   state.agents = sortedAgents(agents);
   renderAgentOptions();
-  if (announce) setMessage(`Loading all voice Agents from ${state.cfg.project} in the background…`);
+  if (announce) setMessage(`Loading the latest voice Agents from ${state.cfg.project}…`);
   try {
-    const cursors = new Set();
-    let after = "";
-    do {
-      const params = { kind: "voice", limit: "100" };
-      if (after) params.after = after;
-      const payload = await serviceRequest(serviceUrl("/agents", params));
-      for (const resource of payload.data || []) {
-        const latest = resource?.versions?.latest || resource;
-        if (resource?.name && latest?.definition?.kind === "voice") {
-          agents.set(resource.name, {
-            name: resource.name,
-            version: String(latest.version || ""),
-            createdAt: Number(latest.created_at) || 0,
-          });
-        }
-      }
-      state.agentListPageCount += 1;
-      state.agents = sortedAgents(agents);
-      renderAgentOptions();
-      if (payload.has_more) await new Promise((resolve) => window.setTimeout(resolve, 20));
-      if (!payload.has_more) break;
-      after = String(payload.last_id || "");
-      if (!after || cursors.has(after)) throw new Error("Agent list returned an unusable pagination cursor.");
-      cursors.add(after);
-    } while (true);
+    await loadAgentPage(agents);
     state.agentListLoaded = true;
     renderAgentOptions();
     if (announce) setMessage(
       state.agents.length
-        ? `Loaded ${state.agents.length} voice Agents. Select one to load its latest complete definition.`
+        ? `Loaded ${state.agents.length} voice Agents${state.agentListHasMore ? "; use Load more for older ones" : ""}. Select one to load its latest complete definition.`
         : "No voice Agents were returned for this Foundry project.",
     );
   } catch (error) {
@@ -732,6 +744,24 @@ async function loadAgentList({ force = false, announce = true } = {}) {
     state.agentListLoading = false;
     $("#refresh-agents").disabled = false;
     renderAgentLoadState();
+  }
+}
+
+async function loadMoreAgents() {
+  if (!state.cfg || state.agentListLoading || !state.agentListHasMore) return;
+  state.agentListLoading = true;
+  state.agentListError = "";
+  $("#refresh-agents").disabled = true;
+  renderAgentOptions();
+  try {
+    await loadAgentPage(new Map(state.agents.map((item) => [item.name, item])));
+  } catch (error) {
+    state.agentListError = error.message;
+    setMessage("More Agents could not be loaded. Your working copy was not replaced.", error.message);
+  } finally {
+    state.agentListLoading = false;
+    $("#refresh-agents").disabled = false;
+    renderAgentOptions();
   }
 }
 
@@ -775,11 +805,15 @@ function renderAgentOptions() {
       .join("")
     : `<div class="agent-list-empty" role="status">${state.agentListError
       ? "Could not load Agents. Use refresh to try again."
-      : state.agentListLoading ? "Loading Agents…" : query.trim() ? "No matching Agents. Try another name." : "No voice Agents in this project yet."}</div>`;
+      : state.agentListLoading ? "Loading Agents…"
+      : query.trim() ? (state.agentListHasMore
+        ? "No matching Agents loaded yet. Load more to search older ones."
+        : "No matching Agents. Try another name.")
+      : "No voice Agents in this project yet."}</div>`;
   selectAgentOption(selected, { focus: focused });
   $("#agent-result-count").textContent = query.trim()
     ? `${filtered.length} matching · ${state.agents.length} loaded`
-    : `${state.agents.length} available`;
+    : state.agentListHasMore ? `${state.agents.length} loaded` : `${state.agents.length} available`;
   renderAgentLoadState();
 }
 
@@ -4257,6 +4291,7 @@ function bindEvents() {
     canvasSize = { width, height };
   }).observe($("#canvas"));
   $("#refresh-agents").addEventListener("click", () => loadAgentList({ force: true, announce: true }));
+  $("#load-more-agents").addEventListener("click", loadMoreAgents);
   $("#agent-search").addEventListener("focus", ensureAgentListLoaded);
   $("#agent-search").addEventListener("input", renderAgentOptions);
   $("#agent-select").addEventListener("pointerdown", ensureAgentListLoaded);
