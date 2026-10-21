@@ -6,7 +6,8 @@ take the same arguments as the real tools and return the same fields, plus
 `mock: true` and `tool`, so a Template's stage instructions work unchanged on either.
 Nothing real is booked, sent, or charged.
 
-Route: `/mcp/mock-tool-call` on the shared no-auth MCP service ([deployment](../../../noauth/README.md)).
+Route: `/mcp/mock-tool-call` on the public no-auth MCP service that the default Portal
+Templates use (see [`portal/templates.config.json`](../../../../portal/templates.config.json)).
 Every tool name starts with `mock_tool_call_`.
 
 ## Result shape
