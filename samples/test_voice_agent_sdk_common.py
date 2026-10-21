@@ -599,7 +599,7 @@ class VoiceAgentSdkCommonTests(unittest.TestCase):
             "en-IN-Diya:DragonHDLatestNeural",
             realtime["audio"]["output"]["voice"]["name"],
         )
-        self.assertEqual("gpt-5.6-luna", cascade["model"])
+        self.assertEqual("gpt-4.1-mini", cascade["model"])
         self.assertEqual(
             "azure-speech",
             cascade["audio"]["input"]["transcription"]["model"],

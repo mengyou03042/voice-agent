@@ -5,7 +5,7 @@
 This sample owns the Cascade Finance template: an outbound personal-loan call
 that verifies the customer, negotiates an indicative offer, discloses charges,
 captures credit-bureau consent and books a loan-officer appointment. Its root
-[`agent.json`](agent.json) uses `gpt-5.6-luna`, `azure-speech` transcription and `en-IN-Diya:DragonHDLatestNeural`, with 400 ms Semantic VAD and, like Realtime, no Smart Turn end-of-utterance detection.
+[`agent.json`](agent.json) uses `gpt-4.1-mini`, `azure-speech` transcription and `en-IN-Diya:DragonHDLatestNeural`, with 400 ms Semantic VAD and, like Realtime, no Smart Turn end-of-utterance detection.
 
 The [Realtime sample](../example1_finance_with_handoff_realtime/README.md)
 has its own directory and version history. Portal template IDs and Agent names
@@ -99,8 +99,8 @@ Cascade**, then select a **Version**:
 | Version | Meaning |
 | --- | --- |
 | **Default** | The reworked flow above. |
-| `backups/20261021T110524Z/gpt_4_1_mini` | The same Cascade definition on `gpt-4.1-mini`: about twice as fast in text tests, but it skipped `start_call` and `schedule_callback`. |
-| `backups/20261021T104820Z/luna_no_smart_turn` | Identical to the default. |
+| `backups/20261021T110524Z/gpt_4_1_mini` | Identical to the default. |
+| `backups/20261021T104820Z/luna_no_smart_turn` | The same Cascade definition on `gpt-5.6-luna`: about half as fast to first audio, but it followed the tool order reliably. |
 | `backups/20261021T104350Z/latency_cover_smart_turn` | The same Cascade definition with Smart Turn end-of-utterance detection (medium, 2000 ms), which held each turn up to two seconds after the 400 ms silence. |
 | `backups/20261021T094717Z/emotional_response` | Kept for its improved emotional responses; Cascade without latency cover. |
 | `backups/20261021T094257Z/fluency_tested` | The first fluency candidate tried in the Portal, before plain-integer tool arguments. |

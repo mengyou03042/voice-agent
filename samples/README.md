@@ -43,7 +43,7 @@ Use underscores between words in sample directory names, including subagent exam
 | [Basic prompt subagent](subagent/voice_subagent_prompt_basic/README.md) | Create a poetry prompt subagent and a voice agent that delegates poem writing to it. |
 | [Hosted GitHub Copilot subagent](subagent/voice_subagent_hosted_agent/README.md) | Create a voice agent that delegates research, learning, and coding tasks to an existing hosted GitHub Copilot agent. |
 | [Finance with Handoff - Realtime](example1_finance_with_handoff_realtime/README.md) | Original Realtime Finance graph with independently selectable experimental backups and a text Voice WebSocket CLI. |
-| [Finance with Handoff - Cascade](example1_finance_with_handoff_cascade/README.md) | Finance graph on the Cascade pipeline (`gpt-5.6-luna`, Azure Speech) in its own directory, with independent backup versions and CLI. |
+| [Finance with Handoff - Cascade](example1_finance_with_handoff_cascade/README.md) | Finance graph on the Cascade pipeline (`gpt-4.1-mini`, Azure Speech) in its own directory, with independent backup versions and CLI. |
 | [Finance with OTP and Officer Search](example2_finance_with_OTP_and_Officer_Search/README.md) | Publish a flat Finance Agent for OTP verification and loan-officer search, then run a text smoke test. |
 | [Elevator Service with Safety, Zendesk, and Handoff](example3_elevator_service_with_safety_zendesk_and_handoff/README.md) | Publish an inbound field-service graph with deterministic safety checks, explicit Zendesk ticket confirmation, exact-ID status queries, and human-assistance routing. |
 | [Front Desk with Fluency and Handoff](example4_frontdesk_with_fluency_and_handoff/README.md) | Load a response-first receptionist Template with company FAQ, grounded support search, honest transfer fallback, and callback-message persistence only after explicit confirmation. |
@@ -86,8 +86,8 @@ Use underscores between words in sample directory names, including subagent exam
 
 The eight Portal template cards above use 400 ms `azure_semantic_vad` silence
 in all selectable versions. Non-Cascade templates use `gpt-realtime`; the
-explicit Finance Cascade uses `gpt-5.6-luna` (one backup trials
-`gpt-4.1-mini`). Backups preserve earlier business content, while `agent.source.json`
+explicit Finance Cascade uses `gpt-4.1-mini` (earlier backups use
+`gpt-5.6-luna`). Backups preserve earlier business content, while `agent.source.json`
 retains exact prior bytes outside the Version selector. Runtime configuration
 does not by itself establish improved measured latency or VAD safety.
 

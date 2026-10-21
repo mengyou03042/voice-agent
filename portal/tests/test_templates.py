@@ -467,7 +467,7 @@ class TemplateCatalogTests(unittest.TestCase):
             "en-IN-Diya:DragonHDLatestNeural",
             realtime["voice"],
         )
-        self.assertEqual("gpt-5.6-luna", cascade["model"])
+        self.assertEqual("gpt-4.1-mini", cascade["model"])
         self.assertEqual(
             "en-IN-Diya:DragonHDLatestNeural",
             cascade["voice"],
@@ -981,7 +981,7 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
         ).json()
 
         self.assertEqual("gpt-realtime", realtime["model"])
-        self.assertEqual("gpt-5.6-luna", cascade["model"])
+        self.assertEqual("gpt-4.1-mini", cascade["model"])
 
     async def test_unknown_template_and_asset_are_not_exposed(self) -> None:
         self.assertEqual(

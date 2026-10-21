@@ -41,8 +41,14 @@ FINANCE_FOLDERS = {
     "finance-example-cascade-luna": "example1_finance_with_handoff_cascade",
 }
 FINANCE_PREVIOUS_DEFAULT = "backups/20261021T074447Z/previous_default"
-# Cascade backups that deliberately trial another model.
-CASCADE_MODEL_TRIALS = {"gpt_4_1_mini": "gpt-4.1-mini"}
+# Cascade versions saved before the switch to gpt-4.1-mini keep gpt-5.6-luna.
+CASCADE_MODEL_TRIALS = {
+    name: "gpt-5.6-luna"
+    for name in (
+        "previous_default", "pre_fluency", "business_warm_opening", "fluency_tested",
+        "emotional_response", "latency_cover_smart_turn", "luna_no_smart_turn",
+    )
+}
 FINANCE_PREVIOUS_DEFAULT_SHA256 = {
     "finance-example-realtime": "7def9d0ac49611645a7268c0dbd99bf8c2b568a882ae6f4c579db395697c6855",
     "finance-example-cascade-luna": "b551c6d3c01f9871963d1482abd6db0489c974daa80c9bce2b5a955750103fbe",
@@ -285,14 +291,17 @@ class TemplateVersionCatalogTests(TemplateVersionFixture, unittest.TestCase):
         self.assertNotEqual(realtime.path.parent, cascade.path.parent)
         for template_id, model in (
             ("finance-example-realtime", "gpt-realtime"),
-            ("finance-example-cascade-luna", "gpt-5.6-luna"),
+            ("finance-example-cascade-luna", "gpt-4.1-mini"),
         ):
             card = next(card for card in catalog.cards() if card["id"] == template_id)
             self.assertEqual(".", card["default_version"])
             for version in card["versions"]:
                 with self.subTest(template_id=template_id, version=version["id"]):
+                    expected = model
+                    if template_id == "finance-example-cascade-luna":
+                        expected = CASCADE_MODEL_TRIALS.get(version["id"].rsplit("/", 1)[-1], model)
                     self.assertEqual(
-                        CASCADE_MODEL_TRIALS.get(version["id"].rsplit("/", 1)[-1], model),
+                        expected,
                         catalog.document(template_id, version["id"])["definition"]["model"],
                     )
 
@@ -302,7 +311,7 @@ class TemplateVersionCatalogTests(TemplateVersionFixture, unittest.TestCase):
         for template_id in ORIGINAL_TEMPLATE_IDS:
             card = next(card for card in catalog.cards() if card["id"] == template_id)
             model = (
-                "gpt-5.6-luna"
+                "gpt-4.1-mini"
                 if card["id"] == "finance-example-cascade-luna"
                 else "gpt-realtime"
             )
