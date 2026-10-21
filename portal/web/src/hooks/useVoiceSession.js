@@ -618,7 +618,7 @@ export function useVoiceSession() {
         const channels = clientReferenceEcRef.current ? 2 : 1;
         const voice = pcmVoiceOffsetsMs(bytes, { channels });
         const ws = wsRef.current;
-        if (ws && ws.readyState === WebSocket.OPEN) {
+        if (ws && ws.readyState === WebSocket.OPEN && sessionReadyRef.current) {
           ws.send(JSON.stringify({ type: "input_audio_buffer.append", audio: uint8ToBase64(bytes) }));
           const packetSentAtMs = monotonicNow();
           inputPcmTimelineEndMsRef.current = recordInputPcmPacket(
@@ -1561,6 +1561,14 @@ export function useVoiceSession() {
     ].filter(Boolean).join(", ");
     logStatus(`Connecting to ${agentName}${overrideNote ? ` (${overrideNote})` : " (agent defaults)"} ...`);
 
+    // Open the microphone before the session starts. Opening it while the greeting plays makes the
+    // browser reconfigure the audio device (echo cancellation, Bluetooth headsets switching to call
+    // mode), which drops about a second of the greeting. Audio is sent only once the session is ready.
+    if (transportRef.current !== "webrtc") {
+      await startMic();
+      setStatus({ text: "connecting...", kind: "warn" });
+    }
+
     const ws = new WebSocket(url);
     ws.binaryType = "arraybuffer";
     wsRef.current = ws;
@@ -1639,7 +1647,7 @@ export function useVoiceSession() {
       clientCloseRequestedRef.current = false;
       if (wsRef.current === ws) wsRef.current = null;
     };
-  }, [cleanupAvatar, cleanupWebRtc, resetClientFunctionState, startWebRtcSession, handleEvent, logStatus, logError, logApi]);
+  }, [cleanupAvatar, cleanupWebRtc, resetClientFunctionState, startMic, startWebRtcSession, handleEvent, logStatus, logError, logApi]);
 
   const stopSession = useCallback(() => {
     logStatus("Stopping session...");
