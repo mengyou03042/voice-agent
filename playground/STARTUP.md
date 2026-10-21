@@ -370,8 +370,8 @@ python ../12_noauth_mcp/scripts/validate_live.py \
 
 Do not declare success from `/healthz` alone.
 
-The current Portal release is `voice-agent-playground--0000039`, image digest
-`sha256:67e0c581...`, built by ACR run `cc28` on 2026-10-21 from this repository
+The current Portal release is `voice-agent-playground--0000040`, image digest
+`sha256:561b5da9...`, built by ACR run `cc29` on 2026-10-21 from this repository
 (`build_context.py`) with 35 cards. Examples 5-34 run on the `mock-tool-call` route of
 the shared no-auth MCP service. In **Load from templates**, selecting a card loads it
 with mock data, and **Load with my MCP** under a card with connectable systems loads it
@@ -384,8 +384,11 @@ it now** publishes the working copy and starts a test session. The mock-tools ba
 its own row above the canvas. `/guide/real-tools` and `/guide/logic-apps-mcp` are
 rendered as HTML. On the conversation page, an agent published from a template that
 still calls mock tools shows **Test data for mock tools**, the "Try these turns" lines
-from the sample README (`/api/templates/{id}/try-it`). It replaced revision `0000038`
-(`sha256:09b47ef9...`), the rollback image, which had no test-data panel. Only the image changed: environment variable
+from the sample README (`/api/templates/{id}/try-it`). The conversation page opens the
+microphone before it connects, so the greeting plays without the device switch that dropped
+part of it, and Examples 5-34 keep speaking English unless the caller asks for another
+language. It replaced revision `0000039` (`sha256:67e0c581...`), the rollback image, which
+opened the microphone while the greeting played. Only the image changed: environment variable
 names were compared before and after, and the revision is Healthy with two replicas and
 100% traffic. The hosted regression suite ran 47 tests: 46 passed and the opt-in Kusto
 check was skipped.
