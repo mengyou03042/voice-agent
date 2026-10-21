@@ -1,0 +1,26 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "foundryAccountName": {"value": "<foundry-account-from-foundation>"},
+    "foundryLocation": {"value": "westus2"},
+    "foundryResourceGroup": {"value": "<foundry-account-resource-group>"},
+    "managedEnvironmentId": {
+      "value": "/subscriptions/<subscription-id>/resourceGroups/<environment-rg>/providers/Microsoft.App/managedEnvironments/<environment-name>"
+    },
+    "managedEnvironmentDomain": {"value": "<environment-default-domain>"},
+    "registryName": {"value": "<registry-name>"},
+    "registryResourceGroup": {"value": "<registry-resource-group>"},
+    "image": {"value": "<registry>.azurecr.io/voice-agent-playground@sha256:<digest>"},
+    "mcpBaseUrl": {
+      "value": "https://voice-agent-noauth-mcp.lemonsky-36682081.westus2.azurecontainerapps.io"
+    },
+    "anonymousCookieKey": {"value": "<generate-at-least-32-random-bytes>"},
+    "invitationCodeHash": {"value": "<sha256-of-the-shared-high-entropy-token>"},
+    "invitationExpiresAt": {"value": 0},
+    "accessCookieDays": {"value": 365},
+    "exposePortalIngress": {"value": false},
+    "minimumReplicas": {"value": 2},
+    "maximumReplicas": {"value": 5}
+  }
+}

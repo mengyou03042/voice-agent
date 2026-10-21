@@ -1,0 +1,197 @@
+{
+  "version": 1,
+  "default_pack": "interview",
+  "packs": [
+    {
+      "name": "finance-handoff",
+      "source": "voice-agent/shared_mcp",
+      "priority": "P0",
+      "register": "shared_mcp.finance_handoff.pack:register",
+      "required_tools": [
+        "calculate_indicative_loan_offer",
+        "capture_bureau_consent",
+        "confirm_right_party",
+        "leave_voicemail",
+        "prepare_offer_summary",
+        "present_charges",
+        "record_customer_offer_decision",
+        "schedule_callback",
+        "send_dtmf",
+        "set_disposition",
+        "start_call"
+      ]
+    },
+    {
+      "name": "finance-otp-officer",
+      "source": "voice-agent/shared_mcp",
+      "priority": "P0",
+      "register": "shared_mcp.finance_otp_officer.pack:register",
+      "required_tools": [
+        "auto_assign_loan_officer",
+        "calculate_loan_offer",
+        "confirm_loan_officer",
+        "end_call",
+        "record_loan_interest",
+        "search_loan_officer",
+        "verify_caller_otp"
+      ]
+    },
+    {
+      "name": "elevator-service",
+      "source": "voice-agent/shared_mcp",
+      "priority": "P0",
+      "register": "shared_mcp.elevator_service.pack:register",
+      "required_tools": [
+        "assess_safety",
+        "end_service_call",
+        "mock_zendesk_create_ticket",
+        "mock_zendesk_get_ticket_status",
+        "record_issue",
+        "request_human_handoff",
+        "start_service_call"
+      ]
+    },
+    {
+      "name": "finance",
+      "source": "voice-agent/shared_mcp",
+      "priority": "P1-11-compatible",
+      "register": "shared_mcp.finance_handoff.pack:register",
+      "required_tools": [
+        "calculate_indicative_loan_offer",
+        "capture_bureau_consent",
+        "confirm_right_party",
+        "get_call_state",
+        "start_call"
+      ]
+    },
+    {
+      "name": "umw-v3",
+      "source": "voice-agent/shared_mcp",
+      "priority": "P1-11-compatible",
+      "register": "shared_mcp.finance_otp_officer.pack:register",
+      "required_tools": [
+        "calculate_loan_offer",
+        "get_call_state",
+        "verify_caller_otp"
+      ]
+    },
+    {
+      "name": "11-finance",
+      "source": "voice-agent/shared_mcp",
+      "priority": "P1-11-marked",
+      "register": "shared_mcp.finance_handoff.pack:register",
+      "required_tools": [
+        "calculate_indicative_loan_offer",
+        "get_call_state",
+        "start_call"
+      ]
+    },
+    {
+      "name": "11-umw-v3",
+      "source": "voice-agent/shared_mcp",
+      "priority": "P1-11-marked",
+      "register": "shared_mcp.finance_otp_officer.pack:register",
+      "required_tools": [
+        "calculate_loan_offer",
+        "get_call_state",
+        "verify_caller_otp"
+      ]
+    },
+    {
+      "name": "interview",
+      "source": "docs/voice_agent/11_mcp_server",
+      "priority": "P1-missing-in-shared",
+      "register": "app.interview_mcp.pack:register",
+      "required_tools": [
+        "complete_practice_session",
+        "get_candidate_profile",
+        "get_next_question",
+        "get_practice_feedback",
+        "record_answer",
+        "record_consent",
+        "request_follow_up",
+        "verify_candidate_identity"
+      ]
+    },
+    {
+      "name": "11-interview",
+      "source": "docs/voice_agent/11_mcp_server",
+      "priority": "P1-11-marked",
+      "register": "app.interview_mcp.pack:register",
+      "required_tools": [
+        "get_next_question",
+        "record_answer",
+        "verify_candidate_identity"
+      ]
+    },
+    {
+      "name": "uwm",
+      "source": "docs/voice_agent/11_mcp_server",
+      "priority": "P1-missing-in-shared",
+      "register": "app.uwm_mcp.pack:register",
+      "required_tools": [
+        "confirm_loan_officer",
+        "end_call",
+        "get_call_state",
+        "search_loan_officer",
+        "start_call",
+        "transfer_to_officer",
+        "verify_caller_otp"
+      ]
+    },
+    {
+      "name": "11-uwm",
+      "source": "docs/voice_agent/11_mcp_server",
+      "priority": "P1-11-marked",
+      "register": "app.uwm_mcp.pack:register",
+      "required_tools": [
+        "get_call_state",
+        "search_loan_officer",
+        "verify_caller_otp"
+      ]
+    },
+    {
+      "name": "frontdesk",
+      "source": "docs/voice_agent/11_mcp_server",
+      "priority": "P1-missing-in-shared",
+      "register": "app.frontdesk_mcp.pack:register",
+      "required_tools": [
+        "frontdesk_record_message",
+        "frontdesk_search_zendesk_articles"
+      ]
+    },
+    {
+      "name": "11-frontdesk",
+      "source": "docs/voice_agent/11_mcp_server",
+      "priority": "P1-11-marked",
+      "register": "app.frontdesk_mcp.pack:register",
+      "required_tools": [
+        "frontdesk_record_message",
+        "frontdesk_search_zendesk_articles"
+      ]
+    },
+    {
+      "name": "mock-tool-call",
+      "source": "voice-agent/shared_mcp",
+      "priority": "P2-mock",
+      "register": "shared_mcp.mock_tool_call.pack:register",
+      "required_tools": [
+        "mock_tool_call_echo"
+      ]
+    }
+  ],
+  "portal_templates": {
+    "finance-example-realtime": "/mcp/finance-handoff",
+    "finance-example-cascade-luna": "/mcp/finance-handoff",
+    "finance-with-otp-and-officer-search": "/mcp/finance-otp-officer",
+    "elevator-service-example": "/mcp/elevator-service"
+  },
+  "disabled": [
+    {
+      "name": "voice-agent-builder",
+      "source": "docs/voice_agent/11_mcp_server",
+      "priority": "P1",
+      "reason": "Not exposed no-auth because it can create or validate Azure Agent resources."
+    }
+  ]
+}

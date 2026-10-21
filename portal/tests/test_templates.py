@@ -34,13 +34,15 @@ MCP_TEMPLATES = [
     "elevator-service-example",
     "frontdesk-receptionist-example",
 ]
-# Tool-free handoff examples: (template ID, sample folder, graph nodes, graph edges).
-ORIGINAL_TOOL_FREE_TEMPLATES = [
+# Hand-tuned handoff examples: (template ID, sample folder, graph nodes, graph edges). Their
+# defaults run on mock tools; their tuned tool-free defaults are kept as a backup version.
+ORIGINAL_TEMPLATES = [
     ("customer-support-example", "example5_customer_support", 5, 9),
     ("appointment-setter-example", "example6_appointment_setter", 7, 12),
     ("receptionist-messaging-example", "example7_receptionist_messaging", 6, 14),
 ]
-CONVERTED_TOOL_FREE_TEMPLATES = [
+# ElevenLabs-converted examples bound to the shared mock-tool-call MCP server.
+CONVERTED_TEMPLATES = [
     ("appointment-scheduler-example", "example8_appointment_scheduler", 6, 11),
     ("assessment-quiz-agent-example", "example9_assessment_quiz_agent", 5, 8),
     ("collections-payment-recovery-agent-example", "example10_collections_payment_recovery_agent", 5, 8),
@@ -69,14 +71,12 @@ CONVERTED_TOOL_FREE_TEMPLATES = [
     ("travel-agency-trip-planner-example", "example33_travel_agency_trip_planner", 6, 11),
     ("user-research-interviewer-example", "example34_user_research_interviewer", 8, 16),
 ]
-TOOL_FREE_TEMPLATES = [
-    *ORIGINAL_TOOL_FREE_TEMPLATES,
-    *CONVERTED_TOOL_FREE_TEMPLATES,
-]
-EXPECTED_TEMPLATES = [
-    *MCP_TEMPLATES,
-    *(template_id for template_id, *_ in TOOL_FREE_TEMPLATES),
-]
+MOCK_TOOL_TEMPLATES = [*ORIGINAL_TEMPLATES, *CONVERTED_TEMPLATES]
+TOOL_FREE_BACKUP = "backups/20261021T000000Z/tool_free_default"
+SHARED_MCP_TEMPLATES = list(MCP_TEMPLATES)
+MOCK_TOOL_TEMPLATE_IDS = [template_id for template_id, *_ in MOCK_TOOL_TEMPLATES]
+MCP_TEMPLATES = [*SHARED_MCP_TEMPLATES, *MOCK_TOOL_TEMPLATE_IDS]
+EXPECTED_TEMPLATES = [*SHARED_MCP_TEMPLATES, *MOCK_TOOL_TEMPLATE_IDS]
 END_CONVERSATION_TOOL = {"type": "system", "name": "end_conversation"}
 MCP_BASE_URL = (
     "https://voice-agent-noauth-mcp"
@@ -88,23 +88,25 @@ MCP_ROUTES = {
     "finance-with-otp-and-officer-search": "/mcp/finance-otp-officer",
     "elevator-service-example": "/mcp/elevator-service",
     "frontdesk-receptionist-example": "/mcp/frontdesk",
+    **{template_id: "/mcp/mock-tool-call" for template_id in MOCK_TOOL_TEMPLATE_IDS},
 }
+MOCK_TOOL_PREFIX = "mock_tool_call_"
 
 
 class TemplateCatalogTests(unittest.TestCase):
-    def test_tool_free_handoff_examples_need_no_mcp(self) -> None:
+    def test_tuned_tool_free_backups_need_no_mcp(self) -> None:
         catalog = TemplateCatalog()
 
-        for template_id, folder, node_count, edge_count in TOOL_FREE_TEMPLATES:
+        for template_id, folder, node_count, edge_count in ORIGINAL_TEMPLATES:
             with self.subTest(template_id=template_id):
-                detail = catalog.detail(template_id)
+                detail = catalog.detail(template_id, TOOL_FREE_BACKUP)
                 assert detail is not None
                 self.assertFalse(detail["requires_mcp"])
                 self.assertTrue(detail["runtime_locked"])
                 self.assertEqual(node_count, detail["node_count"])
                 self.assertEqual(edge_count, detail["edge_count"])
                 agent = json.loads(
-                    (ROOT.parent / "samples" / folder / "agent.json").read_text(encoding="utf-8")
+                    (ROOT.parent / "samples" / folder / TOOL_FREE_BACKUP / "agent.json").read_text(encoding="utf-8")
                 )
                 handoff = agent["definition"]["handoff"]
                 self.assertEqual(template_id, agent["name"])
@@ -114,7 +116,7 @@ class TemplateCatalogTests(unittest.TestCase):
                     handoff["nodes"][-1]["config"]["tools"],
                 )
 
-    def test_tool_free_handoff_examples_preserve_normal_400ms_vad(self) -> None:
+    def test_tuned_handoff_examples_preserve_normal_400ms_vad(self) -> None:
         catalog = TemplateCatalog()
         expected = {
             "type": "azure_semantic_vad",
@@ -124,22 +126,25 @@ class TemplateCatalogTests(unittest.TestCase):
             "silence_duration_ms": 400,
         }
 
-        for template_id, *_ in ORIGINAL_TOOL_FREE_TEMPLATES:
-            with self.subTest(template_id=template_id):
-                document = catalog.document(template_id)
+        for (template_id, *_), version in (
+            (entry, version) for entry in ORIGINAL_TEMPLATES for version in (".", TOOL_FREE_BACKUP)
+        ):
+            with self.subTest(template_id=template_id, version=version):
+                document = catalog.document(template_id, version)
                 assert document is not None
                 self.assertEqual(
                     expected, document["definition"]["audio"]["input"]["turn_detection"],
                 )
                 definition = materialize_template(
                     document, model="", voice="",
-                    mcp_server_url="", mcp_connection_id="",
+                    mcp_server_url=MCP_BASE_URL + MCP_ROUTES[template_id],
+                    mcp_connection_id="", mcp_public=True,
                 )
                 self.assertEqual(
                     expected, definition["audio"]["input"]["turn_detection"],
                 )
 
-    def test_tool_free_handoff_examples_separate_shared_and_local_instructions(self) -> None:
+    def test_tuned_tool_free_backups_separate_shared_and_local_instructions(self) -> None:
         catalog = TemplateCatalog()
         headings = (
             "Personality", "Environment", "Tone", "How you respond",
@@ -150,9 +155,9 @@ class TemplateCatalogTests(unittest.TestCase):
             'handoff(target=', "end_conversation", "target end",
         )
 
-        for template_id, *_ in ORIGINAL_TOOL_FREE_TEMPLATES:
+        for template_id, *_ in ORIGINAL_TEMPLATES:
             with self.subTest(template_id=template_id):
-                document = catalog.document(template_id)
+                document = catalog.document(template_id, TOOL_FREE_BACKUP)
                 assert document is not None
                 shared = document["definition"]["instructions"]
                 for heading in headings:
@@ -178,24 +183,126 @@ class TemplateCatalogTests(unittest.TestCase):
                         published["config"]["instructions"],
                     )
 
-    def test_converted_handoff_examples_preserve_authored_runtime_and_instructions(self) -> None:
+    def test_mock_tool_examples_bind_only_mock_tools(self) -> None:
         catalog = TemplateCatalog()
-        for template_id, folder, *_ in CONVERTED_TOOL_FREE_TEMPLATES:
+
+        cards = {card["id"]: card for card in catalog.cards()}
+        for template_id, folder, node_count, edge_count in MOCK_TOOL_TEMPLATES:
+            with self.subTest(template_id=template_id):
+                detail = catalog.detail(template_id)
+                source = catalog.source(template_id)
+                assert detail is not None and source is not None
+                self.assertTrue(cards[template_id]["mock_tools"])
+                self.assertTrue(cards[template_id]["tool_systems"])
+                self.assertTrue(detail["requires_mcp"])
+                self.assertTrue(detail["runtime_locked"])
+                self.assertEqual("public", source.connection_mode)
+                self.assertEqual(node_count, detail["node_count"])
+                self.assertEqual(edge_count, detail["edge_count"])
+                agent = json.loads(
+                    (ROOT.parent / "samples" / folder / "agent.json").read_text(encoding="utf-8")
+                )
+                handoff = agent["definition"]["handoff"]
+                self.assertEqual(template_id, agent["name"])
+                self.assertEqual("end", handoff["nodes"][-1]["id"])
+                self.assertEqual(
+                    [END_CONVERSATION_TOOL],
+                    handoff["nodes"][-1]["config"]["tools"],
+                )
+                tools = list(template_portal.iter_mcp_tools(agent["definition"]))
+                self.assertTrue(tools)
+                for tool in tools:
+                    self.assertEqual("", tool["server_url"])
+                    self.assertEqual("never", tool["require_approval"])
+                    self.assertTrue(tool["allowed_tools"])
+                    self.assertTrue(all(name.startswith(MOCK_TOOL_PREFIX) for name in tool["allowed_tools"]))
+                    for key in ("project_connection_id", "authorization", "headers"):
+                        self.assertNotIn(key, tool)
+
+    def test_mock_tool_examples_preserve_authored_runtime_and_instructions(self) -> None:
+        catalog = TemplateCatalog()
+        for template_id, folder, *_ in MOCK_TOOL_TEMPLATES:
             with self.subTest(template_id=template_id):
                 authored = json.loads(
                     (ROOT.parent / "samples" / folder / "agent.json").read_text(encoding="utf-8")
                 )["definition"]
                 document = catalog.document(template_id)
                 self.assertIsNotNone(document)
+                server_url = MCP_BASE_URL + MCP_ROUTES[template_id]
                 definition = materialize_template(
                     document, model="", voice="",
-                    mcp_server_url="", mcp_connection_id="",
+                    mcp_server_url=server_url, mcp_connection_id="", mcp_public=True,
                 )
+                for tool in template_portal.iter_mcp_tools(authored):
+                    tool["server_url"] = server_url
                 self.assertEqual(authored["audio"], definition["audio"])
                 self.assertEqual(authored["instructions"], definition["instructions"])
                 self.assertEqual(
                     authored["handoff"]["nodes"], definition["handoff"]["nodes"],
                 )
+
+    def test_tool_map_suggestion_and_per_system_rewrite(self) -> None:
+        required = [
+            "mock_tool_call_find_meeting_times",
+            "mock_tool_call_create_event",
+            "mock_tool_call_zendesk_search",
+        ]
+        available = ["FindMeetingTimes", "calendar___CreateEvent", "search_articles"]
+        self.assertEqual(
+            {
+                "mock_tool_call_find_meeting_times": "FindMeetingTimes",
+                "mock_tool_call_create_event": "calendar___CreateEvent",
+                "mock_tool_call_zendesk_search": "",
+            },
+            template_portal.suggest_tool_map(required, available),
+        )
+        with self.assertRaisesRegex(ValueError, "mock_tool_call_zendesk_search"):
+            template_portal.validate_tool_map(required, available, {
+                "mock_tool_call_find_meeting_times": "FindMeetingTimes",
+                "mock_tool_call_create_event": "calendar___CreateEvent",
+            })
+        with self.assertRaisesRegex(ValueError, "does not list"):
+            template_portal.validate_tool_map(required, available, {
+                name: "unknown_tool" for name in required
+            })
+        definition = {
+            "instructions": "Call mock_tool_call_salesforce_search, then mock_tool_call_create_event once.",
+            "handoff": {"nodes": [{"id": "book", "config": {
+                "instructions": "Use mock_tool_call_salesforce_create_lead after the booking.",
+                "tools": [{
+                    "type": "mcp", "server_label": "mock_tool_call", "server_url": "https://mock.example/mcp",
+                    "require_approval": "never",
+                    "allowed_tools": [
+                        "mock_tool_call_create_event",
+                        "mock_tool_call_salesforce_search",
+                        "mock_tool_call_salesforce_create_lead",
+                    ],
+                }],
+            }}]},
+        }
+        groups = {group["id"]: group for group in template_portal.tool_groups(definition)}
+        self.assertEqual(["salesforce", "work_iq"], list(groups))
+        self.assertFalse(groups["work_iq"]["connectable"])
+        self.assertIn("can't be connected with an MCP URL", groups["work_iq"]["note"])
+        rewritten = template_portal.apply_tool_servers(definition, {
+            "salesforce": ("https://crm.example/mcp", {
+                "mock_tool_call_salesforce_search": "crm___search_contacts",
+                "mock_tool_call_salesforce_create_lead": "create_lead",
+            }),
+        })
+        self.assertEqual(
+            "Call crm___search_contacts, then mock_tool_call_create_event once.",
+            rewritten["instructions"],
+        )
+        config = rewritten["handoff"]["nodes"][0]["config"]
+        self.assertEqual("Use create_lead after the booking.", config["instructions"])
+        self.assertEqual([
+            {"type": "mcp", "server_label": "mock_tool_call", "server_url": "https://mock.example/mcp",
+             "require_approval": "never", "allowed_tools": ["mock_tool_call_create_event"]},
+            {"type": "mcp", "server_label": "salesforce", "server_url": "https://crm.example/mcp",
+             "require_approval": "never", "allowed_tools": ["crm___search_contacts", "create_lead"]},
+        ], config["tools"])
+        self.assertIs(definition, template_portal.apply_tool_servers(definition, {}))
 
     def test_frontdesk_preserves_fluency_prompt_and_complete_workflow(self) -> None:
         catalog = TemplateCatalog()
@@ -731,6 +838,58 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(MCP_BASE_URL + MCP_ROUTES[template_id], tool["server_url"])
                     self.assertNotIn("project_connection_id", tool)
 
+    async def test_editor_connects_and_disconnects_one_system_of_a_working_copy(self) -> None:
+        detail = await (await self.client.get("/api/templates/order-status-tracking-example")).json()
+        original = detail["definition"]
+        groups = (await (await self.client.post("/api/tools/groups", json={"definition": original})).json())["groups"]
+        self.assertEqual(["zendesk", "twilio", "orders"], [group["id"] for group in groups])
+        self.assertTrue(all(group["connected"] is None for group in groups))
+        tool_map = {"mock_tool_call_zendesk_add_comment": "add_ticket_comment"}
+        with patch(
+            "template_portal.mcp_handshake",
+            return_value={"reached": True, "tools": ["add_ticket_comment"]},
+        ):
+            discovered = await (await self.client.post("/api/tools/discover", json={
+                "definition": original, "group": "zendesk", "server_url": "https://desk.example/mcp",
+            })).json()
+            self.assertEqual({"mock_tool_call_zendesk_add_comment": ""}, discovered["mapping"])
+            self.assertEqual(["mock_tool_call_zendesk_add_comment"], discovered["unmapped"])
+            response = await self.client.post("/api/tools/connect", json={
+                "definition": original, "group": "zendesk",
+                "server_url": "https://desk.example/mcp", "tool_map": tool_map,
+            })
+            self.assertEqual(200, response.status, await response.text())
+            connected = await response.json()
+        zendesk = next(group for group in connected["groups"] if group["id"] == "zendesk")
+        self.assertEqual(
+            {"server_url": "https://desk.example/mcp", "tools": ["add_ticket_comment"]},
+            zendesk["connected"],
+        )
+        text = json.dumps(connected["definition"])
+        self.assertNotIn("mock_tool_call_zendesk_add_comment", text)
+        self.assertIn("mock_tool_call_twilio_send_message", text)
+        restored = await (await self.client.post("/api/tools/disconnect", json={
+            "definition": connected["definition"], "group": "zendesk", "tool_map": connected["tool_map"],
+        })).json()
+        def sorted_tools(value):
+            if isinstance(value, dict):
+                return {
+                    key: sorted(item) if key == "allowed_tools" else sorted_tools(item)
+                    for key, item in value.items()
+                }
+            if isinstance(value, list):
+                return [sorted_tools(item) for item in value]
+            return value
+
+        self.assertEqual(sorted_tools(original), sorted_tools(restored["definition"]))
+        with patch("template_portal.mcp_handshake") as handshake:
+            work_iq = await self.client.post("/api/tools/connect", json={
+                "definition": (await (await self.client.get("/api/templates/appointment-scheduler-example")).json())["definition"],
+                "group": "work_iq", "server_url": "https://cal.example/mcp", "tool_map": {},
+            })
+            self.assertEqual(400, work_iq.status)
+            handshake.assert_not_called()
+
     async def test_public_template_configuration_keeps_private_address_guard(self) -> None:
         with patch(
             "template_portal.validate_mcp_probe_url",
@@ -755,6 +914,39 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
 
         cfg = self.client.server.app[demo_server.DEFAULT_CONFIG_KEY]
         self.assertIsNone(cfg._credential)
+
+    async def test_real_tools_guide_is_served(self) -> None:
+        response = await self.client.get("/guide/real-tools")
+        self.assertEqual(200, response.status)
+        self.assertEqual("text/html", response.content_type)
+        text = await response.text()
+        self.assertIn("<h1>Use real tools with Templates</h1>", text)
+        self.assertIn("<table>", text)
+        self.assertIn('<a href="/guide/run-samples"', text)
+        for system in ("Salesforce", "Zendesk", "Twilio"):
+            self.assertIn(system, text)
+        self.assertIn('<a href="/guide/logic-apps-mcp"', text)
+
+    async def test_logic_apps_mcp_guide_is_served(self) -> None:
+        response = await self.client.get("/guide/logic-apps-mcp")
+        self.assertEqual(200, response.status)
+        self.assertEqual("text/html", response.content_type)
+        text = await response.text()
+        self.assertIn("<h1>Create Salesforce, Zendesk, and Work IQ MCP servers with Azure Logic Apps</h1>", text)
+        self.assertIn("X-API-KEY", text)
+        self.assertIn('<a href="/guide/real-tools"', text)
+
+    def test_guide_renderer_escapes_markup_and_drops_unsafe_links(self) -> None:
+        from guide_render import render_markdown
+
+        title, body = render_markdown(
+            "# Guide <b>\n\nUse `<script>` and [x](javascript:alert(1)) or [docs](https://example.com).\n"
+        )
+        self.assertEqual("Guide <b>", title)
+        self.assertNotIn("<script>", body)
+        self.assertNotIn("javascript:", body)
+        self.assertIn("<code>&lt;script&gt;</code>", body)
+        self.assertIn('<a href="https://example.com"', body)
 
     async def test_locked_variants_ignore_global_model_override(self) -> None:
         self.assertEqual(

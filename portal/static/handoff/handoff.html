@@ -51,6 +51,17 @@
       </div>
     </header>
 
+    <aside id="mock-tools-banner" class="mock-tools-banner" role="note" hidden>
+      <div>
+        <strong>This Agent uses mock tools</strong>
+        <p id="mock-tools-banner-text"></p>
+      </div>
+      <div class="mock-tools-banner-actions">
+        <button id="open-tool-connections" type="button">Connect my tools</button>
+        <a href="/guide/real-tools" target="_blank" rel="noreferrer">How to connect Salesforce, Zendesk, and more</a>
+      </div>
+    </aside>
+
     <main class="workspace">
       <aside class="rail" aria-label="Graph outline">
         <section class="rail-section source-section">
@@ -228,6 +239,33 @@
       </div>
     </section>
 
+    <section id="tool-connections" class="template-picker tool-connections" aria-label="Connect my tools" hidden>
+      <div class="template-picker-shell" role="dialog" aria-modal="true" aria-labelledby="tool-connections-title">
+        <header class="template-picker-header">
+          <div>
+            <span class="template-picker-kicker">Tool connections</span>
+            <h2 id="tool-connections-title">Choose real or mock data for each system</h2>
+            <p>Every system starts on mock data. To use your own data for a system, paste its no-auth MCP server URL and select Connect; each system can use a different server. Systems you leave alone keep mock data. Select Done to review the choices.</p>
+          </div>
+          <button id="close-tool-connections" class="icon-button" type="button" aria-label="Close tool connections">×</button>
+        </header>
+        <div class="template-picker-toolbar">
+          <p id="tool-connections-status" role="status">Reading the working copy's tools…</p>
+          <div>
+            <a href="/guide/real-tools" target="_blank" rel="noreferrer">Guide: use real tools with templates</a>
+          </div>
+        </div>
+        <div id="tool-connection-groups" class="tool-connection-groups" aria-live="polite"></div>
+        <footer class="tool-connections-footer">
+          <p id="tool-connections-summary" aria-live="polite"></p>
+          <div>
+            <button id="tool-connections-back" class="tool-footer-secondary" type="button" hidden>Back</button>
+            <button id="tool-connections-done" class="tool-footer-primary" type="button">Done</button>
+          </div>
+        </footer>
+      </div>
+    </section>
+
     <section id="template-picker" class="template-picker" aria-label="Load from templates" hidden>
       <div class="template-picker-shell" role="dialog" aria-modal="true" aria-labelledby="template-picker-title">
         <header class="template-picker-header">
@@ -247,7 +285,9 @@
         <div id="template-picker-grid" class="template-picker-grid" aria-live="polite"></div>
         <footer class="template-picker-footer">
           <span aria-hidden="true">✦</span>
-          The selected definition uses this Dashboard's model and its configured MCP Project connection.
+          Templates marked Mock tools call fictional data on the shared mock MCP server. Choose
+          Connect my real tools to point each system at your own no-auth MCP server;
+          <a href="/guide/real-tools" target="_blank" rel="noreferrer">setup guide</a>.
         </footer>
       </div>
     </section>

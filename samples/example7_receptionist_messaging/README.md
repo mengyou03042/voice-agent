@@ -1,99 +1,83 @@
 # Receptionist and Messaging with Handoff
 
-## Overview
+## Conclusion
 
-`agent.json` is a portable, tool-free Voice Agent for a fictional company,
-Contoso, that answers front desk questions, matches requested recipients to a
-directory, and prepares messages as a staged handoff graph. The example portal
-loads this local definition; a deployed Toolbox variant is a separate version.
-It needs no MCP service,
-Project connection, or Toolbox, so it runs in any Foundry Project.
+`agent.json` is a Voice Agent for the front desk of a fictional company,
+Contoso, that answers company questions, checks whether a person is available
+and texts them, and emails a phone message to a directory contact, as a staged
+handoff graph.
 
-The agent does not check anyone's availability, transfer the call, or send a
-text or email. It matches the caller's request to a sample directory, reads a
-message back as an unsent draft for the caller to note. It does not forward the
-draft, save a business record, promise that someone will receive it, or arrange
-a callback.
+By default its business tools run on the shared **mock-tool-call** MCP server:
+Microsoft 365 (Work IQ) Teams presence and mail, and Twilio SMS. The mocks take
+the same arguments and return the same fields as the real tools, but results
+are fictional and nothing real is sent. To connect real systems, see
+[Connect real tools](../../docs/05_connect_real_tools.md).
+
+This line cannot transfer calls; the agent never says it is transferring or
+connecting the caller.
 
 ## When to use this example
 
-Use it to try intent routing, answers grounded in a short list of company facts,
-and message taking before you connect real presence, mail, or SMS tools.
+Use it to try intent routing, answers grounded in a short list of company
+facts, a presence check with a text, and a message email that waits for a yes,
+before you connect real presence, mail, or SMS tools.
 
 ## Workflow
 
 | Stage | Purpose |
 | --- | --- |
-| `greeting` | Use the known intent and silently route a message request, with its existing details, to `take_message`. |
-| `transfer` | Match the directory entry, answer the requested capability limits directly, and offer a caller-use unsent draft. |
-| `take_message` | Explain the unsent/manual-use limit once, ask one missing detail, and read the known details together as one draft. Names and callback numbers are optional. |
-| `answer_faq` | Answer hours, location, and parking questions from the sample facts only. |
-| `wrap_up` | Check actual spoken completion, supply a missing draft once if needed, and otherwise continue without another recap or action announcement. |
-| `end` | Call `end_conversation` after the incoming edge's single goodbye, without another spoken reply. |
+| `greeting` | Capture the caller's name and route to a person, a message, or a company question. |
+| `transfer` | Match the directory, check a person's presence, and offer to text them the caller's name, number, and reason. |
+| `take_message` | Collect name, callback number, recipient, and message, read it back, then after a yes email it to the recipient. |
+| `answer_faq` | Answer hours, location, and parking from the sample facts only. |
+| `wrap_up` | Confirm what happened on the call and thank the caller. |
+| `end` | Say a short goodbye and call `end_conversation`. |
 
 Every stage can route to `end` as soon as the caller says goodbye or asks to
-stop. A naturally completed task can also close without an explicit caller
-goodbye or an extra confirmation; an unfinished request or correction must
-still be handled.
+stop. Handoffs are silent: no edge carries a `transfer_message`.
 
-The existing edges into `wrap_up` retain the short, neutral `transfer_message`
-"All right." It covers the handoff without promising another recap. The next
-stage continues directly rather than repeating the cue, thanks, or an action
-announcement. Other business handoffs remain silent. Each existing edge into
-`end` now supplies "Goodbye." once; the end node only calls the native ending
-tool. Message-taking stages must not add their own farewell or tell the caller
-to disconnect instead of invoking the end route.
+Each stage carries the full persona, tone, conversation rules, and sample facts
+because a handoff node's instructions replace the session instructions.
 
-Every message read-back includes the known recipient, caller name, grouped
-callback number, and message once. After reading it back, the agent should not
-announce another future read-back. Caller-requested repeats and corrections
-remain supported. A final question is answered aloud before ending.
-The draft limit is stated once for a new message request, not repeated on every
-correction. Declining a callback number does not end a still-active message task.
-The first message-taking reply owns that explanation. Missing-detail questions
-do not inventory known fields or announce future steps. A completed draft needs
-no extra claim of recording it or arranging follow-up. If the caller says they
-have already explained the issue, continue from the known recipient and topic
-rather than restarting the intake.
-For a read-back alone, the spoken reply ends with the message content, without
-another completeness announcement, manual-use reminder, or routine request for
-confirmation. An explicit question about sending or saving still receives an
-answer. A genuinely necessary question waits for the caller instead of being
-followed by an immediate closing.
-An explicit finish request goes directly to `end`, even after a complete draft;
-the natural-completion `wrap_up` route is not a substitute for that request.
-The end node remains silent on every resumed turn after an interrupted ending
-call and calls the existing ending tool again without another acknowledgement.
-Message completion requires an actual spoken draft, not just fields in an
-internal handoff reason. `wrap_up` checks this rather than assuming the previous
-stage already read it. It supplies a missing draft once, never repeats a
-completed one without a caller request, and gives an explicit stop priority.
+### Mock tools by stage
 
-Directory entries such as Sales or Alex Wilber identify a message recipient,
-not a `handoff` target. The entrypoint can target only `greeting`; each stage
-uses only the IDs in its declared routes. An internal handoff failure is not
-evidence that a real telephone transfer was attempted.
-The directory stage answers requested capability limits aloud before proposing
-an alternative. Asking for an email does not by itself accept an unsent draft;
-the caller decides whether to use that alternative before intake starts.
+| Stage | Tools |
+| --- | --- |
+| `transfer` | `mock_tool_call_get_user_presence`, `mock_tool_call_twilio_send_message` |
+| `take_message` | `mock_tool_call_send_email_with_attachments` |
 
-The root `definition.instructions` is the shared prompt: Personality,
-Environment, Tone, How you respond, How you sound, Goal, and Guardrails. Company
-facts and capability limits live there once, without stage routes, a message
-field checklist, or an entrypoint procedure. Every node sets
-`inherit_from_base_instructions: true` and contains only its own stage
-instructions. The existing publisher combines the shared and local text before
-publishing; it does not depend on automatic service-side inheritance.
-The existing `$entrypoint` edge specifies the initial silent route.
+The other stages have no business tools. The text goes once to the person's
+directory mobile, with a body under 300 characters, only after the caller
+agrees. The email goes once to the recipient's directory address, only after
+the caller says yes to the read-back. Departments have no presence or mobile,
+so the agent offers to take a message instead.
 
-An explicit concern or frustration can receive a brief, specific response;
-ordinary requests do not require an acknowledgement formula. Directory matching,
-message-field collection, combined read-back, routing, and ending stay local.
+## Sample data
 
-The example uses `azure_semantic_vad` with `profile: normal` and
-`silence_duration_ms: 400`. These settings affect turn boundaries and response
-waiting; compare complete, same-condition conversations before judging latency
-or interruption behavior.
+Contoso is open Monday to Friday, 9 AM to 6 PM Pacific time, and closed on
+public holidays. The office is at 1 Contoso Way, Redmond, Washington, with
+visitor parking at the main entrance.
+
+| Directory entry | Email | Mobile |
+| --- | --- | --- |
+| Sales | `sales@contoso.com` | |
+| Support | `support@contoso.com` | |
+| Billing | `billing@contoso.com` | |
+| Human Resources | `hr@contoso.com` | |
+| Engineering | `engineering@contoso.com` | |
+| Alex Wilber, Sales lead | `alexw@contoso.com` | +14255550101 |
+| Megan Bowen, HR manager | `meganb@contoso.com` | +14255550102 |
+
+Fixed mock data (see the
+[mock-tool-call README](../../shared_mcp/app/shared_mcp/mock_tool_call/README.md)
+and [`fixtures.json`](../../shared_mcp/app/shared_mcp/mock_tool_call/fixtures.json)):
+
+- Presence: Alex Wilber is Available; Megan Bowen is Busy, in a meeting.
+  Adele Vance and Isaiah Langer have presence on the mock server but are not in
+  this directory.
+- A text to any valid E.164 number is queued, including both directory mobiles;
+  no text is delivered.
+- A sent email is recorded as `sent`; no email leaves the service.
 
 ## Run in the portal
 
@@ -102,29 +86,45 @@ or interruption behavior.
 3. Select **Example 7: Receptionist and Messaging**.
 4. Choose **Try it now**, then connect in AgentRuntime.
 
-No `shared_mcp` setup is required.
+After loading, a banner says **This Agent uses mock tools**. To use your own
+Twilio SMS tool, choose **Connect my tools** and enter a public HTTPS MCP
+server; the Agent calls it without credentials, so point it at test data.
+The Microsoft 365 (Work IQ) presence and mail tools act as the signed-in user,
+so they cannot be connected in the shared Playground and stay on mock data
+there; use a Work IQ Toolbox in your own Foundry Project instead.
+
+The hand-tuned tool-free version (shared prompt plus per-stage instructions)
+is still available: select
+[`backups/20261021T000000Z/tool_free_default`](backups/20261021T000000Z/tool_free_default/agent.json)
+in the **Version** selector. The older `backups/20261020T011523936708Z`
+versions are unchanged.
+
+The example uses `gpt-realtime` with `azure_semantic_vad`, `profile: normal`,
+and `silence_duration_ms: 400`.
 
 ## Try these turns
 
 - "What are your hours, and where do I park?" Expect the sample hours and
-  visitor parking at the main entrance.
-- "Can I talk to Alex Wilber?" Expect a plain statement that the line cannot
-  transfer calls, and an offer to take a message.
-- "Please tell Megan Bowen I called about my onboarding." Expect questions for
-  your name and callback number, a read-back, and no claim that it was sent.
-- "No thanks, bye." Expect a short goodbye and the session ending.
+  visitor parking at the main entrance, with no tool call.
+- "Can I talk to Alex Wilber?" Expect no transfer claim, a
+  `mock_tool_call_get_user_presence` call, and "available". Agree to a text and
+  give your name, a callback number with country code, and a reason: expect the
+  number read back, then one `mock_tool_call_twilio_send_message` call to Alex's
+  mobile and the text reported as sent.
+- "Is Megan Bowen free?" Expect presence reported as in a meeting and an offer
+  to text her or take a message.
+- "Leave a message for Megan about my onboarding." Expect missing details asked
+  one at a time and the message read back. Say "no, don't send it": expect no
+  email. After a later "yes", expect one
+  `mock_tool_call_send_email_with_attachments` call to `meganb@contoso.com`.
+- "Put me through to Isaiah Langer." Expect no directory match and an offer of
+  the closest department.
 
 ## Boundaries
 
-- All company facts and directory entries are fictional; there is no presence,
-  mail, or SMS system.
+- The company, directory, presence, texts, and emails are fictional and come
+  from the mock server; nothing is delivered.
 - `store` is `false`; enable persistence deliberately if you need it.
-- To attach real tools, add them to the stage that needs them and remove that
-  stage's capability limit; conversational confirmation is not an
-  authorization boundary.
-
-## Conclusion
-
-The supported result is company information or an unsent draft for manual use,
-not delivery to a recipient. Verify the whole conversation, including fixed
-messages, model continuations, truncations, and the actual native ending event.
+- To use real presence, mail, or SMS systems, follow
+  [Connect real tools](../../docs/05_connect_real_tools.md); conversational
+  confirmation is not an authorization boundary.
