@@ -71,6 +71,15 @@ Only an explicit approval permits `mock_zendesk_create_ticket` with
 The query path requires only the exact Zendesk ticket ID. It deliberately does
 not ask for a ZIP code that the backend does not use for authorization.
 
+## Try these turns
+
+- To check an existing ticket, ask "What is the status of ticket 15?" The test
+  ticket is open: the elevator door intermittently fails to close.
+- To report a new fault, say "The elevator doors won't close." Answer "No" to
+  each safety question.
+- When asked for the location, give "100 Example Avenue", postal code "98052",
+  then say "Yes" to create the ticket.
+
 ## MCP contract
 
 The Agent declares these seven business tools:

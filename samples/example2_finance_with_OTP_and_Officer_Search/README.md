@@ -34,6 +34,16 @@ activation, and stage-specific tool access. Both handoff variants and this
 example use the same shared MCP service; this example targets
 `/mcp/finance-otp-officer`.
 
+## Try these turns
+
+- When asked for your access code, say "12345007". It is the fictional test code.
+- When asked what you want to finance, say "A home purchase, about 600,000
+  dollars, in three months." The test applicant's indicative limit is 950,000
+  dollars.
+- When asked for a loan officer, give any name, for example "Michael Brennan".
+  The test directory returns one available fictional officer; confirm the name
+  the Agent reads back.
+
 ## Prerequisites
 
 - Python 3.10 or later and Git.

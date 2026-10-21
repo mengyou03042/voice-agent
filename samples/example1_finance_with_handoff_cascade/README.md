@@ -60,6 +60,11 @@ thanks the customer, explains the identity check, and asks for the date of
 birth "to keep your account secure". Tool amounts are sent as plain integers
 of rupees.
 
+## Try these turns
+
+- When asked whether you are Mengyou, say "Yes, this is Mengyou."
+- When asked for your date of birth, say "1 January".
+
 ## Configure and run
 
 Follow the [setup guide](../../docs/01_setup_subscription.md) and

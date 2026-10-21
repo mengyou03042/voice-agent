@@ -947,6 +947,28 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
         missing = await self.client.get("/api/templates/no-such-template/try-it")
         self.assertEqual(404, missing.status)
 
+    async def test_finance_try_it_gives_the_test_identity(self) -> None:
+        # Finance calls the shared MCP, not mock tools; its test lead is Mengyou, born 1 January.
+        for template_id in ("finance-example-realtime", "finance-example-cascade-luna"):
+            with self.subTest(template_id=template_id):
+                response = await self.client.get(f"/api/templates/{template_id}/try-it")
+                self.assertEqual(200, response.status)
+                turns = " ".join((await response.json())["turns"])
+                self.assertIn("Mengyou", turns)
+                self.assertIn("1 January", turns)
+                self.assertNotIn("1990", turns)
+
+    async def test_shared_mcp_templates_give_their_test_data(self) -> None:
+        for template_id, expected in (
+            ("finance-with-otp-and-officer-search", "12345007"),
+            ("elevator-service-example", "ticket 15"),
+            ("frontdesk-receptionist-example", "425-555-0142"),
+        ):
+            with self.subTest(template_id=template_id):
+                response = await self.client.get(f"/api/templates/{template_id}/try-it")
+                self.assertEqual(200, response.status)
+                self.assertIn(expected, " ".join((await response.json())["turns"]))
+
     async def test_logic_apps_mcp_guide_is_served(self) -> None:
         response = await self.client.get("/guide/logic-apps-mcp")
         self.assertEqual(200, response.status)
