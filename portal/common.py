@@ -1,7 +1,6 @@
 # Copyright (c) Microsoft. All rights reserved.
 """Public-project configuration for the standalone Voice Agent portal.
 
-Ported from voice_demo/common.py; see UPSTREAM.json and CHANGELOG.md.
 There are deliberately no internal backends, subscription discovery, or tokens
 in browser configuration. An Azure Foundry project is required; credentials
 are acquired lazily when the portal calls that project.

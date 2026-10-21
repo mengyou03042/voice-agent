@@ -1,9 +1,8 @@
 # Copyright (c) Microsoft. All rights reserved.
 """Standalone, local-only Voice Agent portal.
 
-The React studio and service-shaped REST/WebSocket bridge are ported from the
-upstream demo. See UPSTREAM.json for the exact source and CHANGELOG.md for the
-public-repository adaptations. Run `python demo_server.py --help` or see README.md.
+Serves the React studio, Editor, and service-shaped REST/WebSocket bridge to
+your Azure Foundry project. Run `python demo_server.py --help` or see README.md.
 """
 from __future__ import annotations
 

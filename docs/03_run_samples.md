@@ -46,7 +46,7 @@ For component-specific detail, use:
 - [MCP implementation, local hosting, and Azure deployment](./02_mcp_settings.md)
 - [Portal startup and configuration](../portal/README.md)
 - [Example 1: Finance with Handoff - Realtime](../samples/example1_finance_with_handoff_realtime/README.md)
-- [Example 1: Finance with Handoff - Cascade Luna](../samples/example1_finance_with_handoff_cascade/README.md)
+- [Example 1: Finance with Handoff - Cascade](../samples/example1_finance_with_handoff_cascade/README.md)
 - [Example 2: Finance with OTP and Officer Search](../samples/example2_finance_with_OTP_and_Officer_Search/README.md)
 - [Recorded session debugging](./04_debug_session.md)
 
@@ -54,9 +54,9 @@ For component-specific detail, use:
 
 | Component | Responsibility |
 | --- | --- |
-| [`shared_mcp/`](../shared_mcp/) | Customer-owned MCP code, native local runtime, optional container packaging, Dev Tunnel, connections, and E2E |
+| [`shared_mcp/`](../shared_mcp/) | Customer-owned MCP code for the CLI samples, native local runtime, optional container packaging, Dev Tunnel, connections, and E2E; not used by the Portal |
 | [`example1_finance_with_handoff_realtime/`](../samples/example1_finance_with_handoff_realtime/) | Original Realtime Handoff Agent, backup versions and CLI |
-| [`example1_finance_with_handoff_cascade/`](../samples/example1_finance_with_handoff_cascade/) | Original Cascade Luna Handoff Agent, backup versions and CLI |
+| [`example1_finance_with_handoff_cascade/`](../samples/example1_finance_with_handoff_cascade/) | Original Cascade Handoff Agent (`gpt-4.1-mini`), backup versions and CLI |
 | [`example2_finance_with_OTP_and_Officer_Search/`](../samples/example2_finance_with_OTP_and_Officer_Search/) | Flat OTP/officer Agent definition and CLI publication/runtime entry point |
 | [`portal/`](../portal/) | Browser template catalog, Try it now publication, authoring, and live Voice Agent session |
 | [`voice_agent_sdk_common.py`](../samples/voice_agent_sdk_common.py) | Shared config materialization, publication, readback, and Voice WebSocket runtime |
@@ -384,7 +384,7 @@ cd "$SAMPLES_ROOT/example1_finance_with_handoff_realtime"
     --expect-mcp
 ```
 
-For Cascade Luna, run the same commands from
+For Cascade, run the same commands from
 `$SAMPLES_ROOT/example1_finance_with_handoff_cascade`. Each directory publishes
 its own root `agent.json`; `--variant` and the old shared builder are no longer
 needed. Both directories retain the original definition by default. In the

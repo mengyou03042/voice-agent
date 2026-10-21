@@ -9,8 +9,14 @@ See the [Portal guide](../portal/README.md) for the local UI workflow.
 This guide covers deliberately running your own MCP for the CLI samples or
 developing the MCP implementation itself.
 
+If you only use the Portal and its Templates, you can skip this guide:
+`shared_mcp` does not need to be started or deployed.
+
 The [`VoiceAgent/shared_mcp/`](../shared_mcp/) directory contains the
-customer-owned reference implementation for the three example business packs.
+customer-owned reference implementation for the three Finance and Elevator
+business packs. It also contains the source of the `mock_tool_call` pack used by
+Examples 5–34, but this runtime does not serve that route; the Templates use
+the public `/mcp/mock-tool-call` route.
 Run one command to build it locally or one command to deploy it to Azure
 Container Apps and create the three Foundry Project connections required by
 the CLI sample Agents.

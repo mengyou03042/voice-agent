@@ -17,11 +17,16 @@ Do not remove either transport based only on a successful Portal probe. A
 Streamable HTTP probe can pass while a handoff target still fails to activate
 through legacy SSE.
 
-Default Portal Templates use the public no-auth service configured in
+**You do not need to start this server to use the Portal or its Templates.**
+Every Portal Template uses the public no-auth service configured in
 [`portal/templates.config.json`](../portal/templates.config.json), with no
-Project connections. This directory remains the source for their business
-packs and a customer-owned local or deployed reference runtime. The local
-Portal does not start or depend on this runtime.
+Project connections. Start or deploy this runtime only for the Finance CLI
+samples, or to host the Finance and Elevator routes yourself.
+
+This directory remains the source for those business packs. It also holds the
+[`mock_tool_call`](app/shared_mcp/mock_tool_call/README.md) pack behind the
+Templates' `/mcp/mock-tool-call` route used by Examples 5–34; the runtime here
+does not serve that route.
 
 The elevator-service route exposes explicitly named
 `mock_zendesk_create_ticket` and `mock_zendesk_get_ticket_status` tools backed

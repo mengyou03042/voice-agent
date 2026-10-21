@@ -15,9 +15,14 @@ self-contained Finance Voice Agent examples:
 The scenario-specific source of truth remains with each example:
 
 - [Example 1: Finance with Handoff - Realtime](../samples/example1_finance_with_handoff_realtime/README.md)
-- [Example 1: Finance with Handoff - Cascade Luna](../samples/example1_finance_with_handoff_cascade/README.md)
+- [Example 1: Finance with Handoff - Cascade](../samples/example1_finance_with_handoff_cascade/README.md)
 - [Example 2: Finance with OTP and Officer Search](../samples/example2_finance_with_OTP_and_Officer_Search/README.md)
 - [Voice Agent portal](../portal/README.md)
+
+Using only the local Portal and its Templates? Skip step 2: every Template
+calls the public no-auth MCP, so `shared_mcp` does not need to be started or
+deployed. Step 2 applies to the Finance CLI samples and to hosting the Finance
+MCP yourself.
 
 This `README.md` owns only the architecture and navigation. The numbered
 documents own procedures.

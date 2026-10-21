@@ -20,6 +20,16 @@ connection, or credentials. The
 no-auth `/mcp/frontdesk` endpoint when loading or publishing the Template. A
 fresh Foundry Project does not need an MCP connection or local MCP process.
 
+## Try these turns
+
+- Ask "What are your business hours?" or "Where are you located?" The Agent
+  answers Monday to Friday, 8:30 AM to 5:30 PM, at One Microsoft Way, Redmond.
+- Ask "How do I reset my password?" to try the help-article search. The demo
+  search service may report that articles are unavailable.
+- To leave a message, say "Please take a message for Sales." Give the name
+  "Alex Chen", the callback number "425-555-0142", and the summary "Call me
+  about pricing", then say "Yes" to save it.
+
 ## Workflow and tool boundaries
 
 The service creates `$entrypoint` implicitly. Its only startup route enters
@@ -67,8 +77,7 @@ data. Saving a message does not guarantee delivery or a callback.
 ## Source and verification
 
 This is a portable snapshot of the fluency-improved Front Desk definition.
-The provenance is recorded in
-[SOURCE_SYNC.json](../../portal/SOURCE_SYNC.json). Shared and stage instructions,
+Shared and stage instructions,
 greeting, audio configuration, node IDs, edge IDs, and tool scopes are
 preserved; only the sample name, managed hosting, storage policy, optional
 call identity, disabled interim response, and deployment-owned MCP binding

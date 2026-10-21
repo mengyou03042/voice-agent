@@ -132,7 +132,11 @@ no-auth MCP configured in `portal/templates.config.json`.
 ### Local Portal quickstart
 
 The Portal does not require a local MCP process, Dev Tunnel, bearer token, or
-Foundry Project connection:
+Foundry Project connection. **You do not need to start [`shared_mcp/`](shared_mcp/README.md).**
+Every Portal Template calls its tools on the public no-auth MCP configured in
+`portal/templates.config.json`: Examples 1–4 use their business routes and
+Examples 5–34 use mock tool calls on `/mcp/mock-tool-call`. Start `shared_mcp`
+only for the Finance CLI samples or to host those Finance routes yourself.
 
 ```bash
 az login
@@ -161,7 +165,7 @@ curl -fsS http://127.0.0.1:9527/healthz
 | Run Data Zone and regional realtime voice agents | [`samples/realtime_datazone_voice_agent.md`](samples/realtime_datazone_voice_agent.md) | East US 2 `gpt-realtime-2.1-datazone` with US inference, Japan East `azure-realtime` with confirmed GPU routing, and eligible Central India `gpt-realtime`; model-specific voices and microphone setup |
 | Run the GPT Live terminal sample | [`samples/gpt_live/README.md`](samples/gpt_live/README.md) | Create or reuse a GPT Live agent, stream microphone audio with the OpenAI SDK, and view independently scrollable GPT Live, delegation, and user transcripts |
 | Run the Finance CLI workflow | [`docs/README.md`](docs/README.md) | Ordered subscription, customer-owned MCP, CLI sample, and debugging guides |
-| Work on or deploy the Finance MCP | [`shared_mcp/README.md`](shared_mcp/README.md) | Shared MCP image, Finance routes, local Dev Tunnel hosting, and Azure Container Apps deployment |
+| Work on or deploy the Finance MCP (optional; not needed for the Portal or its Templates) | [`shared_mcp/README.md`](shared_mcp/README.md) | Customer-owned MCP source for the Finance CLI samples, local Dev Tunnel hosting, and Azure Container Apps deployment |
 | Create an IQ + voice + avatar Agent | [`samples/create_agent_with_iq_avatar_voice/README.md`](samples/create_agent_with_iq_avatar_voice/README.md) | Portal-first Andrew Dragon HD, Harry Business, Knowledge IQ, and optional Python creation |
 | Inspect SDK package information | [`dist/README.md`](dist/README.md) | Public Python and .NET SDK dependencies and historical preview build records |
 | Use the coding-agent workflows | [`skills/`](skills/) | Voice Agent creation, IQ/Toolbox provisioning, and local-session debugging |
@@ -230,7 +234,7 @@ Bash/Unix tooling or equivalent PowerShell commands.
 | [`portal/`](portal/) | General local Voice Agent portal and WebRTC UI |
 | [`samples/`](samples/) | Python, .NET, and Finance samples |
 | [`docs/`](docs/) | Finance architecture, setup, operation, and debugging guides |
-| [`shared_mcp/`](shared_mcp/) | Shared Finance MCP source, native runtime, optional container, IaC, and deployment scripts |
+| [`shared_mcp/`](shared_mcp/) | Optional customer-owned MCP for the Finance CLI samples: source, native runtime, container, IaC, and deployment scripts. The Portal does not use it |
 | [`scripts/`](scripts/) | Finance CLI setup and authentication helpers |
 | [`dist/`](dist/) | Public SDK package information and historical preview build records |
 | [`skills/`](skills/) | Reusable coding-agent workflows |

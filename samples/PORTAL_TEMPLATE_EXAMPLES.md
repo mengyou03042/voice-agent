@@ -10,9 +10,7 @@ Every new example intended for the portal **must** follow this contract:
    `VoiceAgent/portal/templates.config.json`;
 3. keep MCP credentials out of source and choose one supported connection
    mode;
-4. add catalog and behavior tests before treating the example as supported;
-5. update source-sync mappings when the example is imported from an upstream
-   repository.
+4. add catalog and behavior tests before treating the example as supported.
 
 Default examples use `connection_mode: public` with the public no-auth MCP
 configured in `portal/templates.config.json`. They work in a newly created
@@ -284,22 +282,6 @@ For an MCP-backed example, the workflow is not complete until:
 - Template publish creates a `local-only-*` Agent;
 - that Agent opens in Live session and can execute its business flow.
 
-## 8. Update source synchronization when applicable
-
-If the example is imported from `voice-first-agent-dev` or another maintained
-source repository:
-
-1. add its source root and destination to
-   `VoiceAgent/portal/SOURCE_SYNC.json`;
-2. mark byte-identical files `exact` and policy-adjusted files `adapted`;
-3. run `portal/tools/source_sync_status.py` against the candidate commit;
-4. require zero unmapped source changes and zero exact mapping drift;
-5. advance the accepted source baseline only after the port and all tests pass.
-
-Do not add unrelated demos, media, or repository-wide files to the sync roots.
-If an example is authored directly in this repository, no source-sync mapping
-is required.
-
 ## Completion checklist
 
 - [ ] Self-contained sample directory under `VoiceAgent/samples/`
@@ -307,7 +289,6 @@ is required.
 - [ ] Explicit `portal/templates.config.json` allowlist entry
 - [ ] MCP route/config/token policy selected and documented
 - [ ] Catalog, route, browser, and MCP inventory tests updated
-- [ ] Source-sync mappings updated when applicable
 - [ ] Portal Reload shows the new Template with no catalog errors
 - [ ] MCP readiness and tool inventory pass
 - [ ] `local-only-*` Agent publishes and runs successfully

@@ -1,16 +1,10 @@
 # Voice Agent portal
 
-A standalone local port of the upstream **Voice Agent studio**, **Templates
-catalog**, **Handoff Graph editor**, and **WebRTC demo**. Configure agents, edit
-their definitions as YAML or as a visual graph, publish the checked-in sample
-templates, and connect to your own Azure Foundry project. No checkout of the
-upstream repository, internal dashboard, or private package feed is needed.
-
-The first port is pinned to upstream commit
-`e713a37c4cdb3282157cbaf46b6d425bcd984c05` on `main`.
-See [UPSTREAM.json](UPSTREAM.json), [CHANGELOG.md](CHANGELOG.md), and
-[the update procedure](PORTING.md). Dated test results and their limitations are
-in [VALIDATION.md](VALIDATION.md).
+A standalone local **Voice Agent studio**, **Templates catalog**, **Handoff
+Graph editor**, and **WebRTC demo**. Configure agents, edit their definitions
+as YAML or as a visual graph, publish the checked-in sample templates, and
+connect to your own Azure Foundry project. No other repository or private
+package feed is needed.
 
 ## Prerequisites
 
@@ -26,18 +20,23 @@ mode selector. A missing or invalid project endpoint stops startup with setup
 instructions; authentication/network errors never switch to mock responses.
 Running the portal locally does not run the Azure voice service locally.
 
-The five MCP-backed checked-in **Templates** use this public no-auth MCP
+All checked-in **Templates** call their tools on this public no-auth MCP
 endpoint by default:
 
 ```text
 https://voice-agent-noauth-mcp.lemonsky-36682081.westus2.azurecontainerapps.io
 ```
 
-Finance Realtime and Cascade Luna use `/mcp/finance-handoff`, Finance OTP uses
+Finance Realtime and Cascade use `/mcp/finance-handoff`, Finance OTP uses
 `/mcp/finance-otp-officer`, Elevator Service uses `/mcp/elevator-service`,
-and Front Desk uses `/mcp/frontdesk`.
+Front Desk uses `/mcp/frontdesk`, and Examples 5–34 use mock tool calls on
+`/mcp/mock-tool-call`.
 No local MCP process, Dev Tunnel, bearer token, or Foundry Project connection
-is needed for these Templates. The public tools use fictional shared sample
+is needed for these Templates, and you do not need to start
+[`../shared_mcp`](../shared_mcp/README.md); it is only for the Finance CLI
+samples or for hosting those Finance routes yourself. To use your own systems
+instead of the mock tools, see
+[Connect real tools](../docs/05_connect_real_tools.md). The public tools use fictional shared sample
 data; availability and state resets depend on the service. Do not send real
 customer data.
 
@@ -147,7 +146,7 @@ publish operations, including the template catalog consumed by Handoff Graph.
   in the starter node editor, and validation problems appear only when present.
   Nodes and routes also remain editable directly on the canvas.
 - Editor can load any configured Template into a temporary working copy.
-  Example 1 has Realtime and Cascade Luna runtime variants, so the 34 sample
+  Example 1 has Realtime and Cascade runtime variants, so the 34 sample
   projects appear as 35 selectable catalog cards. The
   [Front Desk sample](../samples/example4_frontdesk_with_fluency_and_handoff/README.md)
   preserves its response-first shared prompt, eight business nodes, and two-tool
@@ -233,12 +232,13 @@ publish operations, including the template catalog consumed by Handoff Graph.
 - The Handoff Graph **Load from templates** picker reads the allowlist in
   `templates.config.json`. It exposes
   `example1_finance_with_handoff_realtime` and
-  `example1_finance_with_handoff_cascade` as separate Realtime and Cascade Luna cards,
+  `example1_finance_with_handoff_cascade` as separate Realtime and Cascade cards,
   and also detects `example2_finance_with_OTP_and_Officer_Search` and
-  `example3_elevator_service_with_safety_zendesk_and_handoff`. The tool-free
+  `example3_elevator_service_with_safety_zendesk_and_handoff`. The
   `example5_customer_support`, `example6_appointment_setter`, and
   `example7_receptionist_messaging` handoff examples, and the 27
   ElevenLabs-converted `example8_*` through `example34_*` handoff examples,
+  call mock tools on the public `/mcp/mock-tool-call` route by default and
   need no MCP setup. Each card has a **Version** selector: **Default** loads
   the configured Agent file;
   other versions are discovered recursively under that sample folder using
@@ -250,13 +250,12 @@ publish operations, including the template catalog consumed by Handoff Graph.
   hiding valid versions; files resolving outside the sample folder are rejected.
   The internal Templates page also has a **Version** selector, and its preview,
   MCP checks, and publication use the selected definition.
-  The five MCP-backed templates keep their original business content as the
-  default. Their `backups/20261020T040235Z/revised` versions preserve experimental
-  work with known limitations; selecting one is not a quality acceptance or a
+  Versions under a sample's `backups/` folder are earlier or experimental
+  variants of that Template; selecting one is not a quality acceptance or a
   change to the default. Each backup manifest records the exact snapshot.
   The eight original templates and every selectable backup explicitly use 400 ms
   `azure_semantic_vad` silence. Non-Cascade definitions use `gpt-realtime`, not
-  `gpt-realtime-2.1`; the explicit Cascade Luna model remains unchanged.
+  `gpt-realtime-2.1`; the Finance Cascade card uses `gpt-4.1-mini`.
   Pre-runtime-update source bytes and manifests are retained separately and
   are not selectable versions. These parameter changes are not a new live
   latency, interruption or listening acceptance.
@@ -400,7 +399,6 @@ npm run test:local
 cd ..
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe -m pip check
-python tools\upstream_status.py --check
 ```
 
 `npm run test:ui` runs the ported browser regressions with mocked Azure
@@ -425,8 +423,7 @@ Run the two browser commands sequentially because their build steps write the
 same checked-in bundles.
 
 Use `npm run watch` / `npm run watch:webrtc` while editing. Rebuild **both**
-bundles before committing, update the local change log, then record the new
-local hashes as described in [PORTING.md](PORTING.md).
+bundles before committing.
 
 ## Safety and troubleshooting
 
@@ -443,10 +440,7 @@ local hashes as described in [PORTING.md](PORTING.md).
 - No saved conversation: enable the desired agent/session storage policy,
   finish the session, and allow time for Azure persistence.
 
-Upstream Microsoft copyright notices and bundled third-party license comments
-are retained. Full bundled-dependency notices ship with the browser assets in
+Microsoft copyright notices and bundled third-party license comments are
+retained. Full bundled-dependency notices ship with the browser assets in
 [THIRD_PARTY_NOTICES.txt](static/THIRD_PARTY_NOTICES.txt); keep that file with
-both bundles when redistributing them. See the repository [license](../../LICENSE.md). The private
-upstream did not supply a standalone demo license; maintainers must confirm
-redistribution approval before public publication. No upstream screenshots,
-internal test reports, credentials, or deployment scripts are included.
+both bundles when redistributing them. See the repository [license](../LICENSE.md).
