@@ -78,6 +78,12 @@ def stage(
             if path.is_symlink() or not path.resolve().is_relative_to(folder):
                 raise ValueError(f"Template definition escapes its sample folder: {path}")
             sample_paths.append(path)
+        # The conversation page reads the mock test data from the README's "Try these turns".
+        readme = folder / "README.md"
+        if readme.is_file():
+            if readme.is_symlink() or not readme.resolve().is_relative_to(folder):
+                raise ValueError(f"Template README escapes its sample folder: {readme}")
+            sample_paths.append(readme)
     paths = [
         *required,
         *sample_paths,
