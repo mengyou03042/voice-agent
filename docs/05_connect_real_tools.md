@@ -58,6 +58,14 @@ the signed-in user in your own Microsoft 365 tenant and the shared Playground
 cannot hold that identity. Use a Work IQ Toolbox in your own Foundry Project
 instead (section 4).
 
+Voice Agent supports Work IQ on-behalf-of (OBO): an Agent in your own Foundry
+Project calls Work IQ as the signed-in user, with that user's delegated
+Microsoft 365 permissions and consent in their tenant. That doesn't conflict
+with **Mock only** here. The shared Playground has no per-user Microsoft 365
+token to pass on: every Agent lives in one shared Project, sign-in is by
+invitation email rather than the user's own Entra account, and Toolboxes,
+connections and credential headers are disabled.
+
 Requirements in the hosted Playground:
 
 - The URL must be public HTTPS without a user name, password, query string, or
