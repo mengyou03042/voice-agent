@@ -1,7 +1,7 @@
 """End-to-end acceptance for the no-auth /mcp/mock-tool-call route.
 
 Runs initialize, notifications/initialized, tools/list and tools/call without an
-Authorization header and checks business JSON, MCP error flags and shared state.
+Authorization header and checks business JSON, MCP error flags and that writes are not stored.
 
     python accept_mock_tool_call.py https://<host>/mcp/mock-tool-call
 """
@@ -122,12 +122,13 @@ def main() -> int:
     }))
     assert created["mock"] and created["ok"] and created["status"] == "new"
     ticket_id = str(created["ticket_id"])
-    for _ in range(3):
-        commented = business(client.call("mock_tool_call_zendesk_add_comment", {
-            "ticket_id": ticket_id, "comment": "Shared state check",
-        }))
-        assert commented["ok"], commented
-    checks.append(f"zendesk create/comment ticket={ticket_id} (state shared across requests)")
+    commented = business(client.call("mock_tool_call_zendesk_add_comment", {
+        "ticket_id": ticket_id, "comment": "Acceptance comment",
+    }))
+    assert commented["ok"], commented
+    searched = business(client.call("mock_tool_call_zendesk_search", {"query": f"Acceptance {marker}", "type": "tickets"}))
+    assert searched["ok"] and searched["count"] == 0, searched
+    checks.append(f"zendesk create/comment ticket={ticket_id}; the ticket is not stored or searchable")
 
     found = business(client.call("mock_tool_call_find_meeting_times", {
         "meetingDuration": "PT30M", "startDateTime": "2030-01-08T09:00:00",

@@ -25,7 +25,7 @@ Authorization, or credential headers.
 | --- | --- |
 | [`MockToolCall.Dockerfile`](MockToolCall.Dockerfile) | Base image digest plus the pack, test, and contract; runs every test and the pack self-check during the build |
 | [`contracts.json`](contracts.json) | Live contract with the `mock-tool-call` pack appended (`P2-mock`, register `shared_mcp.mock_tool_call.pack:register`) |
-| [`accept_mock_tool_call.py`](accept_mock_tool_call.py) | End-to-end acceptance: `initialize`, `tools/list`, and `tools/call` for success, business failure, invalid input, and shared state |
+| [`accept_mock_tool_call.py`](accept_mock_tool_call.py) | End-to-end acceptance: `initialize`, `tools/list`, and `tools/call` for success, business failure, invalid input, and that writes are not stored |
 | [`check_routes.py`](check_routes.py) | Route regression: every contract pack answers `initialize` and `tools/list` and lists its required tools |
 
 The base image ran its self-check as root. The derived build stays non-root and
@@ -35,13 +35,14 @@ variable; production uses Redis and is unaffected.
 
 ## State
 
-Writes (events, tickets, leads, texts, mail, reservations, records) go to the
-service's existing Redis (`NOAUTH_MCP_REDIS_URL`, `NOAUTH_MCP_REDIS_PASSWORD`) under
-`<NOAUTH_MCP_REDIS_KEY_PREFIX>:mock-tool-call:*`, with the service TTL
-(`NOAUTH_MCP_STATE_TTL_SECONDS`, 48 hours). No other pack's keys are read or written.
-Without a Redis URL the pack keeps state in process memory, and it refuses to start
-when `NOAUTH_MCP_REQUIRE_SHARED_STATE=true` and no Redis URL is set. The pack opens
-the Redis connection on the first tool call, never during registration.
+The pack is stateless. Write tools (events, tickets, leads, texts, mail,
+reservations, records) validate their arguments and return a generated ID, but store
+nothing the caller provides, so no caller can see another caller's data. Reads return
+only the fixtures in `fixtures.json`. The pack never connects to Redis; the service's
+Redis settings (`NOAUTH_MCP_REDIS_*`, `NOAUTH_MCP_STATE_TTL_SECONDS`,
+`NOAUTH_MCP_REQUIRE_SHARED_STATE`) are used only by the other packs. Keys that earlier
+revisions wrote under `<NOAUTH_MCP_REDIS_KEY_PREFIX>:mock-tool-call:*` are no longer
+read and expire on their own within 48 hours.
 
 ## Build and release
 
