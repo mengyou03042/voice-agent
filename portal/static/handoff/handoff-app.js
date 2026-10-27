@@ -98,6 +98,8 @@ const state = {
   publishing: false,
   templates: [],
   templateQuery: "",
+  templateGrouping: "locale",
+  templateGroupOpen: new Map(),
   pipelineAvailability: null,
   voiceLocale: null,
   voiceSearch: "",
@@ -915,21 +917,85 @@ function loadBlank() {
   window.history.replaceState(null, "", url);
 }
 
-// Every whitespace-separated search term must appear in the card's visible text.
-function templateMatchesQuery(template, query) {
+const templateLanguageNames = new Intl.DisplayNames(["en"], { type: "language" });
+
+function templateLocale(template) {
+  const code = template.target_locale || "";
+  return {
+    code,
+    label: code ? templateLanguageNames.of(code) : "Locale not specified",
+    group: code.startsWith("en-") ? "en-*" : code || "unspecified",
+  };
+}
+
+function templateLocaleGroups(templates) {
+  const groups = new Map();
+  for (const template of templates) {
+    const locale = templateLocale(template);
+    if (!groups.has(locale.group)) {
+      groups.set(locale.group, {
+        id: locale.group,
+        label: locale.group === "en-*" ? "English" : locale.label,
+        code: locale.code ? locale.group : "Not specified",
+        templates: [],
+      });
+    }
+    groups.get(locale.group).templates.push(template);
+  }
+  const priority = (group) => group.id === "hi-IN" ? 0
+    : group.id === "en-*" ? 1 : group.id === "unspecified" ? 3 : 2;
+  return [...groups.values()].sort((left, right) =>
+    priority(left) - priority(right) || left.label.localeCompare(right.label));
+}
+
+function templateDomainGroups(templates) {
+  const groups = new Map();
+  const priority = new Map([["Customer support", 0], ["Financial services", 1]]);
+  for (const template of templates) {
+    const domain = template.category || "Other workflows";
+    if (!groups.has(domain)) groups.set(domain, { id: domain, label: domain, templates: [] });
+    groups.get(domain).templates.push(template);
+  }
+  return [...groups.values()].sort((left, right) =>
+    (priority.get(left.id) ?? priority.size) - (priority.get(right.id) ?? priority.size)
+    || left.label.localeCompare(right.label));
+}
+
+function rememberTemplateGroupExpansion() {
+  if (state.templateQuery.trim()) return;
+  $$("#template-picker-grid details").forEach((group) => {
+    const id = group.dataset.localeGroup ?? group.dataset.domainGroup;
+    state.templateGroupOpen.set(`${state.templateGrouping}:${id}`, group.open);
+  });
+}
+
+// Search includes the declared conversation locale, not the prompt language.
+function templateMatchesQuery(template, query, languageQueries) {
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (!terms.length) return true;
   const systems = Array.isArray(template.tool_systems) ? template.tool_systems : [];
+  const locale = templateLocale(template);
   const text = [
     template.name, template.id, template.category, template.summary,
+    locale.code, locale.label,
     ...systems.map((system) => system.label),
   ].filter(Boolean).join(" ").toLowerCase();
-  return terms.every((term) => text.includes(term));
+  const localeText = `${locale.code} ${locale.label}`.toLowerCase();
+  return terms.every((term) => {
+    if (languageQueries.has(term)) return localeText.includes(term);
+    if (/^[a-z]{2,3}-\*$/.test(term)) return locale.code.toLowerCase().startsWith(term.slice(0, -1));
+    return text.includes(term);
+  });
 }
 
 function renderTemplateCatalog() {
   const root = $("#template-picker-grid");
   root.replaceChildren();
+  const groups = templateLocaleGroups(state.templates);
+  $$("[data-template-grouping]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.templateGrouping === state.templateGrouping));
+    button.disabled = state.templateCatalogLoading || Boolean(state.templateLoadingId);
+  });
   const count = $("#template-picker-count");
   count.textContent = "";
   if (state.templateCatalogLoading) {
@@ -949,23 +1015,60 @@ function renderTemplateCatalog() {
     return;
   }
   const query = state.templateQuery.trim();
-  const matches = state.templates.filter((template) => templateMatchesQuery(template, query));
-  if (query) count.textContent = `${matches.length} of ${state.templates.length}`;
+  const languageQueries = new Set(groups.filter((group) => group.id !== "unspecified")
+    .map((group) => templateLanguageNames.of(group.id.split("-")[0]).toLowerCase()));
+  const matches = state.templates.filter((template) => templateMatchesQuery(template, query, languageQueries));
+  count.textContent = `${matches.length} of ${state.templates.length}`;
   if (!matches.length) {
     root.innerHTML = `
       <div class="template-picker-empty">
         <strong>No templates match “${escapeHtml(query)}”.</strong>
-        <span>Try another name, category or system.</span>
+        <span>Try another name, locale, category or system.</span>
       </div>`;
     return;
   }
+  const containers = new Map();
+  const localeGrouping = state.templateGrouping === "locale";
+  const displayGroups = localeGrouping ? templateLocaleGroups(matches) : templateDomainGroups(matches);
+  for (const [index, group] of displayGroups.entries()) {
+    const section = document.createElement("details");
+    section.className = "template-locale-group";
+    const groupKey = `${state.templateGrouping}:${group.id}`;
+    section.open = Boolean(query) || (state.templateGroupOpen.get(groupKey) ?? true);
+    section.addEventListener("toggle", () => {
+      if (section.isConnected && !state.templateQuery.trim()) {
+        state.templateGroupOpen.set(groupKey, section.open);
+      }
+    });
+    if (localeGrouping) section.dataset.localeGroup = group.id;
+    else section.dataset.domainGroup = group.id;
+    section.setAttribute("aria-labelledby", `template-locale-heading-${index}`);
+    const badge = group.id === "unspecified" ? "?" : group.id.slice(0, 2).toUpperCase();
+    const description = localeGrouping
+      ? `${group.code} · Customer conversation language`
+      : "Business domain · Each card shows its target locale";
+    section.innerHTML = `
+      <summary class="template-locale-heading">
+        <span class="template-locale-monogram" aria-hidden="true">${escapeHtml(badge)}</span>
+        <div>
+          <h3 id="template-locale-heading-${index}">${escapeHtml(group.label)}</h3>
+          <p>${escapeHtml(description)}</p>
+        </div>
+        <span>${group.templates.length} template${group.templates.length === 1 ? "" : "s"}</span>
+      </summary>
+      <div class="template-locale-templates"></div>`;
+    containers.set(group.id, section.querySelector(".template-locale-templates"));
+    root.append(section);
+  }
   for (const template of matches) {
+    const locale = templateLocale(template);
     const card = document.createElement("div");
     card.className = "template-choice-card";
     const button = document.createElement("button");
     button.type = "button";
     button.className = "template-choice";
     button.dataset.templateId = template.id;
+    button.dataset.targetLocale = locale.code;
     button.disabled = Boolean(state.templateLoadingId);
     button.style.setProperty("--template-accent", template.accent_color || template.accent || "#0f9f76");
     const systems = Array.isArray(template.tool_systems) ? template.tool_systems : [];
@@ -973,6 +1076,7 @@ function renderTemplateCatalog() {
       <span class="template-choice-orbit" aria-hidden="true"></span>
       <span class="template-choice-topline">
         <span class="template-choice-category">${escapeHtml(template.category || "Voice Agent")}</span>
+        <span class="template-choice-locale" title="Target locale: ${escapeHtml(locale.label)}">${escapeHtml(locale.code || "Not specified")}</span>
         ${template.mock_tools
           ? '<span class="template-choice-mcp">Mock tools</span>'
           : template.requires_mcp ? '<span class="template-choice-mcp">MCP</span>' : ""}
@@ -1033,11 +1137,12 @@ function renderTemplateCatalog() {
     }
     card.append(button, options);
     button.addEventListener("click", () => loadTemplateIntoGraph(template.id, select.value));
-    root.append(card);
+    containers.get(localeGrouping ? locale.group : template.category || "Other workflows").append(card);
   }
 }
 
 async function loadTemplateCatalog({ force = false } = {}) {
+  rememberTemplateGroupExpansion();
   if (state.templateCatalogLoading || (state.templateCatalogLoaded && !force)) {
     renderTemplateCatalog();
     return;
@@ -1074,8 +1179,13 @@ async function loadTemplateCatalog({ force = false } = {}) {
 }
 
 function openTemplatePicker() {
+  state.templateGrouping = "locale";
+  state.templateGroupOpen.clear();
+  state.templateQuery = "";
+  $("#template-picker-search").value = "";
   $("#template-picker").hidden = false;
   renderTemplateCatalog();
+  $("#template-picker-grid").scrollTop = 0;
   void loadTemplateCatalog();
   requestAnimationFrame(() => $("#template-picker-search").focus());
 }
@@ -3804,9 +3914,18 @@ function renderNodeEditor() {
   });
   $$("[data-component-card]", nodeEditorBody).forEach((card) => {
     const open = () => {
-      state.nodeComponentPanel = card.dataset.componentCard;
+      const kind = card.dataset.componentCard;
+      const activeField = document.activeElement;
+      if (activeField instanceof HTMLElement && nodeEditorBody.contains(activeField)) {
+        activeField.blur();
+      }
+      state.nodeComponentPanel = kind;
       renderNodeEditor();
     };
+    card.addEventListener("pointerdown", (event) => {
+      // Commit the focused field on click, before its rerender can replace this card.
+      if (event.button === 0) event.preventDefault();
+    });
     card.addEventListener("click", open);
     card.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
@@ -4655,9 +4774,19 @@ function bindEvents() {
   });
   $("#close-template-picker").addEventListener("click", closeTemplatePicker);
   $("#reload-template-picker").addEventListener("click", () => loadTemplateCatalog({ force: true }));
+  $$("[data-template-grouping]").forEach((button) => {
+    button.addEventListener("click", () => {
+      rememberTemplateGroupExpansion();
+      state.templateGrouping = button.dataset.templateGrouping;
+      renderTemplateCatalog();
+      $("#template-picker-grid").scrollTop = 0;
+    });
+  });
   $("#template-picker-search").addEventListener("input", (event) => {
+    rememberTemplateGroupExpansion();
     state.templateQuery = event.target.value;
     renderTemplateCatalog();
+    $("#template-picker-grid").scrollTop = 0;
   });
   $("#template-picker").addEventListener("click", (event) => {
     if (event.target === $("#template-picker")) closeTemplatePicker();

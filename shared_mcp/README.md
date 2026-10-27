@@ -28,6 +28,12 @@ This directory remains the source for those business packs. It also holds the
 Templates' `/mcp/mock-tool-call` route used by Examples 5–34; the runtime here
 does not serve that route.
 
+The Finance handoff pack accepts Hindi offer/consent evidence, Hindi spoken
+birthdays (including Devanagari digits), and explicit Hindi end requests.
+It preserves the original evidence rather than asking the Agent to translate
+it. Deploy this source to your MCP host before using the `hi-IN` Finance
+samples; adding the sample definitions does not update an already hosted MCP.
+
 The elevator-service route exposes explicitly named
 `mock_zendesk_create_ticket` and `mock_zendesk_get_ticket_status` tools backed
 by replica-local filesystem-backed fictional data. It never contacts a real

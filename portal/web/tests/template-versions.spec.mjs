@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft. All rights reserved.
 import { test, expect } from "@playwright/test";
+import { openTemplatePicker } from "./template-picker-helpers.mjs";
 
 const templateId = "customer-support-example";
 const version = "backups/20261020/original";
@@ -45,7 +46,7 @@ for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     const detail = await installVersions(page);
     await page.goto("/editor/");
-    await page.getByRole("button", { name: "Load from templates", exact: true }).click();
+    await openTemplatePicker(page);
     const select = page.getByRole("combobox", { name: `Version for ${detail.name}`, exact: true });
     await expect(select).toHaveValue(".");
     await select.selectOption(version);
@@ -59,7 +60,7 @@ for (const width of [1440, 390]) {
     await page.locator("#view-agent-yaml").click();
     await expect(page.locator("#definition-output")).toContainText(instructions);
     await page.getByRole("button", { name: "Close definition drawer", exact: true }).click();
-    await page.getByRole("button", { name: "Load from templates", exact: true }).click();
+    await openTemplatePicker(page);
     await expect(select).toHaveValue(version);
     await select.selectOption(".");
     await page.locator(`[data-template-id="${templateId}"]`).click();
@@ -100,7 +101,7 @@ test("Template versions retain the source version when Editor publishes a workin
     await route.fulfill({ json: { configured: true } });
   });
   await page.goto("/editor/");
-  await page.getByRole("button", { name: "Load from templates", exact: true }).click();
+  await openTemplatePicker(page);
   await page.getByRole("combobox", { name: `Version for ${detail.name}`, exact: true }).selectOption(version);
   await page.locator(`[data-template-id="${templateId}"]`).click();
   await expect(page.locator("#template-picker")).toBeHidden();
@@ -120,7 +121,7 @@ test("Template versions match the real catalog and load discovered sample files"
   page.on("pageerror", (error) => errors.push(error.message));
   const catalog = await (await page.request.get("/api/templates")).json();
   await page.goto("/editor/");
-  await page.getByRole("button", { name: "Load from templates", exact: true }).click();
+  await openTemplatePicker(page);
   await expect(page.locator(".template-choice")).toHaveCount(catalog.templates.length);
   for (const template of catalog.templates) {
     const select = page.getByRole("combobox", { name: `Version for ${template.name}`, exact: true });

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Browser -> production Foundry-only portal -> test-only Azure service fixture.
 import { test, expect } from "@playwright/test";
+import { openTemplatePicker } from "./template-picker-helpers.mjs";
 import { deterministicYaml, PIPELINE_COMPONENTS, PIPELINE_METRICS_DISCLAIMER } from "../../static/handoff/handoff-core.mjs";
 
 test.beforeEach(async ({ page }) => {
@@ -34,7 +35,7 @@ test("View Agent YAML opens the complete read-only working copy and always selec
   await page.goto("/editor/");
   await expect(page.locator("#view-agent-yaml")).toBeDisabled();
   await expect(page.locator("#global-settings-action")).toBeDisabled();
-  await page.getByRole("button", { name: "Load from templates", exact: true }).click();
+  await openTemplatePicker(page);
   await page.locator('[data-template-id="customer-support-example"]').click();
   await expect(page.locator("#template-picker")).toBeHidden();
   const definition = await readEditorDefinition(page);
@@ -57,7 +58,7 @@ test("Global settings saves shared fields without changing nodes and supports on
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/editor/");
-  await page.getByRole("button", { name: "Load from templates", exact: true }).click();
+  await openTemplatePicker(page);
   await page.locator('[data-template-id="customer-support-example"]').click();
   await expect(page.locator("#template-picker")).toBeHidden();
   const before = await readEditorDefinition(page);
@@ -92,7 +93,7 @@ test("Global settings saves shared fields without changing nodes and supports on
 
 test("Global settings is discoverable from a specialist and YAML preview does not save edits", async ({ page }) => {
   await page.goto("/editor/");
-  await page.getByRole("button", { name: "Load from templates", exact: true }).click();
+  await openTemplatePicker(page);
   await page.locator('[data-template-id="customer-support-example"]').click();
   await expect(page.locator("#template-picker")).toBeHidden();
   const before = await readEditorDefinition(page);
@@ -148,7 +149,7 @@ test("Editor defaults input language to Auto and clearing a locale omits it", as
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/editor/");
-  await page.getByRole("button", { name: "Load from templates", exact: true }).click();
+  await openTemplatePicker(page);
   await page.locator('[data-template-id="customer-support-example"]').click();
   await expect(page.locator("#template-picker")).toBeHidden();
   await page.locator("#node-outline button").first().click();
@@ -181,7 +182,7 @@ test("Editor preserves a template input language and its candidate order", async
     await route.fulfill({ response, json: detail });
   });
   await page.goto("/editor/");
-  await page.getByRole("button", { name: "Load from templates", exact: true }).click();
+  await openTemplatePicker(page);
   await page.locator('[data-template-id="customer-support-example"]').click();
   await expect(page.locator("#template-picker")).toBeHidden();
   await page.locator("#node-outline button").first().click();
@@ -193,7 +194,7 @@ test("Editor preserves a template input language and its candidate order", async
 
 test("Editor publishes the selected input locale and reloads the same service value", async ({ page }) => {
   await page.goto("/editor/");
-  await page.getByRole("button", { name: "Load from templates", exact: true }).click();
+  await openTemplatePicker(page);
   await page.locator('[data-template-id="customer-support-example"]').click();
   await expect(page.locator("#template-picker")).toBeHidden();
   await page.locator("#node-outline button").first().click();
@@ -252,7 +253,7 @@ test("AgentRuntime creation sends the selected input language through the servic
 
 test("Editor switches to the published MAI language catalog without silently dropping a locale", async ({ page }) => {
   await page.goto("/editor/");
-  await page.getByRole("button", { name: "Load from templates", exact: true }).click();
+  await openTemplatePicker(page);
   await page.locator('[data-template-id="customer-support-example"]').click();
   await expect(page.locator("#template-picker")).toBeHidden();
   await page.locator("#node-outline button").first().click();
@@ -271,6 +272,93 @@ test("Editor switches to the published MAI language catalog without silently dro
   await page.getByRole("button", { name: "Show input languages", exact: true }).click();
   await expect(page.locator("#component-stt-languages [role='option']")).toHaveCount(16);
   await expect(language).toHaveValue("hi-IN");
+});
+
+for (const playground of [false, true]) {
+  for (const touch of [false, true]) {
+    test.describe(`Template node pipeline clicks in ${playground ? "playground" : "local"} mode with ${touch ? "touch" : "mouse"}`, () => {
+      test.use({ hasTouch: touch, viewport: { width: touch ? 390 : 1440, height: 1000 } });
+
+      test("Editor opens each pipeline card on the first activation after editing a field", async ({ page }) => {
+        const errors = [];
+        page.on("pageerror", (error) => errors.push(error.message));
+        await page.route("**/config", async (route) => {
+          const response = await route.fetch();
+          await route.fulfill({ response, json: { ...await response.json(), playground } });
+        });
+        await page.goto("/editor/");
+        await openTemplatePicker(page);
+        await page.locator('[data-template-id="customer-support-example"]').click();
+        await expect(page.locator("#template-picker")).toBeHidden();
+        const before = await readEditorDefinition(page);
+
+        for (const nodeIndex of [0, 1]) {
+          await page.locator("#node-outline button").nth(nodeIndex).click();
+          const title = await page.locator("#node-editor-title").innerText();
+          let instructions;
+          for (const [kind, panelTitle] of [["stt", "Transcriber"], ["model", "Model"], ["voice", "Voice"]]) {
+            instructions = `Updated ${title} instructions before opening ${kind}.`;
+            await page.locator("#node-editor-instructions").fill(instructions);
+            const target = page.locator(nodeIndex === 0
+              ? `[data-node-component="${kind}"]`
+              : `[data-component-card="${kind}"] .pipeline-card-heading`);
+            if (touch) await target.tap();
+            else await target.click();
+            await expect(page.locator("#node-component-panel")).toBeVisible();
+            await expect(page.locator("#component-panel-title")).toHaveText(panelTitle);
+            await expect(page.locator("#node-editor-instructions")).toHaveValue(instructions);
+            await page.getByRole("button", { name: "Close component configuration", exact: true }).click();
+          }
+          await page.getByRole("button", { name: "Save node", exact: true }).click();
+          const after = await readEditorDefinition(page);
+          const expected = structuredClone(before);
+          if (nodeIndex === 0) expected.instructions = instructions;
+          else expected.handoff.nodes[0].config.instructions = instructions;
+          expect(after).toEqual(expected);
+          await page.locator("#undo-action").click();
+          expect(await readEditorDefinition(page)).toEqual(before);
+        }
+        expect(errors).toEqual([]);
+      });
+    });
+  }
+}
+
+test("Editor pipeline activation commits runtime fields and retains keyboard and cancel behavior", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/editor/");
+  await openTemplatePicker(page);
+  await page.locator('[data-template-id="customer-support-example"]').click();
+  await expect(page.locator("#template-picker")).toBeHidden();
+  const before = await readEditorDefinition(page);
+  await page.locator("#node-outline button").first().click();
+
+  await page.getByLabel("Input language", { exact: true }).fill("Hindi");
+  await page.locator('[data-node-component="stt"]').click();
+  await expect(page.locator("#node-component-panel")).toBeVisible();
+  await expect(page.getByLabel("Input language", { exact: true })).toHaveValue("hi-IN");
+  await page.getByRole("button", { name: "Close component configuration", exact: true }).click();
+
+  await page.getByLabel("Silence duration", { exact: true }).fill("432");
+  await page.locator('[data-component-card="model"] .pipeline-card-heading').click();
+  await expect(page.locator("#node-component-panel")).toBeVisible();
+  const edited = await readEditorDefinition(page);
+  expect(edited.audio.input.transcription.language).toBe("hi-IN");
+  expect(edited.audio.input.turn_detection.silence_duration_ms).toBe(432);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#node-component-panel")).toBeHidden();
+
+  for (const key of ["Enter", "Space"]) {
+    await page.locator('[data-component-card="voice"]').focus();
+    await page.keyboard.press(key);
+    await expect(page.locator("#node-component-panel")).toBeVisible();
+    await expect(page.locator("#component-panel-title")).toHaveText("Voice");
+    await page.keyboard.press("Escape");
+  }
+  await page.getByRole("button", { name: "Back to graph", exact: true }).click();
+  expect(await readEditorDefinition(page)).toEqual(before);
+  expect(errors).toEqual([]);
 });
 
 for (const width of [1440, 390]) {
@@ -318,7 +406,7 @@ for (const [scenario, rootModel, nodeModel] of [
       await route.fulfill({ response, json: detail });
     });
     await page.goto("/editor/");
-    await page.getByRole("button", { name: "Load from templates", exact: true }).click();
+    await openTemplatePicker(page);
     await page.locator('[data-template-id="customer-support-example"]').click();
     await expect(page.locator("#template-picker")).toBeHidden();
     await page.locator("#node-outline button").first().click();
@@ -417,7 +505,7 @@ test("Editor explains STT restrictions when only Whisper is available in the pro
     await route.fulfill({ response, json: detail });
   });
   await page.goto("/editor/");
-  await page.getByRole("button", { name: "Load from templates", exact: true }).click();
+  await openTemplatePicker(page);
   await page.locator('[data-template-id="customer-support-example"]').click();
   await expect(page.locator("#template-picker")).toBeHidden();
   await page.locator("#node-outline button").first().click();
@@ -473,7 +561,7 @@ for (const [width, height] of [[1440, 1000], [683, 512], [455, 341], [390, 844]]
 test("Editor groups voices by locale without model restrictions and publishes automatic input", async ({ page }) => {
   const cfg = await (await page.request.get("/config")).json();
   await page.goto("/editor/");
-  await page.getByRole("button", { name: "Load from templates", exact: true }).click();
+  await openTemplatePicker(page);
   await page.locator('[data-template-id="customer-support-example"]').click();
   await expect(page.locator("#template-picker")).toBeHidden();
   await page.locator("#node-outline button").first().click();
@@ -545,7 +633,7 @@ for (const width of [1440, 1280, 390]) {
     });
     await page.setViewportSize({ width, height: width === 1280 ? 720 : 1000 });
     await page.goto("/editor/");
-    await page.getByRole("button", { name: "Load from templates", exact: true }).click();
+    await openTemplatePicker(page);
     await page.locator('[data-template-id="customer-support-example"]').click();
     await page.locator("#node-outline button").first().click();
     await page.locator('[data-node-component="voice"]').click();
@@ -621,7 +709,7 @@ test("Runtime voice override uses the same editable locale and voice search", as
 
 test("Editor publishes a non-English voice discovered outside the old shortlist", async ({ page }) => {
   await page.goto("/editor/");
-  await page.getByRole("button", { name: "Load from templates", exact: true }).click();
+  await openTemplatePicker(page);
   await page.locator('[data-template-id="customer-support-example"]').click();
   await page.locator("#node-outline button").first().click();
   await page.locator('[data-node-component="voice"]').click();
@@ -1153,7 +1241,7 @@ test("Template data remains available without exposing a Templates navigation it
   await expect(navigation.getByRole("link", { name: "Templates", exact: true })).toHaveCount(0);
 
   await page.goto("/templates/");
-  await expect(page.getByText("35 available", { exact: true })).toBeVisible();
+  await expect(page.getByText("37 available", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example 1: Finance with Handoff — Realtime/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example 1: Finance with Handoff — Cascade/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example 2: Finance with OTP and Officer Search/ })).toBeVisible();
@@ -1175,7 +1263,7 @@ for (const [architecture, model] of [
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto("/editor/?debug=1");
-    await page.getByRole("button", { name: /Load from templates/ }).click();
+    await openTemplatePicker(page);
     await page.locator('[data-template-id="elevator-service-example"]').click();
     await page.locator("#node-outline button").first().click();
     await page.locator('[data-node-component="model"]').click();
@@ -1209,8 +1297,8 @@ test("Editor loads the fluency-improved Front Desk template and complete graph",
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/editor/");
-  await page.getByRole("button", { name: "Load from templates", exact: true }).click();
-  await expect(page.locator(".template-choice")).toHaveCount(35);
+  await openTemplatePicker(page);
+  await expect(page.locator(".template-choice")).toHaveCount(37);
   const frontdesk = page.locator('[data-template-id="frontdesk-receptionist-example"]');
   await expect(frontdesk).toContainText("Example 4: Front Desk with Fluency and Handoff");
   await frontdesk.click();
@@ -1240,9 +1328,9 @@ test("Handoff Graph loads a Portal template, publishes it, and opens the runtime
   await expect(page.getByRole("heading", { name: "Agents", exact: true })).toBeVisible();
   await page.goto("/editor/?debug=1");
 
-  await page.getByRole("button", { name: /Load from templates/ }).click();
+  await openTemplatePicker(page);
   const choices = page.locator(".template-choice");
-  await expect(choices).toHaveCount(35);
+  await expect(choices).toHaveCount(37);
   await page.locator('[data-template-id="elevator-service-example"]').click();
 
   await expect(page.locator("#agent-title")).toContainText(
@@ -1426,7 +1514,7 @@ test("Handoff Graph loads a Portal template, publishes it, and opens the runtime
 
 test("Handoff Graph progress stops on publication failure and preserves the working copy", async ({ page }) => {
   await page.goto("/editor/");
-  await page.getByRole("button", { name: /Load from templates/ }).click();
+  await openTemplatePicker(page);
   await page.locator('[data-template-id="elevator-service-example"]').click();
   await page.route("**/agents/*/versions?*", (route) => route.fulfill({
     status: 502,

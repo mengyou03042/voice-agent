@@ -76,6 +76,12 @@ SHARED_MCP_TEMPLATES = list(MCP_TEMPLATES)
 MOCK_TOOL_TEMPLATE_IDS = [template_id for template_id, *_ in MOCK_TOOL_TEMPLATES]
 MCP_TEMPLATES = [*SHARED_MCP_TEMPLATES, *MOCK_TOOL_TEMPLATE_IDS]
 EXPECTED_TEMPLATES = [*SHARED_MCP_TEMPLATES, *MOCK_TOOL_TEMPLATE_IDS]
+HINDI_TEMPLATE_IDS = [
+    "finance-example-realtime-hi-in",
+    "finance-example-cascade-hi-in",
+]
+EXPECTED_TEMPLATES.extend(HINDI_TEMPLATE_IDS)
+MCP_TEMPLATES.extend(HINDI_TEMPLATE_IDS)
 END_CONVERSATION_TOOL = {"type": "system", "name": "end_conversation"}
 MCP_BASE_URL = (
     "https://voice-agent-noauth-mcp"
@@ -84,6 +90,7 @@ MCP_BASE_URL = (
 MCP_ROUTES = {
     "finance-example-realtime": "/mcp/finance-handoff",
     "finance-example-cascade-luna": "/mcp/finance-handoff",
+    **{template_id: "/mcp/finance-handoff" for template_id in HINDI_TEMPLATE_IDS},
     "finance-with-otp-and-officer-search": "/mcp/finance-otp-officer",
     "elevator-service-example": "/mcp/elevator-service",
     "frontdesk-receptionist-example": "/mcp/frontdesk",
@@ -93,7 +100,24 @@ MOCK_TOOL_PREFIX = "mock_tool_call_"
 
 
 class TemplateCatalogTests(unittest.TestCase):
-    def test_materialization_uses_automatic_input_without_mutating_the_template(self) -> None:
+    def test_catalog_declares_the_customer_locale_independently_of_prompt_language(self) -> None:
+        catalog = TemplateCatalog()
+        cards = catalog.cards()
+        self.assertEqual(
+            set(HINDI_TEMPLATE_IDS),
+            {card["id"] for card in cards if card["target_locale"] == "hi-IN"},
+        )
+        for card in cards:
+            with self.subTest(template_id=card["id"]):
+                expected = (
+                    "hi-IN" if card["id"] in HINDI_TEMPLATE_IDS
+                    else "en-IN" if card["id"] in ("finance-example-realtime", "finance-example-cascade-luna")
+                    else "en-US"
+                )
+                self.assertEqual(expected, card["target_locale"])
+                self.assertEqual(expected, catalog.detail(card["id"])["target_locale"])
+
+    def test_materialization_preserves_input_language_without_mutating_the_template(self) -> None:
         document = {
             "definition": {
                 "kind": "voice",
@@ -107,7 +131,7 @@ class TemplateCatalogTests(unittest.TestCase):
             document, model="", voice="", mcp_server_url="", mcp_connection_id="",
         )
         self.assertEqual(
-            {"model": "azure-speech", "prompt": "Contoso"},
+            {"model": "azure-speech", "language": "en-IN,hi-IN", "prompt": "Contoso"},
             definition["audio"]["input"]["transcription"],
         )
         self.assertEqual(original, document)
@@ -668,6 +692,20 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self) -> None:
         await self.client.close()
+
+    async def test_hindi_template_routes_preserve_the_explicit_locale(self) -> None:
+        for template_id in HINDI_TEMPLATE_IDS:
+            with self.subTest(template_id=template_id):
+                response = await self.client.get(f"/api/templates/{template_id}")
+                self.assertEqual(200, response.status)
+                definition = (await response.json())["definition"]
+                self.assertEqual(
+                    {"model": "azure-speech", "language": "hi-IN"},
+                    definition["audio"]["input"]["transcription"],
+                )
+                self.assertEqual(
+                    "hi-IN-SwaraNeural", definition["audio"]["output"]["voice"]["name"]
+                )
 
     async def test_templates_page_and_catalog_routes(self) -> None:
         page = await self.client.get("/templates")

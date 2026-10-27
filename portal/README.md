@@ -40,6 +40,35 @@ instead of the mock tools, see
 data; availability and state resets depend on the service. Do not send real
 customer data.
 
+The Finance Hindi templates are independent of the English examples. They keep
+English business instructions but use `hi-IN` Azure Speech input and Hindi
+Swara output. The Portal preserves an explicitly configured transcription
+language when loading or publishing a template; omitting it keeps automatic
+language detection. Hindi birthday and early-end handling require the updated
+[Finance MCP source](../shared_mcp/README.md) on the selected MCP host.
+
+Editor's **Load from templates** groups workflows by their **Target locale**:
+Hindi (India), `hi-IN`, appears first, followed by English, `en-*`. Each card
+shows its exact locale. The left-aligned **By locale** / **By domain** controls
+switch between language and business categories; there are no separate locale
+filter pills. Each category expands and collapses independently. The default
+view on every opening is **By locale**, with all categories expanded. Domain
+categories also start expanded. The domain view uses a curated priority order:
+**Customer support**, then **Financial services**, followed by the remaining
+categories alphabetically. This is a recommended order, not measured usage.
+
+Search opens matching categories so results are immediately visible. Clearing
+search restores the expansion choices, which are remembered separately for each
+grouping mode while browsing. Reopening starts a fresh search and grouping view;
+selected versions are retained. Grouping never changes Agent settings.
+
+The locale describes the customer conversation, not the language used to write
+the instructions or every language a multilingual voice might support. Declare
+`target_locale` explicitly in [`templates.config.json`](templates.config.json),
+for example `"hi-IN"`, `"en-IN"`, or `"en-US"`. Missing metadata is displayed as
+**Locale not specified**, never guessed from a voice name. This metadata organizes
+the picker; the Agent definition still owns actual input/output language settings.
+
 ## Set up
 
 Use a complete checkout of this repository, not a copy of `portal/` alone.
@@ -430,6 +459,11 @@ need to find `$entrypoint` first. **Save Agent General Settings** saves these ch
 the local working copy; **Back to graph** or Escape discards the editor's unsaved
 changes. Node prompts and tools remain separate, and the existing start-node
 settings remain available. No changes reach Foundry until **Try it now** publishes.
+
+After editing a node field, click a Transcriber, Model, or Voice card directly to
+open its configuration. The first click or tap commits the field locally and
+opens the panel; there is no need to leave the field first. **Back to graph**
+still discards unsaved node edits.
 
 ### Optional configuration
 

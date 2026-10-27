@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>Editor · Voice Agents</title>
-  <link rel="stylesheet" href="/static/handoff/handoff.css?v=20261027-canvas-agent-settings">
+  <link rel="stylesheet" href="/static/handoff/handoff.css?v=20261027-expanded-template-groups">
 </head>
 <body>
   <div class="app">
@@ -299,9 +299,9 @@
       <div class="template-picker-shell" role="dialog" aria-modal="true" aria-labelledby="template-picker-title">
         <header class="template-picker-header">
           <div>
-            <span class="template-picker-kicker">Curated starting points</span>
-            <h2 id="template-picker-title">Load a proven workflow into this canvas</h2>
-            <p>Choose a version, then load the template to replace the local working copy. Nothing is published until you choose Try it now.</p>
+            <span class="template-picker-kicker">Voice Agent templates</span>
+            <h2 id="template-picker-title">A starting point in your callers' language</h2>
+            <p>Choose a target locale, then a workflow. Instructions can stay in English; the locale describes the customer conversation.</p>
           </div>
           <button id="close-template-picker" class="icon-button" type="button" aria-label="Close template picker">×</button>
         </header>
@@ -309,10 +309,16 @@
           <p id="template-picker-status" role="status">Loading the template catalog…</p>
           <div>
             <input id="template-picker-search" type="search" autocomplete="off"
-              placeholder="Search templates" aria-label="Search templates"
+              placeholder="Search workflows, languages or locales" aria-label="Search templates"
               aria-controls="template-picker-grid">
             <span id="template-picker-count" aria-live="polite"></span>
             <button id="reload-template-picker" type="button">Reload</button>
+          </div>
+        </div>
+        <div class="template-locale-toolbar">
+          <div class="template-grouping" role="group" aria-label="Group templates">
+            <button type="button" data-template-grouping="locale" aria-pressed="true" aria-controls="template-picker-grid">By locale</button>
+            <button type="button" data-template-grouping="domain" aria-pressed="false" aria-controls="template-picker-grid">By domain</button>
           </div>
         </div>
         <div id="template-picker-grid" class="template-picker-grid" aria-live="polite"></div>
@@ -447,6 +453,6 @@
     </div>
   </template>
 
-  <script type="module" src="/static/handoff/handoff-app.js?v=20261027-canvas-agent-settings"></script>
+  <script type="module" src="/static/handoff/handoff-app.js?v=20261027-expanded-template-groups"></script>
 </body>
 </html>

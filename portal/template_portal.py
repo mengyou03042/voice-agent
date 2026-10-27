@@ -576,9 +576,6 @@ def materialize_template(
     mcp_public: bool = False,
 ) -> dict[str, Any]:
     definition = copy.deepcopy(document["definition"])
-    transcription = definition.get("audio", {}).get("input", {}).get("transcription")
-    if isinstance(transcription, dict):
-        transcription.pop("language", None)
     if model.strip():
         definition["model"] = model.strip()
     if voice.strip():
@@ -755,6 +752,7 @@ class TemplateSource:
     mcp_config_path: Path | None
     mcp_token_file: Path | None
     lock_runtime: bool
+    target_locale: str = ""
 
 
 class TemplateCatalog:
@@ -809,6 +807,14 @@ class TemplateCatalog:
                 lock_runtime = entry.get("lock_runtime", False)
                 if not isinstance(lock_runtime, bool):
                     raise ValueError("lock_runtime must be a boolean")
+                target_locale = entry.get("target_locale", "")
+                if not isinstance(target_locale, str) or (
+                    target_locale and not re.fullmatch(
+                        r"[a-z]{2,3}(?:-[A-Z][a-z]{3})?-(?:[A-Z]{2}|[0-9]{3})",
+                        target_locale,
+                    )
+                ):
+                    raise ValueError("target_locale must be a locale such as hi-IN or en-US")
                 folder_value = str(entry.get("folder") or "").strip()
                 if not folder_value:
                     raise ValueError("folder is required")
@@ -893,6 +899,7 @@ class TemplateCatalog:
                     mcp_config_path=mcp_config_path,
                     mcp_token_file=mcp_token_file,
                     lock_runtime=lock_runtime,
+                    target_locale=target_locale,
                 )
                 self._validate_source(source)
             except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:
@@ -974,6 +981,7 @@ class TemplateCatalog:
             "id": source.id,
             "name": source.name or str(document.get("name") or source.id),
             "category": source.category,
+            "target_locale": source.target_locale,
             "summary": source.summary or str(document.get("description") or "Voice Agent template."),
             "accent": source.accent,
             "accent_color": source.accent,
@@ -1058,6 +1066,7 @@ class TemplateCatalog:
                 {
                     "title": "Voice Agent",
                     "items": [
+                        {"label": "Target locale", "value": source.target_locale or "Not specified"},
                         {"label": "Model", "value": definition.get("model") or "—"},
                         {"label": "Voice", "value": voice_name(definition) or "—"},
                         {
@@ -1417,9 +1426,6 @@ async def get_template(request: web.Request) -> web.Response:
                 if item["label"] == "Model":
                     item["value"] = model_override
     definition = copy.deepcopy(document["definition"])
-    transcription = definition.get("audio", {}).get("input", {}).get("transcription")
-    if isinstance(transcription, dict):
-        transcription.pop("language", None)
     if model_override and not source.lock_runtime:
         definition["model"] = model_override
     for tool in iter_mcp_tools(definition):
