@@ -11,6 +11,7 @@ import {
   extractLatestAgent,
   formatPipelineCost as calculatedCost,
   formatPipelineLatency as estimatedLatencyRange,
+  groupVoicesByLocale,
   layoutHandoffGraph,
   mergeServiceProblems,
   matchesAgentSearch,
@@ -27,7 +28,16 @@ import {
   stableJson,
   uniqueId,
   validateDefinition,
-} from "./handoff-core.mjs?v=20261017-llm-150";
+} from "./handoff-core.mjs?v=20261027-15-language-picker";
+import { filterVoiceGroups, voiceMatchCount } from "./voice-picker.mjs?v=20261027-voice-search";
+import {
+  INPUT_LANGUAGE_HINT,
+  INPUT_LANGUAGE_SOURCE,
+  displayTranscriptionLanguage,
+  mountInputLanguagePicker,
+  transcriptionLanguageError,
+  transcriptionLanguageOptions,
+} from "./transcription-languages.mjs?v=20261027-15-language-picker";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -69,6 +79,8 @@ const state = {
   selected: { kind: "graph", id: "" },
   outlineTab: "nodes",
   nodeComponentPanel: "",
+  nodeEditorMode: "node",
+  definitionReturnFocus: null,
   // No visible toggle: open the page with ?debug=1 to show latency and cost estimates.
   debugMode: new URLSearchParams(window.location.search).get("debug") === "1",
   componentSort: {
@@ -87,6 +99,8 @@ const state = {
   templates: [],
   templateQuery: "",
   pipelineAvailability: null,
+  voiceLocale: null,
+  voiceSearch: "",
   templateVersions: new Map(),
   templateCatalogLoaded: false,
   templateCatalogLoading: false,
@@ -398,17 +412,6 @@ function rootSttModel() {
   return state.definition?.audio?.input?.transcription?.model || "azure-speech";
 }
 
-function rootSttLanguage() {
-  return state.definition?.audio?.input?.transcription?.language || "en-US";
-}
-
-function setRootSttLanguage(definition, language) {
-  definition.audio ||= {};
-  definition.audio.input ||= {};
-  definition.audio.input.transcription ||= {};
-  definition.audio.input.transcription.language = language;
-}
-
 function setRootSttModel(definition, model) {
   definition.audio ||= {};
   definition.audio.input ||= {};
@@ -601,6 +604,8 @@ function setDefinition(
   state.sourceMetadata = deepClone(metadata);
   state.sourceSnapshot = deepClone(state.definition);
   state.cleanSnapshot = remote ? stableJson(state.definition, 0) : null;
+  state.voiceLocale = null;
+  state.voiceSearch = "";
   state.remoteSource = remote;
   state.history = [];
   state.future = [];
@@ -650,6 +655,9 @@ function redo() {
 async function loadConfig() {
   const response = await fetch("/config");
   const cfg = await readResponse(response);
+  const catalog = await readResponse(await fetch("/api/voices"));
+  cfg.voiceCatalog = catalog.voices;
+  cfg.voiceCatalogNotice = catalog.notice;
   state.cfg = cfg;
   document.body.classList.toggle("playground-mode", cfg.playground === true);
   $("#environment").textContent = `${cfg.backend} · ${cfg.project} · API ${cfg.apiVersion}`;
@@ -672,6 +680,7 @@ async function loadPipelineAvailability() {
 
 // Hide choices the hosted policy rejects or the probe found unavailable; unknown stays visible.
 function pipelineChoiceAvailable(kind, id) {
+  if (kind === "voice") return true;
   if (
     kind === "model" && state.cfg?.playground && Array.isArray(state.cfg.models)
     && !state.cfg.models.includes(id)
@@ -2271,6 +2280,7 @@ function hideNodeEditor() {
   $("#node-editor").hidden = true;
   $("#node-editor").classList.remove("component-panel-open");
   state.nodeComponentPanel = "";
+  state.nodeEditorMode = "node";
   $("#node-component-panel").hidden = true;
 }
 
@@ -2294,6 +2304,7 @@ function restoreEditorSession(kind) {
 }
 
 function cancelEditorSession(kind) {
+  const label = kind === "node" && state.nodeEditorMode === "global" ? "Agent General Settings" : kind;
   const session = state.editorSession;
   const changed = Boolean(
     session
@@ -2303,11 +2314,12 @@ function cancelEditorSession(kind) {
   restoreEditorSession(kind);
   if (kind === "node") hideNodeEditor();
   else hideEdgeEditor();
-  setMessage(changed ? `Discarded unsaved ${kind} changes.` : `Closed ${kind} editor.`);
+  setMessage(changed ? `Discarded unsaved ${label} changes.` : `Closed ${label} editor.`);
   render();
 }
 
 function commitEditorSession(kind, message = "") {
+  const label = kind === "node" && state.nodeEditorMode === "global" ? "Agent General Settings" : kind;
   const session = state.editorSession;
   if (session?.kind === kind) {
     const changed = stableJson(session.definition, 0) !== stableJson(state.definition, 0);
@@ -2321,8 +2333,8 @@ function commitEditorSession(kind, message = "") {
     }
     state.editorSession = null;
     setMessage(message || (changed
-      ? `Saved ${kind} changes to the local working copy.`
-      : `Closed ${kind} editor with no changes.`));
+      ? `Saved ${label} changes to the local working copy.`
+      : `Closed ${label} editor with no changes.`));
   }
   if (kind === "node") hideNodeEditor();
   else hideEdgeEditor();
@@ -2369,6 +2381,7 @@ function openNodeEditor(id, editorSnapshot = null) {
   const entry = id === ENTRYPOINT_ID;
   if (!entry && !state.definition.handoff.nodes.some((node) => node.id === id)) return;
   beginEditorSession("node", id, editorSnapshot);
+  state.nodeEditorMode = "node";
   if (state.metricDisplay.nodeId !== id) {
     state.metricDisplay = { nodeId: id, cost: 0, latency: 0 };
   }
@@ -2379,6 +2392,23 @@ function openNodeEditor(id, editorSnapshot = null) {
   render();
   renderNodeEditor();
   $("#node-editor").hidden = false;
+}
+
+function openGlobalSettings({ focusInputLanguage = false } = {}) {
+  if (!state.definition) return;
+  if (state.selectionTimer) {
+    window.clearTimeout(state.selectionTimer);
+    state.selectionTimer = null;
+  }
+  if (!state.editorSession) beginEditorSession("node", ENTRYPOINT_ID);
+  state.nodeEditorMode = "global";
+  state.nodeComponentPanel = "";
+  state.selected = { kind: "node", id: ENTRYPOINT_ID };
+  render();
+  renderNodeEditor();
+  $("#node-editor").hidden = false;
+  if (focusInputLanguage) $("#component-stt-language").focus();
+  else $("#done-node-editor").focus();
 }
 
 function openEdgeEditor(id, editorSnapshot = null) {
@@ -2602,19 +2632,8 @@ function renderEdgeEditor() {
 // The service accepts a bare name only for OpenAI voices; Azure voices must be {type, name}.
 function voiceDefinitionValue(voice) {
   if (typeof voice !== "string") return voice;
-  const known = PIPELINE_COMPONENTS.voice.find((item) => item.id === voice);
+  const known = (state.cfg?.voiceCatalog || PIPELINE_COMPONENTS.voice).find((item) => item.id === voice);
   return !known || known.type === "openai" ? voice : { type: known.type, name: voice };
-}
-
-function setNodeVoice(definition, config, entry, voice) {
-  voice = voiceDefinitionValue(voice);
-  if (entry) {
-    definition.audio ||= {};
-    definition.audio.output ||= {};
-    definition.audio.output.voice = voice;
-  } else {
-    config.voice = voice;
-  }
 }
 
 function applyNodeModelSelection(modelId) {
@@ -2623,7 +2642,6 @@ function applyNodeModelSelection(modelId) {
   const entry = selectedId === ENTRYPOINT_ID;
   const currentVoice = voiceName(effectiveVoice(selectedId));
   const currentStt = rootSttModel();
-  const defaultPipeline = estimatePipeline({ model: modelId }).pipeline;
   const compatibleStt = pipelineComponentOptions("stt", {
     model: modelId,
     models: graphModelIds(selectedId, modelId),
@@ -2633,27 +2651,16 @@ function applyNodeModelSelection(modelId) {
   const nextStt = compatibleStt.some((component) => component.id === currentStt)
     ? currentStt
     : compatibleStt[0]?.id;
-  const compatibleVoiceIds = new Set(
-    pipelineComponentOptions("voice", {
-      model: modelId,
-      stt: currentStt,
-      voice: currentVoice,
-    }).filter((component) => component.compatible !== false).map((component) => component.id),
-  );
-  const nextVoice = compatibleVoiceIds.has(currentVoice)
-    ? currentVoice
-    : defaultPipeline.voice.id;
   if (!nextStt) {
     setMessage("The model was not changed.", "No transcription model is compatible with every model in this graph.");
     return;
   }
   const changes = [
     nextStt !== currentStt ? `STT changed to ${nextStt}` : "",
-    nextVoice !== currentVoice ? `voice changed to ${nextVoice}` : "",
   ].filter(Boolean);
   const message = changes.length
     ? `Updated ${selectedId} model; ${changes.join(" and ")} for compatibility`
-    : `Updated ${selectedId} model; STT and voice remain compatible`;
+    : `Updated ${selectedId} model; voice unchanged`;
   mutate(message, (definition) => {
     const node = entry
       ? null
@@ -2661,7 +2668,6 @@ function applyNodeModelSelection(modelId) {
     const config = entry ? definition : (node.config ||= {});
     config.model = modelId;
     if (nextStt !== currentStt) setRootSttModel(definition, nextStt);
-    if (nextVoice !== currentVoice) setNodeVoice(definition, config, entry, nextVoice);
   });
 }
 
@@ -2704,6 +2710,8 @@ function componentDescription(kind, id) {
     emma: "Azure Realtime native voice.",
     alloy: "OpenAI native voice for GPT Realtime models.",
     "en-US-Ava:DragonHDLatestNeural": "Azure Dragon HD voice for managed speech output.",
+    "en-US-Emma:DragonHDOmniLatestNeural": "Emma Azure Speech TTS voice using Dragon HD Omni.",
+    "en-US-Brian:DragonHDOmniLatestNeural": "Brian Azure Speech TTS voice using Dragon HD Omni.",
     "en-IN-Diya:DragonHDLatestNeural": "Azure Dragon HD voice for Indian languages and Indian English.",
   };
   return descriptions[id] || `Supported ${kind} option. Availability remains region and model dependent.`;
@@ -2788,6 +2796,7 @@ function componentTableRow(kind, component, selected, maxima) {
           <span class="component-option-icon">${pipelineIcon(kind === "stt" ? "audio" : kind)}</span>
           <span class="component-option-copy">
             <strong>${escapeHtml(displayName)}</strong>
+            ${kind === "voice" ? `<code class="voice-option-id">${escapeHtml(component.id)}</code>` : ""}
             <small>${escapeHtml(component.incompatibility || componentEvidence(kind, component))}</small>
           </span>
           ${selected ? '<span class="component-current">Current</span>' : ""}
@@ -2819,12 +2828,14 @@ function renderNodeComponentPanel() {
     return;
   }
   const config = nodeConfig(state.selected.id);
+  panel.dataset.component = kind;
   const selection = {
     model: normalizedModelId(config.model ?? state.definition.model),
     models: graphModelIds(),
     stt: rootSttModel(),
     customSpeech: Boolean(state.definition?.audio?.input?.transcription?.custom_speech),
     voice: voiceName(state.selected.id === ENTRYPOINT_ID ? rootVoice() : (config.voice ?? rootVoice())),
+    voices: state.cfg.voiceCatalog,
   };
   const currentPipeline = selectedPipeline(
     selection.model, selection.voice, selection.stt, {
@@ -2834,7 +2845,7 @@ function renderNodeComponentPanel() {
   ).pipeline;
   const current = currentPipeline[kind].id;
   const titles = { stt: "Transcriber", model: "Model", voice: "Voice" };
-  $("#component-panel-kicker").textContent = "Node pipeline";
+  $("#component-panel-kicker").textContent = kind === "stt" ? "Agent-level input - all graph nodes" : "Node pipeline";
   $("#component-panel-title").textContent = titles[kind];
   const availableComponents = pipelineComponentOptions(kind, selection)
     .filter((component) => component.id === current || pipelineChoiceAvailable(kind, component.id))
@@ -2850,6 +2861,17 @@ function renderNodeComponentPanel() {
     components,
     state.componentSort[kind],
   );
+  const voiceGroups = kind === "voice" ? groupVoicesByLocale(sortedComponents) : [];
+  const visibleVoiceGroups = filterVoiceGroups(voiceGroups, state.voiceLocale || "", state.voiceSearch);
+  const voiceRows = (groups) => groups.length ? groups.map((group) => `
+    <tbody data-voice-locale="${escapeHtml(group.locale)}">
+      <tr class="voice-locale-heading"><td colspan="${state.debugMode ? 4 : 2}">
+        <strong>${escapeHtml(group.label)}</strong><span>${group.items.length} voices</span>
+      </td></tr>
+      ${group.items.map((component) => componentTableRow(kind, component, component.id === current, maxima)).join("")}
+    </tbody>`).join("") : `<tbody><tr><td colspan="${state.debugMode ? 4 : 2}" class="voice-empty-state">
+      No voices match. Try another locale or clear the filters.
+    </td></tr></tbody>`;
   const maxima = {
     latency: Math.max(
       0,
@@ -2860,17 +2882,37 @@ function renderNodeComponentPanel() {
       ...components.map((component) => pipelineMetricMinimum(component, "cost") || 0),
     ),
   };
+  const realtimeModels = PIPELINE_COMPONENTS.model.filter(
+    (model) => model.architecture === "realtime" && selection.models.includes(model.id),
+  );
+  const sttContext = kind === "stt" ? `
+    <aside class="stt-model-context" role="note" aria-labelledby="stt-model-context-title">
+      <span class="stt-context-icon" aria-hidden="true">${pipelineIcon("model")}</span>
+      <h4 id="stt-model-context-title">Why are STT options limited?</h4>
+      <p>${realtimeModels.length
+        ? "Your graph includes realtime models. STT choices depend on the models already selected."
+        : "STT choices depend on the models already selected in your graph."}</p>
+      ${realtimeModels.length ? `
+        <div class="stt-context-models">
+          <strong>Realtime models in this graph</strong>
+          ${realtimeModels.map((model) => `<code>${escapeHtml(model.id)}</code>`).join("")}
+        </div>
+        <p>Realtime models process audio directly. STT provides transcripts, not the model's audio input.</p>` : ""}
+      <p>All nodes share one STT setting. Only options supported by every model and available in this project can be selected.</p>
+      <div class="stt-context-next">
+        <strong>Need another STT?</strong>
+        <p>Review the Model choices across the graph. Changing only this node may not remove other nodes' restrictions. Project and region availability still apply.</p>
+        <button type="button" class="button secondary" id="review-stt-model">Review this node's model</button>
+      </div>
+    </aside>` : "";
   let advanced = "";
   if (kind === "stt") {
     const realtime = currentPipeline.architecture === "realtime";
     advanced = `
       <div class="component-advanced">
         <h4>Recognition settings</h4>
-        <label for="component-stt-language">Language</label>
-        <select id="component-stt-language">
-          ${["en-US", "en-GB", "es-US", "fr-FR", "de-DE", "ja-JP", "zh-CN"]
-            .map((language) => `<option value="${language}"${rootSttLanguage() === language ? " selected" : ""}>${language}</option>`).join("")}
-        </select>
+        <p>Input language is configured in Agent General Settings and applies to all graph nodes.</p>
+        <button type="button" class="button secondary" id="open-agent-input-language">Open global input language</button>
         <div class="detail-row"><span>Scope</span><strong>All graph nodes</strong></div>
         <div class="detail-row"><span>Pipeline</span><strong>${realtime ? "Native speech-to-speech" : "Cascaded"}</strong></div>
         ${realtime
@@ -2878,18 +2920,15 @@ function renderNodeComponentPanel() {
             <p>The Realtime model consumes audio directly. This separate STT selection still produces transcript events for observability and text-dependent client logic; it does not feed the Realtime model.</p>`
           : "<p>This STT output feeds text to cascaded models. Because the Handoff contract stores transcription at Agent level, only choices supported by every model in the graph are enabled.</p>"}
       </div>`;
-  } else {
-    const provider = kind === "model"
-      ? "Voice Live managed"
-      : current.startsWith("en-") ? "Azure Speech" : "Native audio";
+  } else if (kind === "model") {
     advanced = `
       <div class="component-advanced">
-        <h4>${kind === "model" ? "Generation" : "Voice"} settings</h4>
+        <h4>Generation settings</h4>
         <div class="detail-row"><span>Scope</span><strong>${escapeHtml(state.selected.id)}</strong></div>
-        <div class="detail-row"><span>Provider</span><strong>${provider}</strong></div>
+        <div class="detail-row"><span>Provider</span><strong>Voice Live managed</strong></div>
         <div class="empty-config-state">
           ${pipelineIcon("sliders")}
-          <strong>Advanced ${kind} controls</strong>
+          <strong>Advanced model controls</strong>
           <p>This panel is reserved for contract-backed tuning such as temperature, speed, style, and provider-specific options.</p>
         </div>
       </div>`;
@@ -2900,8 +2939,31 @@ function renderNodeComponentPanel() {
       <div>
         <strong>Disclaimer</strong>
         <p>${PIPELINE_METRICS_DISCLAIMER}</p>
-      </div>` : ""}
-    </div>
+      </div>
+    </div>` : ""}
+    ${kind === "voice" ? `<div class="voice-locale-filter">
+      <p class="voice-picker-current">Selected voice <code>${escapeHtml(current)}</code></p>
+      <label for="component-voice-locale">Voice locale</label>
+      <input id="component-voice-locale" type="search" list="component-voice-locales"
+        value="${escapeHtml(state.voiceLocale || "")}" autocomplete="off" spellcheck="false"
+        placeholder="All locales — type en-US or Hindi">
+      <datalist id="component-voice-locales">
+        <option value="All locales"></option>
+        ${voiceGroups.map((group) => `<option value="${escapeHtml(group.locale || group.label)}" label="${escapeHtml(group.label)} (${group.items.length})"></option>`).join("")}
+      </datalist>
+      <label for="component-voice-search">Search voices</label>
+      <input id="component-voice-search" type="search" value="${escapeHtml(state.voiceSearch)}"
+        autocomplete="off" placeholder="Ava, Swara, Dragon HD, or a full voice ID">
+      <div class="voice-picker-results">
+        <span id="component-voice-count" role="status">${voiceMatchCount(visibleVoiceGroups)} / ${components.length} voices match</span>
+        <button id="clear-voice-filters" type="button">Clear filters</button>
+      </div>
+      <details class="voice-catalog-source"><summary>Catalog source and availability</summary>
+        <p>${escapeHtml(state.cfg.voiceCatalogNotice)}</p>
+      </details>
+    </div>` : ""}
+    ${kind === "stt" ? '<div class="stt-selection-layout"><div class="stt-selection-main">' : ""}
+    ${kind === "stt" ? advanced : ""}
     <div class="component-table-wrap">
       <table class="component-table${state.debugMode ? "" : " without-metrics"}">
         <thead>
@@ -2912,7 +2974,7 @@ function renderNodeComponentPanel() {
             <th>${componentSortHeader(kind, "cost", "Cost")}</th>` : ""}
           </tr>
         </thead>
-        <tbody>
+        ${kind === "voice" ? voiceRows(visibleVoiceGroups) : `<tbody>
           ${sortedComponents.map(
             (component) => componentTableRow(
               kind,
@@ -2921,11 +2983,19 @@ function renderNodeComponentPanel() {
               maxima,
             ),
           ).join("")}
-        </tbody>
+        </tbody>`}
       </table>
     </div>
-    ${advanced}
+    ${kind === "stt" ? "" : advanced}
+    ${kind === "stt" ? `</div>${sttContext}</div>` : ""}
   `;
+  $("#review-stt-model")?.addEventListener("click", () => {
+    state.nodeComponentPanel = "model";
+    renderNodeEditor();
+  });
+  $("#open-agent-input-language")?.addEventListener("click", () => {
+    openGlobalSettings({ focusInputLanguage: true });
+  });
   $$("[data-component-sort]", $("#node-component-panel-body")).forEach((button) => {
     button.addEventListener("click", () => {
       const key = button.dataset.componentSort;
@@ -2953,24 +3023,44 @@ function renderNodeComponentPanel() {
       button.setAttribute("aria-expanded", String(opening));
     });
   });
-  $$("[data-component-value]", $("#node-component-panel-body")).forEach((button) => {
-    button.addEventListener("click", () => {
-      const value = button.dataset.componentValue;
-      if (kind === "stt") {
-        mutate("Updated Agent-level STT", (definition) => setRootSttModel(definition, value));
-      } else if (kind === "model") {
-        applyNodeModelSelection(value);
-      } else {
-        const voice = voiceDefinitionValue(value);
-        applyNodeFieldChange(kind, typeof voice === "string" ? voice : JSON.stringify(voice));
-      }
-      renderNodeEditor();
+  const bindComponentChoices = () => {
+    $$("[data-component-value]", $("#node-component-panel-body")).forEach((button) => {
+      button.addEventListener("click", () => {
+        const value = button.dataset.componentValue;
+        if (kind === "stt") {
+          mutate("Updated Agent-level STT", (definition) => setRootSttModel(definition, value));
+        } else if (kind === "model") {
+          applyNodeModelSelection(value);
+        } else {
+          const voice = voiceDefinitionValue(value);
+          applyNodeFieldChange(kind, typeof voice === "string" ? voice : JSON.stringify(voice));
+        }
+        renderNodeEditor();
+      });
     });
-  });
-  $("#component-stt-language")?.addEventListener("change", (event) => {
-    mutate("Updated Agent-level STT language", (definition) => setRootSttLanguage(definition, event.target.value));
-    renderNodeEditor();
-  });
+  };
+  bindComponentChoices();
+  if (kind === "voice") {
+    const updateVoiceResults = () => {
+      state.voiceLocale = $("#component-voice-locale").value;
+      state.voiceSearch = $("#component-voice-search").value;
+      const groups = filterVoiceGroups(voiceGroups, state.voiceLocale, state.voiceSearch);
+      const table = $(".component-table", $("#node-component-panel-body"));
+      $$("tbody", table).forEach((body) => body.remove());
+      table.insertAdjacentHTML("beforeend", voiceRows(groups));
+      $("#component-voice-count").textContent = `${voiceMatchCount(groups)} / ${components.length} voices match`;
+      bindComponentChoices();
+    };
+    for (const id of ["#component-voice-locale", "#component-voice-search"]) {
+      $(id).addEventListener("input", updateVoiceResults);
+    }
+    $("#clear-voice-filters").addEventListener("click", () => {
+      $("#component-voice-locale").value = "";
+      $("#component-voice-search").value = "";
+      updateVoiceResults();
+      $("#component-voice-search").focus();
+    });
+  }
   $("#node-editor").classList.add("component-panel-open");
   panel.hidden = false;
 }
@@ -3065,13 +3155,35 @@ function renderAgentRuntimeSettings(definition) {
   const modalities = Array.isArray(definition.output_modalities)
     ? definition.output_modalities.join(",")
     : "audio";
+  const language = input.transcription?.language || "";
+  const languageError = transcriptionLanguageError(rootSttModel(), language);
   return `
     <section class="runtime-config-section" aria-label="Agent runtime settings">
       <div class="runtime-config-heading">
-        <div><span class="kicker">Agent runtime</span><strong>Session, greeting, audio, and turn-taking</strong></div>
-        <span>Published on the definition root</span>
+        <div><span class="kicker">Agent General Settings</span><strong>Session, greeting, audio, and turn-taking</strong></div>
+        <span>Shared across the entire Agent</span>
       </div>
       <div class="runtime-settings-grid">
+        <details class="runtime-settings-card input-language-settings" open>
+          <summary><span>${pipelineIcon("audio")} Speech input</span><small>All graph nodes</small></summary>
+          <div class="runtime-settings-body">
+            <div class="input-language-field">
+              <label for="component-stt-language">Input language</label>
+              <div class="input-language-combobox">
+                <input id="component-stt-language" type="text" role="combobox"
+                  value="${escapeHtml(displayTranscriptionLanguage(language))}" autocomplete="off" spellcheck="false"
+                  aria-autocomplete="list" aria-expanded="false" aria-controls="component-stt-languages"
+                  placeholder="Search language or locale" aria-describedby="component-stt-language-hint component-stt-language-error"
+                  aria-invalid="${Boolean(languageError)}">
+                <button id="component-stt-language-toggle" type="button" class="input-language-toggle" aria-label="Show input languages">▾</button>
+                <div id="component-stt-languages" class="input-language-options" role="listbox" aria-label="Input languages" hidden></div>
+              </div>
+              <p id="component-stt-language-hint">${INPUT_LANGUAGE_HINT}</p>
+              <p id="component-stt-language-error" role="alert"${languageError ? "" : " hidden"}>${escapeHtml(languageError)}</p>
+              <a href="${INPUT_LANGUAGE_SOURCE}" target="_blank" rel="noopener noreferrer">Voice Live supported input languages</a>
+            </div>
+          </div>
+        </details>
         <details class="runtime-settings-card" open>
           <summary><span>${pipelineIcon("model")} Session behavior</span><small>${escapeHtml(definition.model_type || "managed")}</small></summary>
           <div class="runtime-settings-body two-column">
@@ -3380,6 +3492,42 @@ function applyRuntimeFieldChange(scope, path, rawValue, valueType) {
   });
 }
 
+function bindAgentRuntimeSettings(root) {
+  const languageInput = $("#component-stt-language", root);
+  if (languageInput) {
+    mountInputLanguagePicker({
+      input: languageInput,
+      toggle: $("#component-stt-language-toggle", root),
+      list: $("#component-stt-languages", root),
+      model: rootSttModel(),
+      value: state.definition.audio?.input?.transcription?.language,
+      onError: (error) => {
+        $("#component-stt-language-error", root).textContent = error;
+        $("#component-stt-language-error", root).hidden = !error;
+      },
+      onChange: (language) => {
+        mutate("Updated Agent-level input language", (definition) => {
+          setRootSttModel(definition, rootSttModel());
+          if (language) definition.audio.input.transcription.language = language;
+          else delete definition.audio.input.transcription.language;
+        });
+        renderNodeEditor();
+      },
+    });
+  }
+  $$("[data-runtime-path]", root).forEach((field) => {
+    field.addEventListener("change", () => {
+      applyRuntimeFieldChange(
+        field.dataset.runtimeScope,
+        field.dataset.runtimePath,
+        field.value,
+        field.dataset.runtimeType,
+      );
+      renderNodeEditor();
+    });
+  });
+}
+
 function renderNodeEditor() {
   if (!state.definition || state.selected.kind !== "node") {
     state.editorSession = null;
@@ -3388,6 +3536,36 @@ function renderNodeEditor() {
   }
   const id = state.selected.id;
   const entry = id === ENTRYPOINT_ID;
+  const global = state.nodeEditorMode === "global";
+  const body = $("#node-editor-body");
+  $("#node-editor").setAttribute("aria-label", global ? "Agent General Settings" : "Node setup");
+  $("#node-editor-description-text").textContent = global
+    ? "Shared configuration for the entire Agent. No need to open the start node."
+    : "Configure this node's model, voice, instructions, and tools.";
+  $("#done-node-editor").textContent = global ? "Save Agent General Settings" : "Save node";
+  if (global) {
+    $("#node-editor-title").textContent = "Agent General Settings";
+    $("#node-editor-kind-label").textContent = "Entire Agent";
+    $("#node-editor-kind-icon").innerHTML = pipelineIcon("sliders");
+    $("#delete-node-editor").hidden = true;
+    body.innerHTML = `
+      <section class="settings-scope-note" aria-label="Global configuration scope">
+        <div>
+          <strong>One place for Agent-wide configuration</strong>
+          <p>Input language, STT, greeting, audio transport, and turn detection are shared across the graph.
+            Each node keeps its own instructions, tools, model, and voice settings.</p>
+        </div>
+        <button id="global-stt-settings" type="button" class="button secondary">Configure shared STT</button>
+      </section>
+      ${renderAgentRuntimeSettings(state.definition)}`;
+    bindAgentRuntimeSettings(body);
+    $("#global-stt-settings").addEventListener("click", () => {
+      state.nodeComponentPanel = "stt";
+      renderNodeEditor();
+    });
+    renderNodeComponentPanel();
+    return;
+  }
   const node = entry
     ? null
     : state.definition.handoff.nodes.find((item) => item.id === id);
@@ -3420,11 +3598,19 @@ function renderNodeEditor() {
   const toolChoice = config.tool_choice ?? "auto";
   const namedToolChoice = typeof toolChoice === "object" && toolChoice !== null;
   const toolList = Array.isArray(config.tools) ? config.tools : [];
-  $("#node-editor-title").textContent = id;
+  $("#node-editor-title").textContent = entry ? "Start node" : id;
   $("#node-editor-kind-label").textContent = entry ? "Starter" : "Node";
   $("#node-editor-kind-icon").innerHTML = pipelineIcon(nodeIcon(id));
   $("#delete-node-editor").hidden = entry;
   $("#node-editor-body").innerHTML = `
+    <section class="settings-scope-note" aria-label="Node configuration scope">
+      <div>
+        <strong>Editing ${entry ? "the start node" : "this node"}</strong>
+        <p>For input language, greeting, audio, or turn detection, use Agent General Settings.
+          Node instructions and tools are edited here.</p>
+      </div>
+      <button id="node-global-settings" type="button" class="button secondary">Agent General Settings</button>
+    </section>
     ${state.debugMode ? `<section class="pipeline-overview" aria-label="Pipeline metrics">
       <div class="overview-metric">
         <div class="overview-label">${pipelineIcon("coin")}<span>Cost</span></div>
@@ -3607,22 +3793,13 @@ function renderNodeEditor() {
       </details>
     </section>`;
   const nodeEditorBody = $("#node-editor-body");
+  bindAgentRuntimeSettings(nodeEditorBody);
+  $("#node-global-settings").addEventListener("click", () => openGlobalSettings());
   $(".node-editor-form", nodeEditorBody).before($(".tool-config-section", nodeEditorBody));
   $$("[data-node-editor-field]", nodeEditorBody).forEach((field) => {
     field.addEventListener("change", () => {
       applyNodeFieldChange(field.dataset.nodeEditorField, field.value);
       renderNodeEditor();
-    });
-    $$("[data-runtime-path]", nodeEditorBody).forEach((field) => {
-      field.addEventListener("change", () => {
-        applyRuntimeFieldChange(
-          field.dataset.runtimeScope,
-          field.dataset.runtimePath,
-          field.value,
-          field.dataset.runtimeType,
-        );
-        renderNodeEditor();
-      });
     });
   });
   $$("[data-component-card]", nodeEditorBody).forEach((card) => {
@@ -3911,7 +4088,8 @@ function renderHeader() {
     : "Try it now";
   $("#create-blank-action").disabled = state.publishing || Boolean(state.templateLoadingId);
   $("#template-action").disabled = state.publishing || Boolean(state.templateLoadingId);
-  $("#export-action").disabled = !state.definition;
+  $("#view-agent-yaml").disabled = !state.definition;
+  $("#global-settings-action").disabled = !state.definition || state.publishing;
   $("#add-node").disabled = !state.definition;
   $("#add-node-canvas").disabled = !state.definition;
   $("#add-edge").disabled = !state.definition;
@@ -3954,12 +4132,22 @@ function render() {
 
 function openDefinition() {
   if (!state.definition) return;
+  state.definitionReturnFocus = document.activeElement;
   $("#definition-drawer").hidden = false;
   renderDefinition();
+  $("#close-definition").focus();
+}
+
+function openAgentYaml() {
+  state.format = "yaml";
+  openDefinition();
 }
 
 function closeDefinition() {
+  if ($("#definition-drawer").hidden) return;
   $("#definition-drawer").hidden = true;
+  if (state.definitionReturnFocus?.isConnected) state.definitionReturnFocus.focus();
+  state.definitionReturnFocus = null;
 }
 
 async function copyDefinition() {
@@ -4494,7 +4682,8 @@ function bindEvents() {
     autoLayout({ announce: true });
     renderGraph();
   });
-  $("#export-action").addEventListener("click", openDefinition);
+  $("#global-settings-action").addEventListener("click", () => openGlobalSettings());
+  $$("[data-agent-yaml]").forEach((button) => button.addEventListener("click", openAgentYaml));
   $("#close-definition").addEventListener("click", closeDefinition);
   $("#copy-definition").addEventListener("click", copyDefinition);
   $("#download-definition").addEventListener("click", downloadDefinition);
@@ -4618,6 +4807,10 @@ function bindEvents() {
       }
       if (!$("#tool-connections").hidden) {
         closeToolConnections();
+        return;
+      }
+      if (!$("#definition-drawer").hidden) {
+        closeDefinition();
         return;
       }
       if (!$("#node-component-panel").hidden) {

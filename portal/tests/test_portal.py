@@ -37,6 +37,17 @@ DEFINITION = {
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_voice_overrides_preserve_voice_types_without_model_rules(self):
+        for voice, voice_type in (
+            ("alloy", "openai"),
+            ("emma", "azure-realtime-native"),
+            ("ava", "azure-realtime-native"),
+            ("en-US-Emma:DragonHDOmniLatestNeural", "azure-standard"),
+        ):
+            with self.subTest(voice=voice):
+                output = json.loads(server._voice_override_header(voice))["audio"]["output"]
+                self.assertEqual({"voice": voice, "voice_type": voice_type}, output)
+
     def test_endpoint_validation(self):
         self.assertEqual(common.validate_project_endpoint(ENDPOINT + "/"), ENDPOINT)
         for value in (
@@ -266,6 +277,24 @@ class LiveProxyTests(unittest.IsolatedAsyncioTestCase):
         self.client = TestClient(TestServer(self.app, host="127.0.0.1"))
         await self.client.start_server()
         self.addAsyncCleanup(self.client.close)
+
+    async def test_live_voice_catalog_is_cached_per_selected_project(self):
+        catalog = {"voices": [{"id": "hi-IN-SwaraNeural", "locale": "hi-IN"}]}
+        with patch.object(server, "load_voice_catalog", return_value=catalog) as load:
+            for _ in range(2):
+                response = await self.client.get("/api/voices")
+                self.assertEqual(200, response.status)
+                self.assertEqual(catalog, await response.json())
+        load.assert_called_once_with(self.cfg)
+
+    async def test_live_voice_catalog_errors_are_visible_not_a_small_list_fallback(self):
+        with patch.object(server, "load_voice_catalog", side_effect=server.requests.HTTPError("HTTP 403")):
+            response = await self.client.get("/api/voices")
+        self.assertEqual(502, response.status)
+        body = await response.json()
+        self.assertEqual("voice_catalog_unavailable", body["code"])
+        self.assertIn("Cannot load the voice catalog", body["error"])
+        self.assertNotIn("voices", body)
 
     async def test_pages_and_configuration_require_the_configured_project(self):
         for path in (

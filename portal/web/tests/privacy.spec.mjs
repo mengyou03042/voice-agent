@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft. All rights reserved.
 // All service, socket, and WebRTC boundaries below are synthetic/local only.
 import { test, expect } from "@playwright/test";
-import { CONFIG, mockWebRtcPeer, mountStudio, resource, selectSessionAgent } from "./studio-fixtures.mjs";
+import { CONFIG, mockWebRtcPeer, mountStudio, resource, selectSessionAgent, voiceCatalogFixture } from "./studio-fixtures.mjs";
 
 async function generate(page, { store = false, draft = false } = {}) {
   const api = await mountStudio(page, { defaultStore: false });
@@ -76,6 +76,7 @@ async function reviewFixture(page, { capturedId = null, failList = false } = {})
       status, contentType: "application/json", body: JSON.stringify(data),
     });
     if (url.pathname === "/config") return json({ ...CONFIG, defaultStore: false });
+    if (url.pathname === "/api/voices") return json(voiceCatalogFixture());
     if (url.pathname === "/agents") return json({ data: [resource(agentName, {
       kind: "voice", model: "gpt-realtime", store: true,
       audio: { output: { voice: "en-US-AvaNeural", voice_type: "azure-standard" } },

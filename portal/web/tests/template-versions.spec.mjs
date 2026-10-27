@@ -21,6 +21,9 @@ async function installVersions(page) {
   ];
   catalog.templates.find((item) => item.id === templateId).versions = versions;
   await page.route("**/api/templates", (route) => route.fulfill({ json: catalog }));
+  await page.route(`**/api/templates/${templateId}/mcp/probe?*`, (route) => route.fulfill({
+    json: { ok: true, tools: ["mock_tool_call"] },
+  }));
   await page.route(`**/api/templates/${templateId}?*`, async (route) => {
     const selected = new URL(route.request().url()).searchParams.get("version") || ".";
     const result = structuredClone(detail);
@@ -53,14 +56,14 @@ for (const width of [1440, 390]) {
     await page.locator(`[data-template-id="${templateId}"]`).click();
     await loaded;
     await expect(page.locator("#template-picker")).toBeHidden();
-    await page.locator("#export-action").click();
+    await page.locator("#view-agent-yaml").click();
     await expect(page.locator("#definition-output")).toContainText(instructions);
     await page.getByRole("button", { name: "Close definition drawer", exact: true }).click();
     await page.getByRole("button", { name: "Load from templates", exact: true }).click();
     await expect(select).toHaveValue(version);
     await select.selectOption(".");
     await page.locator(`[data-template-id="${templateId}"]`).click();
-    await page.locator("#export-action").click();
+    await page.locator("#view-agent-yaml").click();
     await expect(page.locator("#definition-output")).not.toContainText(instructions);
     expect(errors).toEqual([]);
   });
@@ -139,13 +142,12 @@ test("Template versions match the real catalog and load discovered sample files"
   }
   await page.locator(`[data-template-id="${template.id}"]`).click();
   await expect(page.locator("#template-picker")).toBeHidden();
-  await page.locator("#export-action").click();
+  await page.locator("#view-agent-yaml").click();
   await page.getByRole("tab", { name: "JSON", exact: true }).click();
   const exported = JSON.parse(await page.locator("#definition-output").innerText());
   expect(exported.instructions).toBe(detail.definition.instructions);
-  expect(exported.model).toBe(
-    template.id === "finance-example-cascade-luna" ? "gpt-5.6-luna" : "gpt-realtime",
-  );
-  expect(exported.audio.input.turn_detection.silence_duration_ms).toBe(400);
+  expect(exported.model).toBe(detail.definition.model);
+  expect(exported.audio.input.turn_detection).toEqual(detail.definition.audio.input.turn_detection);
+  expect(exported.handoff).toEqual(detail.definition.handoff);
   expect(errors).toEqual([]);
 });

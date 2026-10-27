@@ -12,6 +12,8 @@ STATIC_DIR = Path(__file__).resolve().parent / "static" / "handoff"
 HANDOFF_ASSETS = frozenset({
     "handoff-app.js",
     "handoff-core.mjs",
+    "voice-picker.mjs",
+    "transcription-languages.mjs",
     "handoff.css",
     # Optional: written by tools/probe_pipeline_availability.py.
     "pipeline-availability.json",

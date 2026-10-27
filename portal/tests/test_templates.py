@@ -93,6 +93,51 @@ MOCK_TOOL_PREFIX = "mock_tool_call_"
 
 
 class TemplateCatalogTests(unittest.TestCase):
+    def test_materialization_uses_automatic_input_without_mutating_the_template(self) -> None:
+        document = {
+            "definition": {
+                "kind": "voice",
+                "audio": {"input": {"transcription": {
+                    "model": "azure-speech", "language": "en-IN,hi-IN", "prompt": "Contoso",
+                }}},
+            },
+        }
+        original = copy.deepcopy(document)
+        definition = materialize_template(
+            document, model="", voice="", mcp_server_url="", mcp_connection_id="",
+        )
+        self.assertEqual(
+            {"model": "azure-speech", "prompt": "Contoso"},
+            definition["audio"]["input"]["transcription"],
+        )
+        self.assertEqual(original, document)
+
+    def test_thirty_mock_tool_templates_split_english_omni_voices_evenly(self) -> None:
+        catalog = TemplateCatalog()
+        voices = [
+            "en-US-Emma:DragonHDOmniLatestNeural",
+            "en-US-Brian:DragonHDOmniLatestNeural",
+        ]
+        counts = dict.fromkeys(voices, 0)
+        self.assertEqual(30, len(MOCK_TOOL_TEMPLATES))
+        for index, (template_id, *_rest) in enumerate(MOCK_TOOL_TEMPLATES):
+            with self.subTest(template_id=template_id):
+                document = catalog.document(template_id)
+                self.assertIsNotNone(document)
+                output = document["definition"]["audio"]["output"]
+                expected = {"type": "azure-standard", "name": voices[index % 2]}
+                self.assertEqual(expected, output["voice"])
+                definition = materialize_template(
+                    document, model="", voice="",
+                    mcp_server_url=MCP_BASE_URL + MCP_ROUTES[template_id],
+                    mcp_connection_id="", mcp_public=True,
+                )
+                self.assertEqual(expected, definition["audio"]["output"]["voice"])
+                for node in definition["handoff"]["nodes"]:
+                    self.assertEqual(expected, node["config"].get("voice", expected))
+                counts[expected["name"]] += 1
+        self.assertEqual(dict.fromkeys(voices, 15), counts)
+
     def test_tuned_handoff_examples_preserve_normal_400ms_vad(self) -> None:
         catalog = TemplateCatalog()
         expected = {

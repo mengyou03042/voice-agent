@@ -40,7 +40,10 @@ class HandoffPortalRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('href="/templates/"', markup)
         self.assertNotIn(">Dashboard<", markup)
 
-        for asset in ("handoff-app.js", "handoff-core.mjs", "handoff.css"):
+        for asset in (
+            "handoff-app.js", "handoff-core.mjs", "voice-picker.mjs",
+            "transcription-languages.mjs", "handoff.css",
+        ):
             with self.subTest(asset=asset):
                 response = await self.client.get(f"/static/handoff/{asset}")
                 self.assertEqual(200, response.status)

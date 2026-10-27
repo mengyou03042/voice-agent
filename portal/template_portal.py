@@ -576,6 +576,9 @@ def materialize_template(
     mcp_public: bool = False,
 ) -> dict[str, Any]:
     definition = copy.deepcopy(document["definition"])
+    transcription = definition.get("audio", {}).get("input", {}).get("transcription")
+    if isinstance(transcription, dict):
+        transcription.pop("language", None)
     if model.strip():
         definition["model"] = model.strip()
     if voice.strip():
@@ -1414,6 +1417,9 @@ async def get_template(request: web.Request) -> web.Response:
                 if item["label"] == "Model":
                     item["value"] = model_override
     definition = copy.deepcopy(document["definition"])
+    transcription = definition.get("audio", {}).get("input", {}).get("transcription")
+    if isinstance(transcription, dict):
+        transcription.pop("language", None)
     if model_override and not source.lock_runtime:
         definition["model"] = model_override
     for tool in iter_mcp_tools(definition):

@@ -42,7 +42,7 @@
         },
         "voice": {
           "type": "azure-standard",
-          "name": "en-US-Ava:DragonHDLatestNeural"
+          "name": "en-US-Brian:DragonHDOmniLatestNeural"
         }
       }
     },

@@ -219,7 +219,7 @@ test("default editor creates the same managed agent and selects it in the playgr
   expect(api.errors).toEqual([]);
 });
 
-test("speech input and output controls expose incompatible choices without allowing them", async ({ page }) => {
+test("speech input enforces model compatibility without restricting voice selection", async ({ page }) => {
   const api = await mountStudio(page);
   await selectTab(page, "Voice");
   const stt = page.getByLabel("Transcription model");
@@ -227,13 +227,15 @@ test("speech input and output controls expose incompatible choices without allow
   await expect(stt).toHaveValue("azure-speech");
   await expect(stt.locator("option[value=whisper-1]")).toBeEnabled();
   await expect(voice.locator("option[value=alloy]")).toBeEnabled();
+  await voice.selectOption("alloy");
   await stt.selectOption("mai-transcribe-2");
 
   await selectTab(page, "Agent");
   await page.getByLabel("Model", { exact: true }).selectOption("gpt-4.1");
   await selectTab(page, "Voice");
   await expect(stt.locator("option[value=whisper-1]")).toBeDisabled();
-  await expect(voice.locator("option[value=alloy]")).toBeDisabled();
+  await expect(voice.locator("option[value=alloy]")).toBeEnabled();
+  await expect(voice).toHaveValue("alloy");
   await expect(stt).toHaveValue("mai-transcribe-2");
 
   await page.getByRole("button", { name: "Create agent", exact: true }).click();
@@ -306,7 +308,7 @@ test("manual prompt, voice, greeting, storage and avatar options reach the reque
   await page.getByLabel("Transcription model").selectOption("whisper-1");
   await page.getByRole("checkbox", { name: /^Video avatar/ }).check();
   await expect(page.getByRole("checkbox", { name: /^Live-reference/ })).not.toBeChecked();
-  await expect(page.getByLabel("Output voice").locator("option[value=alloy]")).toBeDisabled();
+  await expect(page.getByLabel("Output voice").locator("option[value=alloy]")).toBeEnabled();
   await page.getByRole("button", { name: "Create agent", exact: true }).click();
   await expect.poll(() => api.creates.length).toBe(1);
   expect(api.creates[0].definition).toMatchObject({
@@ -811,7 +813,7 @@ test("echo-reference modes and WebRTC restrictions remain available", async ({ p
   await selectSessionAgent(page, "cascaded-agent");
   await expect(
     page.getByLabel("Voice override", { exact: true }).locator("option[value=marin]"),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await page.getByLabel("Transport", { exact: true }).selectOption("webrtc");
   await page.getByText("Session settings", { exact: true }).click();
   await page.getByRole("button", { name: "Connect & start session" }).click();

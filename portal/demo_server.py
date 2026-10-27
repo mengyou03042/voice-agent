@@ -48,8 +48,10 @@ except ImportError:
 
 try:
     from .handoff_portal import install_handoff_routes
+    from .voice_catalog import load_voice_catalog
 except ImportError:
     from handoff_portal import install_handoff_routes
+    from voice_catalog import load_voice_catalog
 
 try:
     from .common import (
@@ -122,6 +124,7 @@ class ProjectWebSocketConnect(websockets.connect):
 
 DEFAULT_CONFIG_KEY = web.AppKey("voice_demo_default_config", AgentsConfig)
 PROJECT_CONFIGS_KEY = web.AppKey("voice_portal_project_configs", dict)
+VOICE_CATALOG_KEY = web.AppKey("voice_portal_voice_catalog", dict)
 # None disables recording; the demo still runs, it just leaves nothing behind.
 SESSION_LOG_ROOT = web.AppKey("voice_demo_session_log_root", object)
 LIVE_SOCKETS_KEY = web.AppKey("voice_portal_live_sockets", set)
@@ -198,6 +201,7 @@ _ASSET_FILENAMES = (
 _HANDOFF_ASSET_FILENAMES = (
     "handoff/handoff.html", "handoff/handoff-app.js",
     "handoff/handoff-core.mjs", "handoff/handoff.css",
+    "handoff/transcription-languages.mjs",
 )
 
 
@@ -404,6 +408,21 @@ def _mcp_auth_presets(cfg: AgentsConfig) -> list:
             "server_url": iq_url, "project_connection_id": iq_connection,
         })
     return presets
+
+
+async def voices(request: web.Request) -> web.Response:
+    cfg = await _request_config(request)
+    catalogs = request.app[VOICE_CATALOG_KEY]
+    if cfg.host not in catalogs:
+        try:
+            catalogs[cfg.host] = await asyncio.to_thread(load_voice_catalog, cfg)
+        except (requests.RequestException, ValueError, OSError) as error:
+            LOGGER.error("[voices] %s: %s", type(error).__name__, _safe_exception_text(error))
+            return _error_response(
+                request, "Cannot load the voice catalog. Check project access and retry.", status=502,
+                code="voice_catalog_unavailable",
+            )
+    return web.json_response(catalogs[cfg.host])
 
 
 async def config(request: web.Request) -> web.Response:
@@ -954,6 +973,8 @@ def build_app(args) -> web.Application:
     app.router.add_get("/api/projects", list_foundry_projects)
     app.router.add_post("/api/project", select_foundry_project)
     app.router.add_get("/config", config)
+    app[VOICE_CATALOG_KEY] = {}
+    app.router.add_get("/api/voices", voices)
     app.router.add_get("/deployments", deployments)
     app.router.add_get("/foundry-trace", foundry_trace)
     app.router.add_post("/api/mcp/probe", mcp_probe)

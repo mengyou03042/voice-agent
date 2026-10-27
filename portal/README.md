@@ -151,6 +151,61 @@ publish operations, including the template catalog consumed by Handoff Graph.
   [Front Desk sample](../samples/example4_frontdesk_with_fluency_and_handoff/README.md)
   preserves its response-first shared prompt, eight business nodes, and two-tool
   search/confirmed-message boundary.
+- Examples 5-34 are the 30 mock-tool templates. Their default English TTS voices
+  alternate by example number: odd numbers use
+  `en-US-Emma:DragonHDOmniLatestNeural`, even numbers use
+  `en-US-Brian:DragonHDOmniLatestNeural` (15 each). Examples 1-4 and historical
+  backup versions retain their authored voices.
+- Input language adapts automatically; **Edit node > Transcriber** has no language
+  selector. Editor working copies and template publication omit an authored
+  transcription language restriction without changing the source template.
+  Opening an existing Agent with an explicit restriction marks the automatic
+  working copy as changed, so **Try it now** publishes the change rather than
+  reusing the restricted version.
+- The **Voice** table groups voices by locale, with a locale filter that defaults
+  to **All locales**, not the current voice's `en-US`. AgentRuntime voice
+  selectors use the same locale groups.
+- **Voice locale** is editable: choose a suggestion or type a code or language
+  name such as `en-US`, `en us`, `Hindi`, or `hi-IN`. **Search voices** narrows
+  the results by name, full ID, or variant; for example, use locale `en-US` and
+  search `Ava`, then compare the visible full voice IDs. `Dragon HD` narrows
+  variants further. A match count, explicit empty state, and **Clear filters**
+  keep the selection predictable. Filtering never changes the selected voice,
+  opens a microphone, or publishes an Agent. Editor rows show full IDs and the
+  current selection; AgentRuntime uses the same matching rules.
+  Active voice controls use white input surfaces and distinct borders; the
+  voice panel does not include an empty advanced-controls placeholder.
+- Voice preview is not implemented as a generated speech session. The current
+  South India deployment advertises prerecorded sample URLs, but the tested
+  Ava, Diya, and Alloy URLs return HTTP 404. No nonworking playback buttons or
+  implicit paid synthesis are added.
+- `/api/voices` reads native voice names and locales from the selected account's
+  live `/voice-live/capabilities?api-version=v1`. Short native names are grouped
+  by that metadata, not guessed from their spelling. A voice with a compound
+  locale uses its first locale as the group and retains the others as metadata.
+  Only voices without a reported locale stay under **No fixed locale**.
+- Azure Speech TTS choices use the full, generated
+  [reference catalog](static/handoff/azure-voices.json), not a hand-maintained
+  shortlist. It currently contains 974 voices across 154 locales. This is a
+  reference list from its documented region, **not** a guarantee that every
+  voice is available in the selected Project's region. The picker displays this
+  distinction. Native discovery errors are shown explicitly rather than
+  silently switching back to the old shortlist. Results are cached per Project
+  for the server process lifetime; restart to refresh live metadata.
+  Refresh the reference using an authorized account in a supported Speech
+  region, without saving any key or token:
+
+  ```bash
+  .venv/bin/python voice_catalog.py \
+    --project-endpoint "https://<account>.services.ai.azure.com/api/projects/<project>" \
+    --reference-region "<account-region>"
+  ```
+- Voice choices are independent of the model in the Portal: changing models
+  preserves the selected voice, and voice options are neither disabled nor
+  hidden by model rules or the old project probe file. The actual voice type is
+  preserved on publication and session overrides. This is not a claim that every
+  service configuration works; service rejections remain explicit errors. The
+  TTS reference provenance remains separate from live Project discovery.
 - **Try it now** also works for an existing Agent loaded from the sidebar. If its
   published definition is unchanged, it opens that Agent in AgentRuntime and
   starts the voice session without publishing another version. If the existing
@@ -283,9 +338,38 @@ publish operations, including the template catalog consumed by Handoff Graph.
   audio fields, matching this repository's current REST/Projects SDK samples.
   The Voice tab keeps **Input transcription (STT)** separate from
   **Speech output (TTS / voice)**. Changing the model disables incompatible
-  transcription and voice choices instead of silently publishing an invalid
-  combination. Realtime models still select a transcription model for
-  transcript events even though the model itself consumes audio directly.
+  transcription choices but preserves the selected output voice.
+  **Input language** defaults to **Auto**. Auto detects the input language;
+  selecting the expected language can improve recognition accuracy. The Editor
+  and AgentRuntime creation form accept text input with suggestions: type a
+  language name such as `Hindi`, a locale such as `hi-IN` or `hi in`, or `Auto`.
+  Recognized text is normalized to the selected model's language code before
+  publication; unrecognized or ambiguous text is an error, not an Auto fallback.
+  In the Editor, the input is located in the canvas's
+  **Agent General Settings > Speech input**. Individual nodes do not have a language input;
+  their Transcriber panels link to that global setting. Both STT and input
+  language apply to every graph node. The forms use the
+  [Voice Live multilingual input list](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live-language-support):
+  the dropdown contains **Auto plus exactly 15 locales**, including `hi-IN`.
+  Click the arrow to open the list, or type a language name or locale to filter
+  it. The same 15 locales are shown for every transcription model; the request
+  uses a full locale for Azure Speech and a language code where the STT model
+  requires it. Selecting a language sends `audio.input.transcription.language`
+  in the real version-create request; Auto omits that field. Loading an Agent
+  preserves existing languages, including ordered Azure Speech candidate lists.
+  Incompatible language/model combinations are shown as errors, not silently
+  reset to Auto. These are documented catalogs, not a per-region audio test.
+  The canvas **Agent General Settings** section contains session behavior,
+  greeting, audio transport, and turn-taking. The canvas **YAML** button shows the complete definition: shared settings are
+  on its root, while node overrides live under `handoff.nodes[].config`.
+  Voice choices
+  are grouped by locale without model-based disabling. Realtime models still
+  select a transcription model for transcript events even though the model
+  itself consumes audio directly.
+  Voice selection opens above the Agent settings, including the input-language
+  picker. At narrow or zoomed viewports it uses the full editor overlay rather
+  than the space between the node header and footer. Voice locale/search filters
+  stay visible while the voice table scrolls independently.
   The Playground keeps search, Agent metadata, session settings, and connection
   actions in compact rows so the transcript retains most of the runtime page.
 - Agent links select an agent but never start a session automatically.
@@ -326,6 +410,26 @@ helper uses Google's public STUN server
 (`stun:stun.l.google.com:19302`) for network discovery; ensure that dependency is
 appropriate for your environment. Avatar ICE settings still come from the
 configured service. Use fictitious identity/contact details in the digit demo.
+
+In the Editor's **Transcriber** panel, the right-side explanation lists any
+realtime models in the graph and explains why STT choices depend on every node's
+model and project availability. **Review this node's model** opens the current
+node's Model panel without changing the definition. On narrow screens the
+explanation appears above the choices. Changing a model does not guarantee that
+another STT is available in the configured project or region.
+
+The canvas **YAML** button opens the entire local Agent
+definition, including shared settings, every node, and every edge. It always opens
+in YAML, supports JSON, copy, and download, and does not publish or modify the
+working copy. The same view is available while editing a node or Agent General
+Settings. There is no separate Export button.
+
+Use the canvas **Agent General Settings** button for input language, shared STT,
+greeting, conversation storage, audio transport, and turn detection. You do not
+need to find `$entrypoint` first. **Save Agent General Settings** saves these changes to
+the local working copy; **Back to graph** or Escape discards the editor's unsaved
+changes. Node prompts and tools remain separate, and the existing start-node
+settings remain available. No changes reach Foundry until **Try it now** publishes.
 
 ### Optional configuration
 

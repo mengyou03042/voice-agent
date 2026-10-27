@@ -44,6 +44,20 @@ export const CONFIG = {
   ],
 };
 
+export function voiceCatalogFixture(config = CONFIG) {
+  return {
+    voices: [
+      ...config.azureVoices.map((id) => ({
+        id, label: id, type: "azure-standard", locale: id.split("-").slice(0, 2).join("-"),
+      })),
+      ...config.openaiVoices.map((id) => ({
+        id, label: id, type: "openai", locale: "",
+      })),
+    ],
+    notice: "Synthetic voice catalog for browser regression tests.",
+  };
+}
+
 export function resource(name, definition, extra = {}) {
   return {
     name,
@@ -154,6 +168,9 @@ export async function mountStudio(page, configPatch = {}, path = "/demo/", optio
         }, 500);
       }
       return json({ ...CONFIG, ...configPatch });
+    }
+    if (url.pathname === "/api/voices") {
+      return json(voiceCatalogFixture({ ...CONFIG, ...configPatch }));
     }
     if (url.pathname === "/api/projects") return json({
       current_endpoint: CONFIG.host,

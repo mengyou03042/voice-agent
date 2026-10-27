@@ -1,3 +1,5 @@
+import { transcriptionLanguageError } from "./transcription-languages.mjs?v=20261027-15-language-picker";
+
 export const ENTRYPOINT_ID = "$entrypoint";
 
 export const MODEL_ESTIMATE_CATALOG = Object.freeze({
@@ -320,6 +322,13 @@ const AZURE_REALTIME_VOICES = Object.freeze(
     })),
 );
 const AZURE_STANDARD_VOICES = Object.freeze([
+  ...["Emma", "Brian"].map((name) => ({
+    id: `en-US-${name}:DragonHDOmniLatestNeural`,
+    label: `${name} · Azure Dragon HD Omni`,
+    type: "azure-standard",
+    latencyMs: null,
+    latencySource: "No latency reference for this voice",
+  })),
   {
     id: "en-US-Ava:DragonHDLatestNeural",
     label: "Ava · Azure Dragon HD",
@@ -327,6 +336,16 @@ const AZURE_STANDARD_VOICES = Object.freeze([
     latencyMs: 307,
     latencySource: "Voice Live first-text-to-first-audio observation; public Dragon HD proxy is ~356 ms",
   },
+  ...[
+    "en-US-AvaNeural", "en-US-AndrewNeural", "en-US-EmmaNeural", "en-US-BrianNeural",
+    "en-US-JennyNeural", "en-US-GuyNeural", "en-US-AvaMultilingualNeural", "zh-CN-XiaoxiaoNeural",
+  ].map((id) => ({
+    id,
+    label: `${id} · Azure Speech`,
+    type: "azure-standard",
+    latencyMs: null,
+    latencySource: "No latency reference for this voice",
+  })),
   {
     id: "en-IN-Diya:DragonHDLatestNeural",
     label: "Diya · Azure Dragon HD",
@@ -335,6 +354,7 @@ const AZURE_STANDARD_VOICES = Object.freeze([
     latencySource: "Voice Live first-text-to-first-audio observation; public Dragon HD proxy is ~356 ms",
   },
 ]);
+const VOICES = Object.freeze([...OPENAI_VOICES, ...AZURE_REALTIME_VOICES, ...AZURE_STANDARD_VOICES]);
 
 function normalizePipelineModelId(model) {
   if (model === "gpt-realtime-2025-08-28") return "gpt-realtime";
@@ -356,11 +376,8 @@ function supportedTranscriberIds(model) {
     : CASCADED_TRANSCRIBER_IDS;
 }
 
-function supportedVoiceTypes(model) {
-  if (model.id === "azure-realtime") return ["azure-realtime-native"];
-  return model.architecture === "realtime"
-    ? ["openai", "azure-standard", "azure-custom", "azure-personal"]
-    : ["azure-standard", "azure-custom", "azure-personal"];
+function supportedVoiceTypes() {
+  return ["openai", "azure-realtime-native", "azure-standard", "azure-custom", "azure-personal"];
 }
 
 function defaultStt(model) {
@@ -375,17 +392,11 @@ function defaultVoice(model) {
     : "en-US-Ava:DragonHDLatestNeural";
 }
 
-function compatibleVoices(model) {
-  const allowedTypes = new Set(supportedVoiceTypes(model));
-  return [...OPENAI_VOICES, ...AZURE_REALTIME_VOICES, ...AZURE_STANDARD_VOICES]
-    .filter((voice) => allowedTypes.has(voice.type));
-}
-
-function configuredPipelineVoice(model, id, voiceType) {
-  const known = compatibleVoices(model).find((voice) => voice.id === id);
+function configuredPipelineVoice(id, voiceType) {
+  const known = VOICES.find((voice) => voice.id === id);
   if (known && (!voiceType || known.type === voiceType)) return known;
   const type = voiceType || (/^[a-z]{2,3}-[A-Z]{2}-.+Neural$/.test(id) ? "azure-standard" : "");
-  if (!id || !supportedVoiceTypes(model).includes(type)) return null;
+  if (!id || !supportedVoiceTypes().includes(type)) return null;
   return {
     id,
     label: id,
@@ -482,7 +493,7 @@ function estimatedHandoffLatency(model) {
 
 function buildPipeline({ model, stt, voice, voiceType = "", customSpeech = false }) {
   const transcription = TRANSCRIBERS.find((item) => item.id === stt);
-  const selectedVoice = configuredPipelineVoice(model, voice, voiceType);
+  const selectedVoice = configuredPipelineVoice(voice, voiceType);
   if (
     !transcription
     || !supportedTranscriberIds(model).includes(transcription.id)
@@ -590,8 +601,33 @@ export const PIPELINE_PRESETS = Object.freeze(PRESET_DEFINITIONS.map((preset) =>
 export const PIPELINE_COMPONENTS = Object.freeze({
   stt: TRANSCRIBERS,
   model: PIPELINE_MODELS,
-  voice: Object.freeze([...OPENAI_VOICES, ...AZURE_REALTIME_VOICES, ...AZURE_STANDARD_VOICES]),
+  voice: VOICES,
 });
+
+export function voiceLocale(voice) {
+  if (typeof voice === "object" && voice.locale) return voice.locale;
+  const id = typeof voice === "string" ? voice : voice.id || voice.value || "";
+  return id.match(/^([a-z]{2,3}-(?:[A-Z][a-z]{3}-)?(?:[A-Z]{2}|\d{3}))-/)?.[1] || "";
+}
+
+export function groupVoicesByLocale(voices) {
+  const groups = new Map();
+  const names = new Intl.DisplayNames(["en"], { type: "language" });
+  for (const voice of voices) {
+    const locale = voiceLocale(voice);
+    if (!groups.has(locale)) {
+      groups.set(locale, {
+        locale,
+        label: locale ? `${locale} · ${voice.localeName || names.of(locale)}` : "No fixed locale",
+        items: [],
+      });
+    }
+    groups.get(locale).items.push(voice);
+  }
+  return [...groups.values()].sort((left, right) => (
+    left.locale && right.locale ? left.locale.localeCompare(right.locale) : left.locale ? -1 : right.locale ? 1 : 0
+  ));
+}
 
 export function estimatePipelineComponent(kind, id) {
   const known = PIPELINE_COMPONENTS[kind].find((component) => component.id === id);
@@ -647,6 +683,7 @@ export function estimatePipeline({
 
 export function pipelineComponentOptions(kind, selection = {}) {
   const currentModel = modelDefinition(normalizePipelineModelId(selection.model));
+  const voices = selection.voices || PIPELINE_COMPONENTS.voice;
   if (kind === "model") {
     return PIPELINE_MODELS.map((model) => {
       const pipeline = buildPipeline({
@@ -657,7 +694,11 @@ export function pipelineComponentOptions(kind, selection = {}) {
       return pipeline.model;
     });
   }
-  if (!currentModel) return [];
+  if (!currentModel) return kind === "voice"
+    ? voices.map((voice) => ({
+      ...estimatePipelineComponent("voice", voice.id), ...voice, compatible: true, incompatibility: "",
+    }))
+    : [];
   if (kind === "stt") {
     const selectedModels = (selection.models?.length ? selection.models : [selection.model])
       .map((model) => modelDefinition(normalizePipelineModelId(model)))
@@ -672,7 +713,7 @@ export function pipelineComponentOptions(kind, selection = {}) {
           model: currentModel,
           stt: transcriber.id,
           customSpeech: selection.customSpeech,
-          voice: compatibleVoices(currentModel).some((item) => item.id === selection.voice)
+          voice: PIPELINE_COMPONENTS.voice.some((item) => item.id === selection.voice)
             ? selection.voice
             : defaultVoice(currentModel),
         });
@@ -687,25 +728,20 @@ export function pipelineComponentOptions(kind, selection = {}) {
       };
     });
   }
-  const compatibleIds = new Set(compatibleVoices(currentModel).map((voice) => voice.id));
-  return PIPELINE_COMPONENTS.voice.map((candidateVoice) => {
-    const compatible = compatibleIds.has(candidateVoice.id);
-    const pipeline = compatible
-      ? buildPipeline({
+  return voices.map((candidateVoice) => {
+    const pipeline = buildPipeline({
         model: currentModel,
         stt: supportedTranscriberIds(currentModel).includes(selection.stt)
           ? selection.stt
           : defaultStt(currentModel),
         voice: candidateVoice.id,
-      })
-      : null;
+        voiceType: candidateVoice.type,
+      });
     return {
       ...(pipeline?.voice || estimatePipelineComponent("voice", candidateVoice.id)),
       ...candidateVoice,
-      compatible,
-      incompatibility: compatible
-        ? ""
-        : `${currentModel.label} does not support ${candidateVoice.type} voices.`,
+      compatible: true,
+      incompatibility: "",
     };
   });
 }
@@ -789,18 +825,14 @@ export function pipelineCompatibility({
       architecture: "unknown",
     };
   }
-  const selectedVoice = PIPELINE_COMPONENTS.voice.find((item) => item.id === voice);
-  const resolvedVoiceType = voiceType
-    || selectedVoice?.type
-    || (String(voice).includes("-") ? "azure-standard" : "");
   return {
     knownModel: true,
     architecture: modelEntry.architecture,
     model: modelEntry,
     sttCompatible: !stt || supportedTranscriberIds(modelEntry).includes(stt),
-    voiceCompatible: !resolvedVoiceType || supportedVoiceTypes(modelEntry).includes(resolvedVoiceType),
+    voiceCompatible: true,
     supportedTranscriptionModels: [...supportedTranscriberIds(modelEntry)],
-    supportedVoiceTypes: [...supportedVoiceTypes(modelEntry)],
+    supportedVoiceTypes: supportedVoiceTypes(),
   };
 }
 
@@ -1364,6 +1396,15 @@ export function validateDefinition(definition) {
     ));
   }
   const rootStt = String(definition.audio?.input?.transcription?.model || "").trim();
+  const languageError = transcriptionLanguageError(
+    rootStt || "azure-speech", definition.audio?.input?.transcription?.language,
+  );
+  if (languageError) {
+    problems.push(problem(
+      "error", languageError, "node", ENTRYPOINT_ID,
+      "audio.input.transcription.language", "invalid_transcription_language",
+    ));
+  }
   const rootVoiceValue = definition.audio?.output?.voice;
   const configuredVoiceId = (value) => (
     typeof value === "string" ? value : String(value?.name || value?.id || "").trim()

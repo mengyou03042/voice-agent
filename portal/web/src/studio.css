@@ -403,6 +403,17 @@
 .studio p.field-hint { margin-top: 8px; }
 .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .field-grid > .form-field { margin-bottom: 16px; }
+.voice-picker { display: grid; gap: 8px; min-width: 0; }
+.voice-picker-filters { display: grid; gap: 7px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #f5f9f5; }
+.voice-picker-filters label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.voice-picker-filters input, .voice-picker > select { min-width: 0; width: 100%; }
+.studio .voice-picker :is(input, select):not(:disabled) { background: #fff; border-color: #71877c; box-shadow: 0 1px 2px #1f40380f; }
+.studio .voice-picker :is(input, select):hover:not(:disabled) { border-color: #3e6e5b; }
+.studio .voice-picker :is(input, select):focus:not(:disabled) { border-color: #08795c; }
+.studio .voice-picker input::placeholder { color: #667b70; opacity: 1; }
+.voice-picker-results { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+.studio .voice-picker-results button { padding: 4px 8px; min-height: 28px; font-size: 12px; }
+.voice-picker-current { margin: 0; overflow-wrap: anywhere; }
 .model-note { display: flex; align-items: center; gap: 8px; margin: -4px 0 22px; font-size: 14px; color: var(--muted); }
 .info-note { margin-bottom: 18px; padding: 13px 14px; border: 1px solid #dceade; border-radius: 8px; background: #f5faf4; color: #586f5c; font-size: 15px; line-height: 1.6; }
 .form-divider { height: 1px; background: var(--line); margin: 22px 0; }
@@ -814,3 +825,10 @@
 .mock-try-it ol { max-height: 220px; margin: 6px 0 0; padding-left: 20px; overflow: auto; }
 .mock-try-it li { margin: 4px 0; line-height: 1.45; }
 .mock-try-it code { padding: 0 4px; border-radius: 4px; background: #fff; font-size: 12px; }
+.input-language-combobox { position: relative; min-width: 0; }
+.input-language-combobox input { width: 100%; padding-right: 42px; }
+.input-language-toggle { position: absolute; right: 2px; top: 2px; bottom: 2px; width: 38px; border: 0; background: transparent; cursor: pointer; }
+.input-language-options { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50; max-height: 260px; overflow-y: auto; padding: 4px; background: #fff; border: 1px solid #71877c; border-radius: 8px; box-shadow: 0 8px 24px #173a2526; }
+.input-language-options[hidden] { display: none; }
+.input-language-options button { display: block; width: 100%; padding: 9px 10px; text-align: left; border: 0; border-radius: 4px; background: #fff; cursor: pointer; }
+.input-language-options button:hover, .input-language-options button[aria-selected="true"] { background: #e6f4ed; }

@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import demo_server as portal
 import template_portal
+import voice_catalog
 
 ENDPOINT = "https://sample.services.ai.azure.com/api/projects/sample-project"
 TOKEN = "integration-fixture-token"
@@ -157,6 +158,19 @@ async def create_test_app():
         patch.object(portal, "_forward_to_service", http_boundary),
         patch.object(portal, "ProjectWebSocketConnect", ws_boundary),
         patch.object(template_portal, "create_mcp_connection"),
+        patch.object(portal, "load_voice_catalog", return_value=voice_catalog.build_voice_catalog(
+            {"voices": {
+                "openai": portal.OPENAI_VOICES,
+                "azure-realtime-native": [
+                    {"name": "emma", "locale": "en-US"},
+                    {"name": "diya", "locale": "hi-IN / en-IN"},
+                    {"name": "aarti", "locale": "en-IN"},
+                    {"name": "xiaoxiao", "locale": "zh-CN"},
+                ],
+            }},
+            json.loads(voice_catalog.REFERENCE_PATH.read_text(encoding="utf-8")),
+            portal.AZURE_VOICES,
+        )),
     )
     for item in patches:
         item.start()

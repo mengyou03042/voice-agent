@@ -14,6 +14,7 @@ import {
   extractLatestAgent,
   formatPipelineCost,
   formatPipelineLatency,
+  groupVoicesByLocale,
   layoutHandoffGraph,
   mergeServiceProblems,
   matchesAgentSearch,
@@ -30,6 +31,7 @@ import {
   sortPipelineComponents,
   stableJson,
   validateDefinition,
+  voiceLocale,
 } from "../../../static/handoff/handoff-core.mjs";
 
 test("pipeline metrics show compact cents and complete latency ranges", () => {
@@ -235,8 +237,59 @@ test("keeps current Realtime versions distinct and couples compatible speech sta
       model: "azure-realtime",
       voice: "ava",
       stt: "azure-speech",
-    }).some((item) => item.id === "alloy" && !item.compatible),
+    }).some((item) => item.id === "alloy" && item.compatible),
   );
+});
+
+test("offers Azure Speech Omni voices without confusing them with Azure Realtime native voices", () => {
+  const voices = [
+    "en-US-Emma:DragonHDOmniLatestNeural",
+    "en-US-Brian:DragonHDOmniLatestNeural",
+  ];
+  for (const model of PIPELINE_COMPONENTS.model) {
+    const options = pipelineComponentOptions("voice", { model: model.id });
+    for (const id of voices) {
+      const option = options.find((item) => item.id === id);
+      assert.ok(option, `Missing ${id} for ${model.id}`);
+      assert.equal(option.type, "azure-standard");
+      assert.equal(option.compatible, true);
+      if (option.compatible) {
+        const pipeline = estimatePipeline({ model: model.id, voice: id }).pipeline;
+        assert.equal(pipeline.voice.id, id);
+        assert.ok(pipelineTotals(pipeline));
+      }
+    }
+    const native = options.find((item) => item.id === "emma");
+    assert.equal(native.compatible, true);
+    assert.equal(native.incompatibility, "");
+    assert.equal(options.length, PIPELINE_COMPONENTS.voice.length);
+  }
+  assert.equal(pipelineComponentOptions("voice", { model: "custom-deployment" }).length, PIPELINE_COMPONENTS.voice.length);
+});
+
+test("groups every voice once under its locale without guessing locales for short names", () => {
+  const groups = groupVoicesByLocale(PIPELINE_COMPONENTS.voice);
+  assert.deepEqual(groups.map((group) => group.locale), ["en-IN", "en-US", "zh-CN", ""]);
+  assert.equal(groups.flatMap((group) => group.items).length, PIPELINE_COMPONENTS.voice.length);
+  assert.equal(voiceLocale("en-US-Emma:DragonHDOmniLatestNeural"), "en-US");
+  assert.equal(voiceLocale("zh-CN-XiaoxiaoNeural"), "zh-CN");
+  assert.equal(voiceLocale("emma"), "");
+  assert.equal(voiceLocale({ id: "emma", locale: "en-US" }), "en-US");
+  assert.equal(voiceLocale({ id: "diya", locale: "hi-IN" }), "hi-IN");
+  assert.ok(groups.find((group) => group.locale === "en-US").items.some((voice) => voice.id.includes("Emma:DragonHDOmni")));
+  assert.ok(groups.at(-1).items.some((voice) => voice.id === "emma"));
+  assert.equal(groups.at(-1).label, "No fixed locale");
+});
+
+test("uses a discovered voice catalog without limiting choices to the static shortlist", () => {
+  const voices = [
+    { id: "hi-IN-SwaraNeural", type: "azure-standard", locale: "hi-IN", label: "Swara" },
+    { id: "diya", type: "azure-realtime-native", locale: "hi-IN", label: "Diya" },
+  ];
+  const options = pipelineComponentOptions("voice", { model: "gpt-realtime", voices });
+  assert.deepEqual(options.map((voice) => voice.id), voices.map((voice) => voice.id));
+  assert.ok(options.every((voice) => voice.compatible && voice.locale === "hi-IN"));
+  assert.equal(groupVoicesByLocale(options)[0].locale, "hi-IN");
 });
 
 test("offers current cascaded models and Voice Live transcription choices", () => {
@@ -377,7 +430,7 @@ test("does not assign publicly unverified models bargain rates based on their na
 test("prices every compatible catalog combination without omitting or double-counting components", () => {
   assert.equal(PIPELINE_COMPONENTS.model.length, 14);
   assert.equal(PIPELINE_COMPONENTS.stt.length, 12);
-  assert.equal(PIPELINE_COMPONENTS.voice.length, 46);
+  assert.equal(PIPELINE_COMPONENTS.voice.length, 56);
   let checked = 0;
   for (const model of PIPELINE_COMPONENTS.model) {
     for (const voice of pipelineComponentOptions("voice", { model: model.id }).filter((item) => item.compatible)) {
@@ -507,7 +560,7 @@ test("limits Agent-level STT to the intersection of every graph model", () => {
   );
 });
 
-test("reports imported model, STT, and voice combinations that capabilities reject", () => {
+test("reports unsupported STT combinations without imposing model voice restrictions", () => {
   const definition = createSampleDefinition();
   definition.handoff.nodes[0].config.model = "gpt-5.6-luna";
   definition.handoff.nodes[0].config.voice = "alloy";
@@ -515,9 +568,7 @@ test("reports imported model, STT, and voice combinations that capabilities reje
   assert.ok(problems.some((item) => (
     item.code === "incompatible_transcription_model" && item.objectId === "support"
   )));
-  assert.ok(problems.some((item) => (
-    item.code === "incompatible_voice" && item.objectId === "support"
-  )));
+  assert.ok(!problems.some((item) => item.code === "incompatible_voice"));
 });
 
 test("matches Agent names by case-insensitive partial terms", () => {

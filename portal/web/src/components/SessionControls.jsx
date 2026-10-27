@@ -2,9 +2,9 @@
 // Settings here are per-session overrides, never edits to the stored definition.
 
 import { useEffect, useRef, useState } from "react";
-import { voiceGroups } from "../config.js";
 import { withSelectedAgent, withSessionTransport } from "../lib/agentUrl.mjs";
-import { Field, GroupedSelect, Icon } from "./ConfigControls.jsx";
+import { Field, Icon } from "./ConfigControls.jsx";
+import { VoicePicker } from "./VoicePicker.jsx";
 import { SessionAgentPicker } from "./SessionAgentPicker.jsx";
 
 export function SessionControls({
@@ -191,9 +191,9 @@ export function SessionControls({
           <div className="session-settings-body">
             <div className="field-hint">Overrides apply to this connection only. The stored agent is unchanged.</div>
             <div className="field-grid">
-              <Field label="Voice override">
-                <GroupedSelect value={voiceOverride} disabled={isConnected || !agent}
-                  placeholder="Use agent default" groups={voiceGroups(cfg, agent?.cascaded)}
+              <Field label="Voice override" hint={cfg.voiceCatalogNotice}>
+                <VoicePicker cfg={cfg} value={voiceOverride} disabled={isConnected || !agent}
+                  placeholder="Use agent default"
                   onChange={(event) => setVoiceOverride(event.target.value)} />
               </Field>
               <Field label="Conversation storage override">

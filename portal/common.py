@@ -41,6 +41,9 @@ OPENAI_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "
 AZURE_VOICES = [
     "en-US-AvaNeural",
     "en-US-Ava:DragonHDLatestNeural",
+    "en-US-Emma:DragonHDOmniLatestNeural",
+    "en-US-Brian:DragonHDOmniLatestNeural",
+    "en-IN-Diya:DragonHDLatestNeural",
     "en-US-AndrewNeural",
     "en-US-EmmaNeural",
     "en-US-BrianNeural",
@@ -89,7 +92,12 @@ def validate_project_endpoint(endpoint: str) -> str:
 
 def build_voice_config(voice: str) -> dict[str, str]:
     """Classify the voice using the upstream descriptor; writes use flat fields."""
-    return {"type": "openai" if "-" not in voice else "azure-standard", "name": voice}
+    voice_type = (
+        "openai" if voice in OPENAI_VOICES
+        else "azure-standard" if "-" in voice
+        else "azure-realtime-native"
+    )
+    return {"type": voice_type, "name": voice}
 
 
 @dataclass

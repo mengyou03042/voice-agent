@@ -488,7 +488,7 @@ export function App() {
   const onCreateAgent = async ({
     name: requestedName, model, voice, tools, subagents, inferenceMode, store, avatar,
     greeting, handoff, handoffInstructions, targetAgentName, targetAgentVersion, clientReferenceEc,
-    instructions, structuredInputs, description, namePrefix, inputTranscriptionModel,
+    instructions, structuredInputs, description, namePrefix, inputTranscriptionModel, inputTranscriptionLanguage,
   }) => {
     // Build the REAL service create request: name (client-generated) + full AgentDefinition body,
     // the api-version query, and Foundry-Features + Content-Type headers — matching the service
@@ -513,6 +513,7 @@ export function App() {
       instructions, structuredInputs, description,
       greeting: buildGreetingConfig(greeting),
       inputTranscriptionModel,
+      inputTranscriptionLanguage,
     });
     const { path, body: requestBody } = buildVersionCreateRequest(cfg, body);
     session.logApi("POST", path);
