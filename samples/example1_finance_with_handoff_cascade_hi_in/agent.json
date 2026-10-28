@@ -43,7 +43,7 @@
         },
         "voice": {
           "type": "azure-standard",
-          "name": "hi-IN-SwaraNeural"
+          "name": "hi-IN-Diya:DragonLatestNeural"
         }
       }
     },

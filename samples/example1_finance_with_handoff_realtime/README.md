@@ -5,7 +5,10 @@
 This sample owns the Realtime Finance template: an outbound personal-loan call
 that verifies the customer, negotiates an indicative offer, discloses charges,
 captures credit-bureau consent and books a loan-officer appointment. Its root
-[`agent.json`](agent.json) uses `gpt-realtime`, `whisper-1` transcription and `en-IN-Diya:DragonHDLatestNeural`, with 400 ms Semantic VAD.
+[`agent.json`](agent.json) uses `gpt-realtime-regional`, `azure-speech` input
+transcription and `en-IN-Diya:DragonHDLatestNeural`, with 400 ms Semantic VAD.
+The model still receives audio directly in the Realtime pipeline; selecting
+Azure Speech for the input transcript does not turn it into a cascaded pipeline.
 
 The [Cascade sample](../example1_finance_with_handoff_cascade/README.md)
 has its own directory and version history. Portal template IDs and Agent names

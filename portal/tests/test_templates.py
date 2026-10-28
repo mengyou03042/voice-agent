@@ -9,10 +9,12 @@ import json
 from dataclasses import replace
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from aiohttp.test_utils import TestClient, TestServer
+from azure.core.exceptions import HttpResponseError
 
 import demo_server
 import template_portal
@@ -135,6 +137,34 @@ class TemplateCatalogTests(unittest.TestCase):
             definition["audio"]["input"]["transcription"],
         )
         self.assertEqual(original, document)
+
+    def test_finance_templates_use_azure_speech_and_preserve_input_configuration(self) -> None:
+        catalog = TemplateCatalog()
+        template_ids = [
+            "finance-example-realtime",
+            "finance-example-cascade-luna",
+            *HINDI_TEMPLATE_IDS,
+            "finance-with-otp-and-officer-search",
+        ]
+        for template_id in template_ids:
+            with self.subTest(template_id=template_id):
+                document = catalog.document(template_id)
+                self.assertIsNotNone(document)
+                original = copy.deepcopy(document)
+                audio_input = document["definition"]["audio"]["input"]
+                self.assertEqual("azure-speech", audio_input["transcription"]["model"])
+                self.assertEqual(
+                    "hi-IN" if template_id in HINDI_TEMPLATE_IDS else None,
+                    audio_input["transcription"].get("language"),
+                )
+                definition = materialize_template(
+                    document, model="", voice="",
+                    mcp_server_url=MCP_BASE_URL + MCP_ROUTES[template_id],
+                    mcp_connection_id="", mcp_public=True,
+                )
+                self.assertEqual(audio_input, definition["audio"]["input"])
+                self.assertEqual(document["definition"]["model"], definition["model"])
+                self.assertEqual(original, document)
 
     def test_thirty_mock_tool_templates_split_english_omni_voices_evenly(self) -> None:
         catalog = TemplateCatalog()
@@ -656,7 +686,7 @@ class TemplateCatalogTests(unittest.TestCase):
         self.assertIn("VoiceAgent/portal/templates.config.json", html)
         self.assertIn('id="mcp-token"', html)
         self.assertIn('type="password"', html)
-        self.assertIn(">AgentRuntime</a>", html)
+        self.assertIn(">Runtime</a>", html)
         self.assertNotIn('href="/templates/"', html)
         self.assertNotIn('classList.toggle("embedded"', app_js)
         self.assertNotIn(".embedded .local-template-header", styles)
@@ -678,6 +708,82 @@ class TemplateCatalogTests(unittest.TestCase):
         )
 
 
+class TemplatePublicationTests(unittest.TestCase):
+    def setUp(self):
+        self.definition = {
+            "kind": "voice", "model_type": "managed", "model": "gpt-realtime-regional",
+        }
+        self.error = HttpResponseError(
+            message="Model 'gpt-realtime-regional' is not supported in managed mode in this region.",
+            response=Mock(status_code=400, reason="Bad Request", headers={}),
+        )
+        self.client = Mock()
+        self.client.agents.create_version.return_value = SimpleNamespace(version="1")
+        self.client.agents.get_version.return_value = SimpleNamespace(definition=self.definition)
+        client_patch = patch("template_portal.AIProjectClient")
+        self.addCleanup(client_patch.stop)
+        client_patch.start().return_value.__enter__.return_value = self.client
+        self.cfg = Mock()
+
+    def publish(self):
+        return template_portal.publish_agent(
+            self.cfg, name="test", description="Keep description",
+            definition=self.definition, metadata={"source_template_id": "test"},
+        )
+
+    def test_regional_template_publication_retries_only_the_failed_create(self):
+        self.client.agents.create_version.side_effect = [
+            self.error, SimpleNamespace(version="1"),
+        ]
+        expected = {**self.definition, "model": "gpt-realtime"}
+        self.client.agents.get_version.return_value = SimpleNamespace(definition=expected)
+        with self.assertLogs("voice_agent_portal", level="WARNING"):
+            result = self.publish()
+        calls = self.client.agents.create_version.call_args_list
+        self.assertEqual(2, len(calls))
+        self.assertEqual(self.definition, calls[0].args[1]["definition"])
+        self.assertEqual(expected, calls[1].args[1]["definition"])
+        self.assertEqual(
+            {**calls[0].args[1], "definition": expected}, calls[1].args[1],
+        )
+        self.assertEqual("gpt-realtime-regional", self.definition["model"])
+        self.assertEqual(expected, result["definition"])
+        self.client.agents.enable.assert_called_once()
+        self.client.agents.get_version.assert_called_once()
+
+    def test_regional_template_publication_success_keeps_the_original_model(self):
+        self.assertEqual(self.definition, self.publish()["definition"])
+        self.client.agents.create_version.assert_called_once()
+        self.assertEqual(
+            self.definition, self.client.agents.create_version.call_args.args[1]["definition"],
+        )
+
+    def test_regional_template_publication_returns_the_retry_error(self):
+        second_error = HttpResponseError(message="The fallback model is also unavailable.")
+        self.client.agents.create_version.side_effect = [self.error, second_error]
+        with self.assertLogs("voice_agent_portal", level="WARNING"):
+            with self.assertRaises(HttpResponseError) as caught:
+                self.publish()
+        self.assertIs(second_error, caught.exception)
+        self.assertEqual(2, self.client.agents.create_version.call_count)
+        self.client.agents.enable.assert_not_called()
+
+    def test_regional_template_publication_does_not_retry_other_failures(self):
+        for operation, error in (
+            ("create_version", HttpResponseError(message="Invalid voice configuration.")),
+            ("enable", self.error),
+            ("get_version", self.error),
+        ):
+            with self.subTest(operation=operation):
+                self.client.reset_mock(side_effect=True)
+                self.client.agents.create_version.return_value = SimpleNamespace(version="1")
+                getattr(self.client.agents, operation).side_effect = error
+                with self.assertRaises(HttpResponseError) as caught:
+                    self.publish()
+                self.assertIs(error, caught.exception)
+                self.client.agents.create_version.assert_called_once()
+
+
 class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         args = demo_server.parse_args([
@@ -694,18 +800,29 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
         await self.client.close()
 
     async def test_hindi_template_routes_preserve_the_explicit_locale(self) -> None:
+        expected_voice = {
+            "type": "azure-standard",
+            "name": "hi-IN-Diya:DragonLatestNeural",
+        }
+        voices = json.loads((ROOT / "static/handoff/azure-voices.json").read_text())["voices"]
+        self.assertTrue(any(
+            voice["id"] == expected_voice["name"] and voice["locale"] == "hi-IN"
+            for voice in voices
+        ))
         for template_id in HINDI_TEMPLATE_IDS:
             with self.subTest(template_id=template_id):
                 response = await self.client.get(f"/api/templates/{template_id}")
                 self.assertEqual(200, response.status)
-                definition = (await response.json())["definition"]
+                detail = await response.json()
+                definition = detail["definition"]
                 self.assertEqual(
                     {"model": "azure-speech", "language": "hi-IN"},
                     definition["audio"]["input"]["transcription"],
                 )
-                self.assertEqual(
-                    "hi-IN-SwaraNeural", definition["audio"]["output"]["voice"]["name"]
-                )
+                self.assertEqual(expected_voice, definition["audio"]["output"]["voice"])
+                self.assertEqual(expected_voice["name"], detail["voice"])
+                for node in definition["handoff"]["nodes"]:
+                    self.assertEqual(expected_voice, node["config"].get("voice", expected_voice))
 
     async def test_templates_page_and_catalog_routes(self) -> None:
         page = await self.client.get("/templates")

@@ -9,8 +9,9 @@ For the complete local MCP serving, publication, and UI workflow, use
 This sample publishes a customer-neutral, flat, MCP-only Finance Voice Agent
 through the `azure-ai-projects` unified Agents API and runs a text-only
 Voice WebSocket smoke test. It defaults to service-managed `gpt-realtime`,
-American English, and business tools for OTP, loan-offer discussion, explicit interest,
-loan-officer selection, callback, and call disposition.
+`azure-speech` input transcription, American English, and business tools for OTP,
+loan-offer discussion, explicit interest, loan-officer selection, callback,
+and call disposition.
 
 Because the definition has no handoff graph, publication constructs
 `VoiceAgentDefinition(mapping)` before calling

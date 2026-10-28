@@ -6,7 +6,7 @@ import { createAgentDraft, draftCreateOptions, updateAgentDraft, DEFAULT_INSTRUC
 import { buildCreateAgentBody } from "./serviceContract.js";
 import { buildGreetingConfig } from "./greeting.mjs";
 import { HANDOFF_ENTRYPOINT_INSTRUCTIONS } from "./handoff.mjs";
-import { voiceGroups } from "../config.js";
+import { transcriptionGroups, voiceGroups } from "../config.js";
 
 const cfg = {
   defaultModel: "gpt-realtime",
@@ -97,13 +97,28 @@ test("changing models with an avatar keeps an Azure voice", () => {
   assert.equal(next.voice, "en-US-AvaNeural");
 });
 
-test("changing model families keeps STT only when the next model supports it", () => {
+test("changing model families never replaces the selected STT", () => {
   const realtime = { ...createAgentDraft(cfg), transcriptionModel: "whisper-1" };
   const cascaded = updateAgentDraft(cfg, realtime, "model", "gpt-4.1");
-  assert.equal(cascaded.transcriptionModel, "azure-speech");
-  assert.equal(body(cascaded).definition.audio.input.transcription.model, "azure-speech");
+  assert.equal(cascaded.transcriptionModel, "whisper-1");
+  assert.equal(body(cascaded).definition.audio.input.transcription.model, "whisper-1");
   const restored = updateAgentDraft(cfg, cascaded, "model", "gpt-realtime");
-  assert.equal(restored.transcriptionModel, "azure-speech");
+  assert.equal(restored.transcriptionModel, "whisper-1");
+});
+
+test("runtime transcription choices ignore model-family and project subsets", () => {
+  const restricted = {
+    ...cfg, transcriptionModels: ["whisper-1"], realtimeTranscriptionModels: ["whisper-1"],
+    cascadedTranscriptionModels: ["azure-speech"],
+  };
+  const items = transcriptionGroups(restricted).flatMap((group) => group.items);
+  assert.ok(items.some((item) => item.value === "azure-speech"));
+  assert.ok(items.some((item) => item.value === "gpt-4o-transcribe"));
+  assert.ok(items.every((item) => !item.disabled && !item.label.includes("unavailable")));
+  for (const inferenceMode of ["model", "deployment", "hosted_agent"]) {
+    const draft = { ...createAgentDraft(cfg), transcriptionModel: "whisper-1" };
+    assert.equal(updateAgentDraft(cfg, draft, "inferenceMode", inferenceMode).transcriptionModel, "whisper-1");
+  }
 });
 
 test("changing model families preserves transcription and voice when both remain compatible", () => {

@@ -3,6 +3,7 @@ import { test, expect } from "@playwright/test";
 import { expandTemplateGroup } from "./template-picker-helpers.mjs";
 
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => sessionStorage.setItem("voice-agent-playground-welcome-v1", "dismissed"));
   await page.route("**/*", (route) => {
     const url = new URL(route.request().url());
     return url.hostname === "127.0.0.1" ? route.continue() : route.abort();

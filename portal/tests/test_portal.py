@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import os
 from pathlib import Path
@@ -34,6 +35,49 @@ DEFINITION = {
     "instructions": "Be concise.", "store": True,
     "audio": {"output": {"voice": "en-US-AvaNeural", "voice_type": "azure-standard"}},
 }
+REGIONAL_MODEL_ERROR = (
+    "Model 'gpt-realtime-regional' is not supported in managed mode in this region. "
+    "Choose a supported managed model or use self-deployed mode."
+)
+
+
+class RegionalModelPublishTests(unittest.TestCase):
+    def test_regional_fallback_preserves_the_original_and_other_models(self):
+        definition = {
+            **DEFINITION, "model": "gpt-realtime-regional",
+            "handoff": {"nodes": [
+                {"id": "regional", "config": {"model": "gpt-realtime-regional"}},
+                {"id": "other", "config": {"model": "gpt-4.1-mini"}},
+                {"id": "deployed", "config": {
+                    "model": "gpt-realtime-regional", "model_type": "self-deployed",
+                }},
+            ]},
+        }
+        original = copy.deepcopy(definition)
+        with self.assertLogs("voice_agent_portal", level="WARNING"):
+            result = common.regional_model_publish_fallback(definition, 400, REGIONAL_MODEL_ERROR)
+        expected = copy.deepcopy(original)
+        expected["model"] = "gpt-realtime"
+        expected["handoff"]["nodes"][0]["config"]["model"] = "gpt-realtime"
+        self.assertEqual(expected, result)
+        self.assertEqual(original, definition)
+
+    def test_regional_fallback_requires_the_matching_managed_model_error(self):
+        definition = {**DEFINITION, "model": "gpt-realtime-regional"}
+        cases = [
+            (definition, 200, REGIONAL_MODEL_ERROR),
+            (definition, 403, REGIONAL_MODEL_ERROR),
+            (definition, 429, REGIONAL_MODEL_ERROR),
+            (definition, 500, REGIONAL_MODEL_ERROR),
+            (definition, 400, "Invalid voice configuration."),
+            (definition, 400, REGIONAL_MODEL_ERROR.replace("gpt-realtime-regional", "other-regional")),
+            ({**definition, "model_type": "self-deployed"}, 400, REGIONAL_MODEL_ERROR),
+            ({**definition, "kind": "prompt"}, 400, REGIONAL_MODEL_ERROR),
+            (DEFINITION, 400, REGIONAL_MODEL_ERROR),
+        ]
+        for value, status, message in cases:
+            with self.subTest(value=value, status=status, message=message):
+                self.assertIsNone(common.regional_model_publish_fallback(value, status, message))
 
 
 class ConfigurationTests(unittest.TestCase):
@@ -220,6 +264,7 @@ class ConfigurationTests(unittest.TestCase):
 class LiveProxyTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.calls = []
+        self.http_responses = []
         self.socket_requests = []
         self.redirect_targets = []
 
@@ -232,6 +277,11 @@ class LiveProxyTests(unittest.IsolatedAsyncioTestCase):
                 raise web.HTTPFound(location="https://elsewhere.example/")
             if request.path.endswith("/audio/content"):
                 return web.Response(body=b"RIFF-local-test-WAVE", content_type="audio/wav")
+            if self.http_responses:
+                status, payload = self.http_responses.pop(0)
+                return web.json_response(payload, status=status, headers={
+                    "x-ms-request-id": f"publish-attempt-{len(self.calls)}",
+                })
             return web.json_response({"data": [], "has_more": False}, headers={
                 "Set-Cookie": "do-not-forward=secret",
                 "Access-Control-Allow-Origin": "*",
@@ -365,7 +415,9 @@ class LiveProxyTests(unittest.IsolatedAsyncioTestCase):
     async def test_pages_and_configuration_require_the_configured_project(self):
         for path in (
             "/",
+            "/runtime/",
             "/demo/",
+            "/runtime/webrtc",
             "/webrtc",
             "/editor/",
             "/static/demo/sessions.html",
@@ -481,6 +533,69 @@ class LiveProxyTests(unittest.IsolatedAsyncioTestCase):
         for name in ("Set-Cookie", "Access-Control-Allow-Origin", "Authorization"):
             self.assertNotIn(name, response.headers)
         self.assertEqual(response.headers["x-ms-request-id"], "test-request-id")
+
+    async def test_regional_publish_success_keeps_the_original_model(self):
+        body = {"definition": {**DEFINITION, "model": "gpt-realtime-regional"}}
+        response = await self.client.post("/agents/test/versions", json=body)
+        self.assertEqual(200, response.status)
+        self.assertEqual([body], [json.loads(call["body"]) for call in self.calls])
+
+    async def test_regional_publish_retries_once_after_the_matching_model_error(self):
+        body = {
+            "definition": {**DEFINITION, "model": "gpt-realtime-regional"},
+            "description": "Keep the complete publication.",
+            "metadata": {"source_template_id": "finance-example-realtime"}, "draft": False,
+        }
+        expected = copy.deepcopy(body)
+        expected["definition"]["model"] = "gpt-realtime"
+        published = {"name": "test", "version": "1", **expected}
+        self.http_responses = [
+            (400, {"error": {"code": "bad_request", "message": REGIONAL_MODEL_ERROR}}),
+            (201, published),
+        ]
+        with self.assertLogs("voice_agent_portal", level="WARNING"):
+            response = await self.client.post("/agents/test/versions?api-version=v1", json=body)
+        self.assertEqual(201, response.status)
+        self.assertEqual(published, await response.json())
+        self.assertEqual([body, expected], [json.loads(call["body"]) for call in self.calls])
+        self.assertEqual(self.calls[0]["path"], self.calls[1]["path"])
+        self.assertEqual(self.calls[0]["query"], self.calls[1]["query"])
+        self.assertEqual("publish-attempt-2", response.headers["x-ms-request-id"])
+
+    async def test_regional_publish_surfaces_the_second_failure_without_retrying_again(self):
+        error = {"error": {"code": "bad_request", "message": REGIONAL_MODEL_ERROR}}
+        self.http_responses = [(400, error), (400, error)]
+        with self.assertLogs("voice_agent_portal", level="WARNING"):
+            response = await self.client.post("/agents/test/versions", json={
+                "definition": {**DEFINITION, "model": "gpt-realtime-regional"},
+            })
+        self.assertEqual(400, response.status)
+        self.assertEqual(error, await response.json())
+        self.assertEqual(2, len(self.calls))
+        self.assertEqual(
+            ["gpt-realtime-regional", "gpt-realtime"],
+            [json.loads(call["body"])["definition"]["model"] for call in self.calls],
+        )
+
+    async def test_regional_publish_does_not_retry_other_errors_or_routes(self):
+        for method, path, status, message in (
+            ("POST", "/agents/test/versions", 400, "Invalid voice configuration."),
+            ("POST", "/agents/test/versions", 403, REGIONAL_MODEL_ERROR),
+            ("POST", "/agents/test/versions", 429, REGIONAL_MODEL_ERROR),
+            ("POST", "/agents/test/versions", 500, REGIONAL_MODEL_ERROR),
+            ("POST", "/agents:generate", 400, REGIONAL_MODEL_ERROR),
+            ("GET", "/agents/test", 400, REGIONAL_MODEL_ERROR),
+        ):
+            with self.subTest(method=method, path=path, status=status):
+                self.calls.clear()
+                error = {"error": {"code": "bad_request", "message": message}}
+                self.http_responses = [(status, error)]
+                response = await self.client.request(method, path, json={
+                    "definition": {**DEFINITION, "model": "gpt-realtime-regional"},
+                })
+                self.assertEqual(status, response.status)
+                self.assertEqual(error, await response.json())
+                self.assertEqual(1, len(self.calls))
 
     async def test_audio_proxy_and_rest_redirect_rejection(self):
         response = await self.client.get(VOICE_PATH + "/conversations/conv/audio/content")

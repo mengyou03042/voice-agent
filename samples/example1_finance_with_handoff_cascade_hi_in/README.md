@@ -7,7 +7,8 @@ The English sample is unchanged. The business instructions remain in English;
 the customer speaks and hears Hindi.
 
 The [Agent definition](agent.json) uses `gpt-4.1-mini`, Azure Speech transcription
-with `language: hi-IN`, and `hi-IN-SwaraNeural` output. Every handoff node has
+with `language: hi-IN`, and Diya Hindi Dragon (`hi-IN-Diya:DragonLatestNeural`)
+output. All nodes inherit this output voice. Every handoff node has
 the Hindi response policy. Fixed greetings, transfer messages, interim speech,
 disclosures, and decision phrases are also Hindi, rather than relying on the
 voice selection to translate English text.

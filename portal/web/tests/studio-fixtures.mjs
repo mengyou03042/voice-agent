@@ -101,7 +101,7 @@ export async function mockWebRtcPeer(page) {
   });
 }
 
-export async function mountStudio(page, configPatch = {}, path = "/demo/", options = {}) {
+export async function mountStudio(page, configPatch = {}, path = "/runtime/", options = {}) {
   const api = {
     creates: [], generates: [], versions: [], sockets: [], messages: [], errors: [],
     projectSelections: [], agentListQueries: [], agentReads: [],
@@ -303,7 +303,7 @@ export async function mountStudio(page, configPatch = {}, path = "/demo/", optio
   };
   await page.goto(path);
   if (options.configError) return api;
-  await expect(page.getByRole("heading", { name: "Agent Creation" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Voice agent runtime" })).toBeVisible();
   return api;
 }
 

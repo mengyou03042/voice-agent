@@ -151,7 +151,7 @@ export function WebRtcApp() {
           </span>
         </div>
       </header>
-      <p className="info-note">{cfg.notice} <a href="/demo/">Return to studio</a></p>
+      <p className="info-note">{cfg.notice} <a href="/runtime/">Return to Runtime</a></p>
       <VoiceCatalogStatus cfg={cfg} {...voiceCatalogState} />
 
       <main className="wrtc-body">

@@ -123,8 +123,8 @@ export function AgentConfig({ cfg, draft, update, disabled, structuredInputConfi
         <section className="structured-input-settings" aria-label="Structured inputs">
           <h3>Structured inputs</h3>
           <p className="field-hint">
-            Personalize instructions and greetings with variables. Defaults are saved with the agent;
-            override their values in the playground’s Session settings.
+            Personalize instructions and greetings with variables. Defaults are saved with the agent
+            and used by Runtime. Publish a new version to change them.
           </p>
           <StructuredInputsConfig configs={structuredInputConfigs} disabled={disabled} onChange={onStructuredInputsChange} />
         </section>
@@ -167,7 +167,7 @@ export function VoiceConfig({ cfg, draft, update, disabled }) {
           ? "This STT output is the text consumed by the cascaded model."
           : "The Realtime model understands audio directly; this selection still produces transcript events."}>
           <GroupedSelect value={draft.transcriptionModel}
-            groups={transcriptionGroups(cfg, draft.model, hosted)} disabled={disabled}
+            groups={transcriptionGroups(cfg)} disabled={disabled}
             onChange={(event) => update("transcriptionModel", event.target.value)} />
         </Field>
         <Field label="Input language" hint={INPUT_LANGUAGE_HINT}>

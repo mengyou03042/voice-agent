@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Config loading + model/voice helpers (mirrors the demo's /config contract).
-import { groupVoicesByLocale, PIPELINE_COMPONENTS } from "../../static/handoff/handoff-core.mjs";
+import { groupVoicesByLocale, pipelineComponentOptions, PIPELINE_COMPONENTS } from "../../static/handoff/handoff-core.mjs";
 import { withDefaultVoiceCatalog } from "../../static/handoff/voice-catalog.mjs";
 
 async function readJson(response, path) {
@@ -56,42 +56,27 @@ const PREVIEW_TRANSCRIPTION_MODELS = new Set([
   "gpt-transcribe",
 ]);
 
-export function compatibleTranscriptionModels(cfg, model, hosted = false) {
-  const fallback = cfg?.transcriptionModels || [cfg?.inputTranscriptionModel || "azure-speech"];
-  const configured = hosted || isCascaded(cfg, model)
-    ? cfg?.cascadedTranscriptionModels
-    : cfg?.realtimeTranscriptionModels;
-  return configured?.length ? configured : fallback;
-}
-
-export function transcriptionGroups(cfg, model, hosted = false) {
-  const compatible = new Set(compatibleTranscriptionModels(cfg, model, hosted));
-  const all = cfg?.transcriptionModels?.length
-    ? cfg.transcriptionModels
-    : [...compatible];
+export function transcriptionGroups(cfg) {
+  const all = [...new Set([
+    ...pipelineComponentOptions("stt").map((item) => item.id),
+    ...(cfg?.transcriptionModels || []),
+    ...(cfg?.realtimeTranscriptionModels || []),
+    ...(cfg?.cascadedTranscriptionModels || []),
+  ])].filter((value) => value !== "native-realtime-audio");
   const items = all.map((value) => ({
     value,
-    label: `${value}${PREVIEW_TRANSCRIPTION_MODELS.has(value) ? " · Preview" : ""}${
-      compatible.has(value) ? "" : " · unavailable for this model"
-    }`,
-    disabled: !compatible.has(value),
+    label: `${value}${PREVIEW_TRANSCRIPTION_MODELS.has(value) ? " · Preview" : ""}`,
   }));
   return [
     {
-      label: hosted || isCascaded(cfg, model)
-        ? "Cascaded input transcription"
-        : "Realtime transcript",
+      label: "Input transcription",
       items,
     },
   ];
 }
 
-export function defaultTranscriptionFor(cfg, model, hosted = false, preferred = "") {
-  const compatible = compatibleTranscriptionModels(cfg, model, hosted);
-  if (compatible.includes(preferred)) return preferred;
-  return compatible.includes(cfg?.inputTranscriptionModel)
-    ? cfg.inputTranscriptionModel
-    : compatible[0] || "azure-speech";
+export function defaultTranscriptionFor(cfg) {
+  return cfg?.inputTranscriptionModel || "azure-speech";
 }
 
 // Build grouped options for a <select> of models: Realtime vs Cascaded. When `byom` is true, offer the

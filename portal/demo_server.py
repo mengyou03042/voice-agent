@@ -71,6 +71,7 @@ try:
         AgentsConfig,
         build_voice_config,
         list_byom_deployments,
+        regional_model_publish_fallback,
         validate_project_endpoint,
     )
     from .foundry_trace import build_foundry_trace_url
@@ -89,6 +90,7 @@ except ImportError:
         AgentsConfig,
         build_voice_config,
         list_byom_deployments,
+        regional_model_publish_fallback,
         validate_project_endpoint,
     )
     from foundry_trace import build_foundry_trace_url
@@ -213,6 +215,7 @@ _HANDOFF_ASSET_FILENAMES = (
     "handoff/handoff.html", "handoff/handoff-app.js",
     "handoff/handoff-core.mjs", "handoff/handoff.css",
     "handoff/transcription-languages.mjs",
+    "handoff/anchored-popover.mjs",
     "handoff/voice-picker.mjs", "handoff/voice-catalog.mjs",
 )
 
@@ -227,8 +230,13 @@ def _asset_version() -> str:
 
 
 async def portal_home(request: web.Request) -> web.Response:
-    path = "/demo/" if request.query.get("agent") else "/editor/"
+    path = "/runtime/" if request.query.get("agent") else "/editor/"
     raise web.HTTPFound(location=str(request.rel_url.with_path(path, keep_query=True)))
+
+
+async def runtime_redirect(request: web.Request) -> web.Response:
+    location = str(request.rel_url.with_path("/runtime/", keep_query=True))
+    raise web.HTTPPermanentRedirect(location=location)
 
 
 async def index(request: web.Request) -> web.Response:
@@ -340,6 +348,20 @@ async def service_proxy(request: web.Request) -> web.StreamResponse:
     try:
         headers.update(await asyncio.to_thread(cfg.auth_headers))
         resp = await asyncio.to_thread(_forward_to_service, request.method, url, params, headers, body)
+        if request.method == "POST" and request.path.endswith("/versions") and resp.status_code == 400:
+            try:
+                payload = json.loads(body)
+            except (ValueError, UnicodeError):
+                payload = None
+            if isinstance(payload, dict) and isinstance(payload.get("definition"), dict):
+                retry_definition = regional_model_publish_fallback(
+                    payload["definition"], resp.status_code, resp.text,
+                )
+                if retry_definition is not None:
+                    retry_body = json.dumps({**payload, "definition": retry_definition}).encode("utf-8")
+                    resp = await asyncio.to_thread(
+                        _forward_to_service, request.method, url, params, headers, retry_body,
+                    )
     except Exception as exc:
         # Authentication exceptions can contain credential details; do not echo them.
         LOGGER.error(
@@ -989,9 +1011,13 @@ def build_app(args) -> web.Application:
         root.mkdir(parents=True, exist_ok=True)
     app[SESSION_LOG_ROOT] = root
     app.router.add_get("/", portal_home)
-    for path in ("/demo", "/demo/"):
-        app.router.add_get(path, index)
-    for path in ("/webrtc", "/webrtc/", "/demo/webrtc", "/demo/webrtc/"):
+    app.router.add_get("/runtime/", index)
+    for path in ("/runtime", "/demo", "/demo/"):
+        app.router.add_get(path, runtime_redirect)
+    for path in (
+        "/webrtc", "/webrtc/", "/runtime/webrtc", "/runtime/webrtc/",
+        "/demo/webrtc", "/demo/webrtc/",
+    ):
         app.router.add_get(path, webrtc_index)
     app.router.add_get("/healthz", health)
     app.router.add_get("/api/projects", list_foundry_projects)

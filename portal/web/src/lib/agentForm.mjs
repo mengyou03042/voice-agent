@@ -23,11 +23,7 @@ export function createAgentDraft(cfg) {
     instructions: "",
     inferenceMode,
     model: cfg.defaultModel,
-    transcriptionModel: defaultTranscriptionFor(
-      cfg,
-      cfg.defaultModel,
-      inferenceMode === "hosted_agent",
-    ),
+    transcriptionModel: defaultTranscriptionFor(cfg),
     voice: inferenceMode === "hosted_agent" ? azureDefaultVoice(cfg) : cfg.defaultVoice,
     transcriptionLanguage: "Auto",
     targetAgentName: "",
@@ -49,33 +45,13 @@ export function createAgentDraft(cfg) {
 
 export function updateAgentDraft(cfg, draft, field, value) {
   const next = { ...draft, [field]: value };
-  if (field === "model") {
-    next.transcriptionModel = defaultTranscriptionFor(
-      cfg,
-      value,
-      false,
-      draft.transcriptionModel,
-    );
-  }
   if (field === "inferenceMode") {
     if (value === "hosted_agent") {
-      next.transcriptionModel = defaultTranscriptionFor(
-        cfg,
-        next.model,
-        true,
-        draft.transcriptionModel,
-      );
       if (next.greeting.toolChoice === "required") {
         next.greeting = { ...next.greeting, toolChoice: "auto" };
       }
     } else {
       next.model = modelGroups(cfg, value === "deployment")[0]?.items[0] || "";
-      next.transcriptionModel = defaultTranscriptionFor(
-        cfg,
-        next.model,
-        false,
-        draft.transcriptionModel,
-      );
     }
   }
   if (field === "avatarEnabled" && value) {

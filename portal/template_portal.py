@@ -20,13 +20,14 @@ from urllib.parse import quote, urlparse
 import requests
 from aiohttp import web
 from azure.ai.projects import AIProjectClient
+from azure.core.exceptions import HttpResponseError
 from dotenv import dotenv_values
 
 try:
-    from .common import AgentsConfig, FOUNDRY_FEATURES
+    from .common import AgentsConfig, FOUNDRY_FEATURES, regional_model_publish_fallback
     from .guide_render import render_page
 except ImportError:
-    from common import AgentsConfig, FOUNDRY_FEATURES
+    from common import AgentsConfig, FOUNDRY_FEATURES, regional_model_publish_fallback
     from guide_render import render_page
 
 
@@ -1258,11 +1259,18 @@ def publish_agent(
         credential=cfg.credential(),
         allow_preview=True,
     ) as client:
-        created = client.agents.create_version(
-            name,
-            body,
-            headers=preview_headers,
-        )
+        try:
+            created = client.agents.create_version(name, body, headers=preview_headers)
+        except HttpResponseError as error:
+            retry_definition = regional_model_publish_fallback(
+                definition, error.status_code, str(error),
+            )
+            if retry_definition is None:
+                raise
+            definition = retry_definition
+            created = client.agents.create_version(
+                name, {**body, "definition": definition}, headers=preview_headers,
+            )
         client.agents.enable(name, headers=preview_headers)
         version = str(getattr(created, "version", "") or "")
         readback = client.agents.get_version(name, version, headers=preview_headers)

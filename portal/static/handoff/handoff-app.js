@@ -20,6 +20,7 @@ import {
   pipelineComponentProvider,
   pipelineMetricMinimum,
   pipelineTotals,
+  parseAgentSource,
   publicationFeatures,
   sideEdgeAnchors,
   sortPipelineComponents,
@@ -28,8 +29,10 @@ import {
   stableJson,
   uniqueId,
   validateDefinition,
-} from "./handoff-core.mjs?v=20261027-15-language-picker";
+  publicationDefinition,
+} from "./handoff-core.mjs?v=20261028-yaml-import";
 import { filterVoiceGroups, voiceMatchCount } from "./voice-picker.mjs?v=20261027-voice-search";
+import { anchoredPopover } from "./anchored-popover.mjs";
 import {
   loadLiveVoiceCatalog,
   voiceCatalogStatusText,
@@ -39,10 +42,11 @@ import {
   INPUT_LANGUAGE_HINT,
   INPUT_LANGUAGE_SOURCE,
   displayTranscriptionLanguage,
+  inputLanguageLimit,
   mountInputLanguagePicker,
   transcriptionLanguageError,
   transcriptionLanguageOptions,
-} from "./transcription-languages.mjs?v=20261027-15-language-picker";
+} from "./transcription-languages.mjs?v=20261028-floating-help";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -66,6 +70,7 @@ const state = {
   voiceCatalogError: "",
   agents: [],
   selectedAgentName: "",
+  agentLoadGeneration: 0,
   agentListLoaded: false,
   agentListLoading: false,
   agentListError: "",
@@ -86,7 +91,6 @@ const state = {
   selected: { kind: "graph", id: "" },
   outlineTab: "nodes",
   nodeComponentPanel: "",
-  nodeEditorMode: "node",
   definitionReturnFocus: null,
   // No visible toggle: open the page with ?debug=1 to show latency and cost estimates.
   debugMode: new URLSearchParams(window.location.search).get("debug") === "1",
@@ -120,6 +124,11 @@ const state = {
   toolDrafts: {},
   toolConnections: {},
   editorSession: null,
+  importCandidate: null,
+  importFileName: "",
+  importGeneration: 0,
+  importReturnFocus: null,
+  importOpenSettings: false,
   dragging: null,
   panning: null,
   connecting: null,
@@ -428,20 +437,6 @@ function setRootSttModel(definition, model) {
   definition.audio.input.transcription.model = model;
 }
 
-function graphModelIds(replacementNodeId = "", replacementModel = "") {
-  const rootModel = replacementNodeId === ENTRYPOINT_ID
-    ? replacementModel
-    : modelName(state.definition?.model);
-  return [
-    rootModel,
-    ...(state.definition?.handoff?.nodes || []).map((node) => (
-      node.id === replacementNodeId
-        ? replacementModel
-        : modelName(node.config?.model ?? state.definition?.model)
-    )),
-  ].map(normalizedModelId).filter(Boolean);
-}
-
 function pipelineIcon(name) {
   const paths = {
     audio: '<path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/>',
@@ -606,6 +601,7 @@ function setDefinition(
   } = {},
 ) {
   state.definition = ensureEditableDefinition(definition);
+  if (!remote) state.agentLoadGeneration += 1;
   state.agentName = name;
   state.version = version;
   state.draft = draft;
@@ -865,7 +861,6 @@ function selectAgentOption(name, { focus = false } = {}) {
     option.tabIndex = option === selected ? 0 : -1;
   }
   root.tabIndex = selected ? -1 : 0;
-  $("#load-agent").disabled = !selected;
   if (focus) selected?.focus({ preventScroll: true });
 }
 
@@ -905,12 +900,13 @@ function renderAgentOptions() {
 
 async function loadAgentByName(name) {
   if (!name || !state.cfg) return;
-  $("#load-agent").disabled = true;
+  const generation = ++state.agentLoadGeneration;
   setMessage(`Loading the latest complete definition for ${name}…`);
   try {
     const payload = await serviceRequest(
       serviceUrl(`/agents/${encodeURIComponent(name)}`),
     );
+    if (generation !== state.agentLoadGeneration) return;
     const agent = extractLatestAgent(payload);
     const existing = state.agents.find((item) => item.name === agent.name);
     if (existing) {
@@ -932,12 +928,11 @@ async function loadAgentByName(name) {
     url.searchParams.set("agent", agent.name);
     window.history.replaceState(null, "", url);
   } catch (error) {
+    if (generation !== state.agentLoadGeneration) return;
     setMessage(
       `Could not load ${name}. The current working copy was preserved.`,
       error.message,
     );
-  } finally {
-    render();
   }
 }
 
@@ -947,20 +942,127 @@ async function loadSelectedAgent() {
 
 function loadBlank() {
   const definition = createBlankDefinition();
-  if (state.cfg?.playground) {
-    definition.model = state.cfg.defaultModel;
-    definition.store = false;
-    definition.audio.input.transcription.model = state.cfg.realtimeTranscriptionModels[0];
-    definition.audio.output = { voice: state.cfg.defaultAzureVoice, voice_type: "azure-standard" };
-  }
   setDefinition(definition, {
     name: `handoff-graph-agent-${crypto.randomUUID().slice(0, 8)}`,
     version: "local",
-    message: "Created a blank working copy. Edit the starter node, then choose Try it now.",
+    message: "Created a ready-to-run working copy with $entrypoint -> end. Choose Try it now, or customize the nodes and settings.",
   });
   const url = new URL(window.location.href);
   url.searchParams.delete("agent");
   window.history.replaceState(null, "", url);
+}
+
+function openAgentImport() {
+  state.importReturnFocus = document.activeElement;
+  state.importOpenSettings = !$("#node-editor").hidden
+    && state.selected.kind === "node" && state.selected.id === ENTRYPOINT_ID;
+  state.importCandidate = null;
+  state.importFileName = "";
+  state.importGeneration += 1;
+  $("#agent-import-file").value = "";
+  $("#agent-import-source").value = "";
+  $("#agent-import-errors").hidden = true;
+  $("#agent-import-errors").replaceChildren();
+  $("#agent-import-status").textContent =
+    "Choose a JSON or YAML file, or paste your configuration, then validate. Import stays local; Foundry validates service availability when you publish.";
+  $("#agent-import-replace-label").hidden = !state.definition;
+  $("#agent-import-replace").checked = false;
+  $("#apply-agent-import").disabled = true;
+  $("#agent-import-dialog").showModal();
+}
+
+function closeAgentImport() {
+  state.importGeneration += 1;
+  $("#agent-import-dialog").close();
+  state.importReturnFocus?.focus();
+}
+
+function invalidateAgentImport() {
+  state.importCandidate = null;
+  $("#apply-agent-import").disabled = true;
+  $("#agent-import-errors").hidden = true;
+  $("#agent-import-status").textContent = "Configuration changed. Validate it before importing.";
+}
+
+function validateAgentImport() {
+  invalidateAgentImport();
+  const source = $("#agent-import-source").value;
+  let problems;
+  try {
+    if (new TextEncoder().encode(source).length > 2 * 1024 * 1024) {
+      throw new Error("Agent configuration exceeds the 2 MB import limit.");
+    }
+    const candidate = parseAgentSource(source);
+    problems = candidate.problems;
+    if (!problems.some((item) => item.severity === "error")) state.importCandidate = candidate;
+  } catch (error) {
+    problems = [{ severity: "error", field: "JSON / YAML", message: error.message }];
+  }
+  const root = $("#agent-import-errors");
+  root.replaceChildren(...problems.map((item) => {
+    const row = document.createElement("li");
+    const field = document.createElement("code");
+    field.textContent = [item.objectId, item.field].filter(Boolean).join(" / ");
+    const message = document.createElement("span");
+    message.textContent = `${item.severity === "warning" ? "Warning: " : ""}${item.message}`;
+    row.append(field, message);
+    return row;
+  }));
+  root.hidden = !problems.length;
+  $("#apply-agent-import").disabled = !state.importCandidate;
+  $("#agent-import-status").textContent = state.importCandidate
+    ? `Local validation passed${problems.length ? ` with ${problems.length} warning(s)` : ""}. Review and import your working copy. Nothing has been published.`
+    : "Import blocked. Fix the errors below; your current working copy has not changed.";
+}
+
+async function readAgentImportFile() {
+  const file = $("#agent-import-file").files[0];
+  if (!file) return;
+  const generation = ++state.importGeneration;
+  invalidateAgentImport();
+  state.importFileName = "";
+  $("#agent-import-source").value = "";
+  $("#agent-import-status").textContent = `Reading ${file.name}…`;
+  try {
+    if (file.size > 2 * 1024 * 1024) throw new Error("Agent configuration exceeds the 2 MB import limit.");
+    const source = await file.text();
+    if (generation !== state.importGeneration) return;
+    state.importFileName = file.name;
+    $("#agent-import-source").value = source;
+    validateAgentImport();
+  } catch (error) {
+    if (generation !== state.importGeneration) return;
+    $("#agent-import-status").textContent = `Cannot import ${file.name}: ${error.message}`;
+  }
+}
+
+function applyAgentImport() {
+  if (!state.importCandidate) return;
+  if (state.definition && !$("#agent-import-replace").checked) {
+    $("#agent-import-status").textContent = "Confirm replacement of the current working copy before importing.";
+    $("#agent-import-replace").focus();
+    return;
+  }
+  const candidate = state.importCandidate;
+  const filename = state.importFileName.replace(/(?:\.handoff\.definition)?\.(?:json|ya?ml)$/i, "")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^[^a-zA-Z0-9]+/, "").slice(0, 63);
+  const openSettings = state.importOpenSettings;
+  closeAgentImport();
+  closeDefinition();
+  hideNodeEditor();
+  hideEdgeEditor();
+  state.editorSession = null;
+  setDefinition(candidate.definition, {
+    name: candidate.name || filename || `imported-agent-${crypto.randomUUID().slice(0, 8)}`,
+    version: "local",
+    description: candidate.description,
+    metadata: candidate.metadata,
+    message: "Imported validated Agent configuration into the local working copy. Review it before publishing.",
+  });
+  const url = new URL(window.location.href);
+  url.searchParams.delete("agent");
+  window.history.replaceState(null, "", url);
+  if (openSettings) openEntrypointSettings();
 }
 
 const templateLanguageNames = new Intl.DisplayNames(["en"], { type: "language" });
@@ -2067,15 +2169,25 @@ function renderGraph() {
     card.style.left = `${position.x}px`;
     card.style.top = `${position.y}px`;
     card.innerHTML = `
+      ${node.entry ? `<button class="node-overall-settings" type="button" aria-label="Overall settings"
+        aria-describedby="entrypoint-settings-hint" aria-controls="node-editor" aria-haspopup="dialog">
+        ${pipelineIcon("sliders")}
+        <span>
+          <strong class="node-role">Overall settings</strong>
+          <span id="entrypoint-settings-hint" class="node-settings-hint">Click to configure the entire Agent</span>
+        </span>
+        <span aria-hidden="true">↗</span>
+      </button>` : ""}
       <div class="node-card-heading">
-        <button class="node-select" type="button" aria-label="Select ${escapeHtml(node.id)} node">
+        <button class="node-select" type="button"
+          aria-label="${node.entry ? "Configure overall settings on $entrypoint" : `Select ${escapeHtml(node.id)} node`}"
+          ${node.entry ? 'aria-describedby="entrypoint-settings-hint"' : ""}>
           <span class="node-identity">
             <span class="node-icon">${pipelineIcon(nodeIcon(node.id))}</span>
             <span class="node-name-row">
               <span class="node-name">${escapeHtml(node.id)}</span>
               ${errors ? `<span class="node-status error">${errors} error${errors === 1 ? "" : "s"}</span>` : ""}
             </span>
-            ${node.entry ? '<span class="node-role">Starter · fixed name</span>' : ""}
           </span>
         </button>
         <div class="node-pipeline" aria-label="Node speech pipeline">
@@ -2132,6 +2244,7 @@ function renderGraph() {
         data-node-id="${escapeHtml(node.id)}" aria-label="Output handle for ${escapeHtml(node.id)}" title="Drag to another node"></button>
       ${node.entry ? "" : `<button class="node-delete-card" type="button" aria-label="Delete node ${escapeHtml(node.id)}"
         title="Delete ${escapeHtml(node.id)}">${pipelineIcon("trash")}</button>`}`;
+    $(".node-overall-settings", card)?.addEventListener("click", () => focusNodeAndOpen(node.id));
     const button = $(".node-select", card);
     button.addEventListener("click", (event) => {
       if (event.detail === 0) focusNodeAndOpen(node.id);
@@ -2264,7 +2377,7 @@ function renderOutline() {
     return;
   }
   const nodes = [
-    { id: ENTRYPOINT_ID, label: "Start / $entrypoint", entry: true },
+    { id: ENTRYPOINT_ID, label: "$entrypoint", entry: true },
     ...state.definition.handoff.nodes.map((node) => ({
       id: node.id, label: node.id, entry: false,
     })),
@@ -2279,7 +2392,7 @@ function renderOutline() {
     ].filter(Boolean).join(" ");
     button.setAttribute("role", "option");
     button.setAttribute("aria-selected", String(state.selected.kind === "node" && state.selected.id === item.id));
-    button.innerHTML = `<span class="outline-icon">${pipelineIcon(nodeIcon(item.id))}</span><span>${escapeHtml(item.label)}</span><small>node</small>`;
+    button.innerHTML = `<span class="outline-icon">${pipelineIcon(nodeIcon(item.id))}</span><span>${escapeHtml(item.label)}</span><small>${item.entry ? "overall" : "node"}</small>`;
     button.addEventListener("click", () => focusNodeAndOpen(item.id));
     nodeRoot.append(button);
   }
@@ -2325,12 +2438,13 @@ function fieldLabel(label, field, help = "") {
   const detail = typeof help === "object" ? help : { text: help };
   const popupId = `field-help-${field.replaceAll(/[^a-zA-Z0-9_-]/g, "-")}`;
   return `
-    <span class="field-label field-label-help edge-field-label" tabindex="0"
-      aria-describedby="${escapeHtml(popupId)}">
+    <span class="field-label field-label-help edge-field-label">
       <label for="field-${escapeHtml(field)}">${escapeHtml(label)}</label>
-      <span id="${escapeHtml(popupId)}" class="field-help-popup" role="tooltip">
+      <button type="button" class="field-help-toggle" aria-label="Explain ${escapeHtml(label)}"
+        aria-expanded="false" aria-describedby="${escapeHtml(popupId)}">?</button>
+      <span id="${escapeHtml(popupId)}" class="field-help-popup" role="tooltip" popover="manual" hidden>
         <span class="field-help-kicker">What this controls</span>
-        <span class="field-help-copy">${escapeHtml(detail.text || "")}</span>
+        ${helpParagraphs(detail.text || "")}
         ${detail.example ? `
           <span class="field-help-example">
             <span>Example</span>
@@ -2344,14 +2458,77 @@ function fieldLabel(label, field, help = "") {
 function nodeFieldLabel(label, controlId, help) {
   const popupId = `${controlId}-help`;
   return `
-    <span class="field-label field-label-help" tabindex="0"
-      aria-describedby="${escapeHtml(popupId)}">
+    <span class="field-label field-label-help">
       <label for="${escapeHtml(controlId)}">${escapeHtml(label)}</label>
-      <span id="${escapeHtml(popupId)}" class="field-help-popup" role="tooltip">
+      <button type="button" class="field-help-toggle" aria-label="Explain ${escapeHtml(label)}"
+        aria-expanded="false" aria-describedby="${escapeHtml(popupId)}">?</button>
+      <span id="${escapeHtml(popupId)}" class="field-help-popup" role="tooltip" popover="manual" hidden>
         <span class="field-help-kicker">What this controls</span>
-        <span class="field-help-copy">${escapeHtml(help)}</span>
+        ${helpParagraphs(help)}
       </span>
     </span>`;
+}
+
+function helpParagraphs(text) {
+  return text.split("\n\n").map((paragraph) => `<span class="field-help-copy">${escapeHtml(paragraph)}</span>`).join("");
+}
+
+function bindFieldHelp() {
+  let active;
+  let timer;
+  const close = () => {
+    clearTimeout(timer);
+    active?.floating.hide();
+    active = null;
+  };
+  const anchorFor = (target) => target.closest(".field-label-help, .component-header-help");
+  const open = (anchor) => {
+    clearTimeout(timer);
+    if (active?.anchor === anchor) return;
+    close();
+    const button = anchor.matches("button") ? anchor : $(".field-help-toggle", anchor);
+    const popup = document.getElementById(button.getAttribute("aria-describedby"));
+    const floating = anchoredPopover(popup, anchor, { width: 560, onClose: () => {
+      button.setAttribute("aria-expanded", "false");
+      if (active?.popup === popup) active = null;
+    } });
+    active = { anchor, popup, button, floating, pinned: false };
+    button.setAttribute("aria-expanded", "true");
+    floating.show();
+  };
+  document.addEventListener("pointerover", (event) => {
+    if (active?.popup.contains(event.target)) clearTimeout(timer);
+    const anchor = anchorFor(event.target);
+    if (anchor && (!active?.pinned || active.anchor === anchor)) open(anchor);
+  });
+  document.addEventListener("pointerout", (event) => {
+    if (!active || active.pinned || active.button === document.activeElement || active.anchor.contains(event.relatedTarget)
+      || active.popup.contains(event.relatedTarget)) return;
+    timer = setTimeout(close, 150);
+  });
+  document.addEventListener("focusin", (event) => {
+    const anchor = anchorFor(event.target);
+    if (anchor) open(anchor);
+    else close();
+  });
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest(".field-help-toggle, .component-header-help");
+    if (button) {
+      const anchor = anchorFor(button);
+      if (active?.anchor === anchor && active.pinned) close();
+      else {
+        open(anchor);
+        if (active) active.pinned = true;
+      }
+    } else if (active && !active.popup.contains(event.target)) close();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && active && !active.popup.hidden) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      close();
+    }
+  }, true);
 }
 
 function inputField(label, field, value, options = {}) {
@@ -2436,7 +2613,6 @@ function hideNodeEditor() {
   $("#node-editor").hidden = true;
   $("#node-editor").classList.remove("component-panel-open");
   state.nodeComponentPanel = "";
-  state.nodeEditorMode = "node";
   $("#node-component-panel").hidden = true;
 }
 
@@ -2460,7 +2636,7 @@ function restoreEditorSession(kind) {
 }
 
 function cancelEditorSession(kind) {
-  const label = kind === "node" && state.nodeEditorMode === "global" ? "Agent General Settings" : kind;
+  const label = kind === "node" && state.selected.id === ENTRYPOINT_ID ? "entrypoint" : kind;
   const session = state.editorSession;
   const changed = Boolean(
     session
@@ -2475,7 +2651,7 @@ function cancelEditorSession(kind) {
 }
 
 function commitEditorSession(kind, message = "") {
-  const label = kind === "node" && state.nodeEditorMode === "global" ? "Agent General Settings" : kind;
+  const label = kind === "node" && state.selected.id === ENTRYPOINT_ID ? "entrypoint" : kind;
   const session = state.editorSession;
   if (session?.kind === kind) {
     const changed = stableJson(session.definition, 0) !== stableJson(state.definition, 0);
@@ -2537,7 +2713,6 @@ function openNodeEditor(id, editorSnapshot = null) {
   const entry = id === ENTRYPOINT_ID;
   if (!entry && !state.definition.handoff.nodes.some((node) => node.id === id)) return;
   beginEditorSession("node", id, editorSnapshot);
-  state.nodeEditorMode = "node";
   if (state.metricDisplay.nodeId !== id) {
     state.metricDisplay = { nodeId: id, cost: 0, latency: 0 };
   }
@@ -2550,19 +2725,13 @@ function openNodeEditor(id, editorSnapshot = null) {
   $("#node-editor").hidden = false;
 }
 
-function openGlobalSettings({ focusInputLanguage = false } = {}) {
+function openEntrypointSettings({ focusInputLanguage = false } = {}) {
   if (!state.definition) return;
   if (state.selectionTimer) {
     window.clearTimeout(state.selectionTimer);
     state.selectionTimer = null;
   }
-  if (!state.editorSession) beginEditorSession("node", ENTRYPOINT_ID);
-  state.nodeEditorMode = "global";
-  state.nodeComponentPanel = "";
-  state.selected = { kind: "node", id: ENTRYPOINT_ID };
-  render();
-  renderNodeEditor();
-  $("#node-editor").hidden = false;
+  openNodeEditor(ENTRYPOINT_ID, state.editorSession);
   if (focusInputLanguage) $("#component-stt-language").focus();
   else $("#done-node-editor").focus();
 }
@@ -2693,7 +2862,7 @@ function renderEdgeEditor() {
         multiline: true,
         rows: 4,
         help: {
-          text: "Tell the model the observable situation that should activate this route. Be specific about the caller’s intent or the task state; avoid vague phrases such as “when appropriate.”",
+          text: "Tell the source node's model the observable situation that should activate this route. Be specific about the caller's intent or a verified task state, and distinguish this route from the source's other outgoing edges. This is a routing instruction, not the target's full behavior prompt or a sentence spoken to the caller. Avoid vague conditions such as when appropriate; put the target's detailed workflow in its own Instructions.",
           example: `Use this route when the caller asks to search, update, or review an existing ${edge.target} case.`,
           exampleNote: "A concrete condition helps the model distinguish this route from other outgoing edges.",
         },
@@ -2714,7 +2883,7 @@ function renderEdgeEditor() {
         multiline: true,
         rows: 3,
         help: {
-          text: "Optional speech the caller hears while the target node is being prepared. Keep it short and natural so it explains the transition without adding noticeable delay.",
+          text: "Optional speech the caller hears while the target node is being prepared. It explains the transition without replacing the target's reply or changing the route condition. Keep it short and natural; do not claim a tool action or a transfer has already succeeded before completion. If the source already announced the handoff, leaving this empty avoids repeating the same message.",
           example: `One moment — I’ll connect you with ${edge.target}.`,
           exampleNote: "Leave this empty when the transfer should be silent or when the source already explained the handoff.",
         },
@@ -2726,7 +2895,7 @@ function renderEdgeEditor() {
         { value: "none", label: "None · wait for the next user turn" },
       ], {
         help: {
-          text: "Choose whether the target node should begin speaking as soon as the handoff completes, or remain silent until the caller speaks again.",
+          text: "Choose whether the target node should begin speaking as soon as the handoff completes. Auto lets the target continue immediately using its instructions and the conversation context. None leaves the target silent until the next caller turn or another response request. This does not cancel the handoff; it only controls the target's opening response. Combine it with Transfer message carefully so the caller does not hear two redundant introductions or unexpected silence.",
           example: "Auto · target responds immediately",
           exampleNote: "Use Auto for a warm handoff. Use None when the target must wait for the caller or for another event.",
         },
@@ -2737,7 +2906,7 @@ function renderEdgeEditor() {
           { value: "false", label: "No · complete the transfer" },
         ], {
           help: {
-            text: "Controls only a handoff that has started but has not completed. If the caller interrupts during that window, the transfer can be cancelled so the source node can listen and respond.",
+            text: "Controls a handoff that has started but has not completed. With Yes, a caller interruption during that window can cancel the pending transfer so the source can listen and respond. With No, the transfer continues despite that interruption. This does not reverse a completed handoff or replace the Agent-wide Allow interruption setting for speech. Choose based on whether callers should be able to correct a routing request before it completes.",
             example: "Yes · cancel pending transfer",
             exampleNote: "Choose Yes for conversational barge-in. Choose No when the workflow must complete the transfer once it starts.",
           },
@@ -2751,7 +2920,7 @@ function renderEdgeEditor() {
           type: "number",
           min: 0,
           help: {
-            text: "Adds a deliberate wait before the transfer begins. The value is measured in milliseconds. Prefer no delay unless timing is needed for speech pacing or an external transition.",
+            text: "Adds a deliberate wait before the transfer begins, in milliseconds; 1000 means one second. This changes handoff timing, not the condition that selects the route or a timeout for preparing the target. Prefer no delay unless you need intentional speech pacing or coordination with an external transition. Large values increase the time the caller waits and can sound like an unresponsive Agent.",
             example: "250 ms · subtle pause",
             exampleNote: "A short pause can make a spoken transfer message feel natural; large delays can sound like dead air.",
           },
@@ -2796,34 +2965,12 @@ function applyNodeModelSelection(modelId) {
   if (state.selected.kind !== "node") return;
   const selectedId = state.selected.id;
   const entry = selectedId === ENTRYPOINT_ID;
-  const currentVoice = voiceName(effectiveVoice(selectedId));
-  const currentStt = rootSttModel();
-  const compatibleStt = pipelineComponentOptions("stt", {
-    model: modelId,
-    models: graphModelIds(selectedId, modelId),
-    stt: currentStt,
-    voice: currentVoice,
-  }).filter((component) => component.compatible !== false);
-  const nextStt = compatibleStt.some((component) => component.id === currentStt)
-    ? currentStt
-    : compatibleStt[0]?.id;
-  if (!nextStt) {
-    setMessage("The model was not changed.", "No transcription model is compatible with every model in this graph.");
-    return;
-  }
-  const changes = [
-    nextStt !== currentStt ? `STT changed to ${nextStt}` : "",
-  ].filter(Boolean);
-  const message = changes.length
-    ? `Updated ${selectedId} model; ${changes.join(" and ")} for compatibility`
-    : `Updated ${selectedId} model; voice unchanged`;
-  mutate(message, (definition) => {
+  mutate(`Updated ${selectedId} model; voice and STT unchanged`, (definition) => {
     const node = entry
       ? null
       : definition.handoff.nodes.find((item) => item.id === selectedId);
     const config = entry ? definition : (node.config ||= {});
     config.model = modelId;
-    if (nextStt !== currentStt) setRootSttModel(definition, nextStt);
   });
 }
 
@@ -2885,7 +3032,13 @@ function componentEvidence(kind, component) {
 }
 
 function componentHeaderHelp(kind, key) {
-  return key === "latency" || key === "cost" ? PIPELINE_METRICS_DISCLAIMER : "";
+  if (key === "latency") {
+    return `Latency estimates compare the time a component adds before the caller hears a response. STT, model generation, and speech synthesis measure different stages; a native Realtime path may already include speech output, so component values must not simply be added. Network, region, utterance length, tools, and warm-up also affect the actual session. Use recordings and runtime traces to measure your scenario. ${PIPELINE_METRICS_DISCLAIMER}`;
+  }
+  if (key === "cost") {
+    return `Cost estimates help compare component choices, not predict a bill. Transcription, model tokens, and synthesized speech use different billing units; a bundled component may have no additional charge even though the full session still costs money. Duration, token usage, region, and your pricing agreement affect the total. Check current Azure pricing and measured usage before budgeting. ${PIPELINE_METRICS_DISCLAIMER}`;
+  }
+  return "";
 }
 
 function componentSortHeader(kind, key, label) {
@@ -2902,8 +3055,9 @@ function componentSortHeader(kind, key, label) {
       </button>
       ${help ? `
         <button type="button" class="component-header-help" data-component-header-help="${key}"
-          aria-label="Explain ${label}" aria-expanded="false">i</button>
-        <span class="component-header-popup" data-component-header-popup="${key}" role="tooltip" hidden>
+          aria-label="Explain ${label}" aria-expanded="false" aria-describedby="component-help-${key}">?</button>
+        <span id="component-help-${key}" class="component-header-popup" data-component-header-popup="${key}"
+          role="tooltip" popover="manual" hidden>
           <strong>${escapeHtml(label)}</strong>
           <span>${escapeHtml(help)}</span>
         </span>` : ""}
@@ -2987,7 +3141,6 @@ function renderNodeComponentPanel() {
   panel.dataset.component = kind;
   const selection = {
     model: normalizedModelId(config.model ?? state.definition.model),
-    models: graphModelIds(),
     stt: rootSttModel(),
     customSpeech: Boolean(state.definition?.audio?.input?.transcription?.custom_speech),
     voice: voiceName(state.selected.id === ENTRYPOINT_ID ? rootVoice() : (config.voice ?? rootVoice())),
@@ -3004,7 +3157,7 @@ function renderNodeComponentPanel() {
   $("#component-panel-kicker").textContent = kind === "stt" ? "Agent-level input - all graph nodes" : "Node pipeline";
   $("#component-panel-title").textContent = titles[kind];
   const availableComponents = pipelineComponentOptions(kind, selection)
-    .filter((component) => component.id === current || pipelineChoiceAvailable(kind, component.id))
+    .filter((component) => kind === "stt" || component.id === current || pipelineChoiceAvailable(kind, component.id))
     .map((component) => ({
       ...component,
       locked: component.compatible === false,
@@ -3038,28 +3191,13 @@ function renderNodeComponentPanel() {
       ...components.map((component) => pipelineMetricMinimum(component, "cost") || 0),
     ),
   };
-  const realtimeModels = PIPELINE_COMPONENTS.model.filter(
-    (model) => model.architecture === "realtime" && selection.models.includes(model.id),
-  );
   const sttContext = kind === "stt" ? `
     <aside class="stt-model-context" role="note" aria-labelledby="stt-model-context-title">
       <span class="stt-context-icon" aria-hidden="true">${pipelineIcon("model")}</span>
-      <h4 id="stt-model-context-title">Why are STT options limited?</h4>
-      <p>${realtimeModels.length
-        ? "Your graph includes realtime models. STT choices depend on the models already selected."
-        : "STT choices depend on the models already selected in your graph."}</p>
-      ${realtimeModels.length ? `
-        <div class="stt-context-models">
-          <strong>Realtime models in this graph</strong>
-          ${realtimeModels.map((model) => `<code>${escapeHtml(model.id)}</code>`).join("")}
-        </div>
-        <p>Realtime models process audio directly. STT provides transcripts, not the model's audio input.</p>` : ""}
-      <p>All nodes share one STT setting. Only options supported by every model and available in this project can be selected.</p>
-      <div class="stt-context-next">
-        <strong>Need another STT?</strong>
-        <p>Review the Model choices across the graph. Changing only this node may not remove other nodes' restrictions. Project and region availability still apply.</p>
-        <button type="button" class="button secondary" id="review-stt-model">Review this node's model</button>
-      </div>
+      <h4 id="stt-model-context-title">Transcription choices</h4>
+      <p>All nodes share one STT setting. Every listed transcription model is selectable, including Azure Speech and Whisper.</p>
+      <p>Changing a node's model does not replace your STT selection.</p>
+      <p>The service validates model, project, and regional support when you publish or start a session. Any rejection is shown without changing your selection.</p>
     </aside>` : "";
   let advanced = "";
   if (kind === "stt") {
@@ -3067,14 +3205,14 @@ function renderNodeComponentPanel() {
     advanced = `
       <div class="component-advanced">
         <h4>Recognition settings</h4>
-        <p>Input language is configured in Agent General Settings and applies to all graph nodes.</p>
-        <button type="button" class="button secondary" id="open-agent-input-language">Open global input language</button>
+        <p>Input language is configured on $entrypoint under Overall settings and applies to all graph nodes.</p>
+        <button type="button" class="button secondary" id="open-agent-input-language">Open entrypoint input language</button>
         <div class="detail-row"><span>Scope</span><strong>All graph nodes</strong></div>
         <div class="detail-row"><span>Pipeline</span><strong>${realtime ? "Native speech-to-speech" : "Cascaded"}</strong></div>
         ${realtime
           ? `<div class="detail-row"><span>Selected transcript model</span><strong>${escapeHtml(rootSttModel())}</strong></div>
             <p>The Realtime model consumes audio directly. This separate STT selection still produces transcript events for observability and text-dependent client logic; it does not feed the Realtime model.</p>`
-          : "<p>This STT output feeds text to cascaded models. Because the Handoff contract stores transcription at Agent level, only choices supported by every model in the graph are enabled.</p>"}
+          : "<p>This STT output feeds text to cascaded models. Transcription is shared at Agent level; service support is checked when publishing or starting a session.</p>"}
       </div>`;
   } else if (kind === "model") {
     advanced = `
@@ -3145,12 +3283,8 @@ function renderNodeComponentPanel() {
     ${kind === "stt" ? "" : advanced}
     ${kind === "stt" ? `</div>${sttContext}</div>` : ""}
   `;
-  $("#review-stt-model")?.addEventListener("click", () => {
-    state.nodeComponentPanel = "model";
-    renderNodeEditor();
-  });
   $("#open-agent-input-language")?.addEventListener("click", () => {
-    openGlobalSettings({ focusInputLanguage: true });
+    openEntrypointSettings({ focusInputLanguage: true });
   });
   $$("[data-component-sort]", $("#node-component-panel-body")).forEach((button) => {
     button.addEventListener("click", () => {
@@ -3161,22 +3295,6 @@ function renderNodeComponentPanel() {
         direction: previous.key === key && previous.direction === "asc" ? "desc" : "asc",
       };
       renderNodeComponentPanel();
-    });
-  });
-  $$("[data-component-header-help]", $("#node-component-panel-body")).forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      const key = button.dataset.componentHeaderHelp;
-      const popup = $(`[data-component-header-popup="${key}"]`, $("#node-component-panel-body"));
-      const opening = popup.hidden;
-      $$("[data-component-header-popup]", $("#node-component-panel-body")).forEach(
-        (item) => { item.hidden = true; },
-      );
-      $$("[data-component-header-help]", $("#node-component-panel-body")).forEach(
-        (item) => item.setAttribute("aria-expanded", "false"),
-      );
-      popup.hidden = !opening;
-      button.setAttribute("aria-expanded", String(opening));
     });
   });
   const bindComponentChoices = () => {
@@ -3302,6 +3420,18 @@ const OPTIONAL_BOOLEAN_OPTIONS = [
   ...BOOLEAN_OPTIONS,
 ];
 
+function settingsToggle(name, label, checked, help = "", disabled = false) {
+  return `<div class="settings-toggle-row">
+    <label class="settings-switch">
+      <input type="checkbox" role="switch" data-setting-control="${name}"
+        ${checked ? "checked" : ""} ${disabled ? "disabled" : ""}>
+      <span class="settings-switch-track" aria-hidden="true"></span>
+      <span>${label}</span>
+    </label>
+    ${help ? `<p class="settings-hint">${help}</p>` : ""}
+  </div>`;
+}
+
 function renderAgentRuntimeSettings(definition) {
   const greeting = definition.greeting || {};
   const input = definition.audio?.input || {};
@@ -3312,31 +3442,78 @@ function renderAgentRuntimeSettings(definition) {
     ? definition.output_modalities.join(",")
     : "audio";
   const language = input.transcription?.language || "";
-  const languageError = transcriptionLanguageError(rootSttModel(), language);
+  const stt = rootSttModel();
+  const languageError = transcriptionLanguageError(stt, language);
+  const phraseListSupported = stt.startsWith("azure-")
+    || (stt.startsWith("mai-transcribe") && stt !== "mai-transcribe-1");
+  const phraseList = input.transcription?.phrase_list;
+  const enhanced = Boolean(input.noise_reduction || input.echo_cancellation);
+  const sttOptions = pipelineComponentOptions("stt", {
+    model: modelName(definition.model), stt,
+  })
+    .map((component) => ({ value: component.id, label: component.label }));
   return `
-    <section class="runtime-config-section" aria-label="Agent runtime settings">
+    <section class="runtime-config-section" aria-label="Overall Agent settings">
       <div class="runtime-config-heading">
-        <div><span class="kicker">Agent General Settings</span><strong>Session, greeting, audio, and turn-taking</strong></div>
+        <div><span class="kicker">Overall settings</span><strong>Session, greeting, audio, and turn-taking</strong></div>
         <span>Shared across the entire Agent</span>
       </div>
       <div class="runtime-settings-grid">
         <details class="runtime-settings-card input-language-settings" open>
           <summary><span>${pipelineIcon("audio")} Speech input</span><small>All graph nodes</small></summary>
           <div class="runtime-settings-body">
+            ${runtimeSelect("definition", "audio.input.transcription.model", "User transcript model", stt, sttOptions,
+              "Selects the speech-to-text (STT) model that turns the caller's audio into transcript text for every graph node. In a cascaded pipeline, this text is what the language model receives. A native Realtime model receives audio directly; the separate transcript model provides transcript events rather than replacing that audio path.\n\nChanging this model changes the available input languages and recognition features, not the output voice. All listed choices remain selectable, but the service checks project, region, and model support when publishing or starting a session.")}
             <div class="input-language-field">
-              <label for="component-stt-language">Input language</label>
+              ${nodeFieldLabel("Input language", "component-stt-language",
+                `Tells the shared speech recognizer which languages the caller is expected to speak. This applies to every graph node, not just the entrypoint. Auto leaves language detection to the transcript model; checking the expected candidates narrows recognition and can improve accuracy.\n\nThe selected ${stt} model accepts ${inputLanguageLimit(stt) > 1 ? "up to 10 candidates; the first selection is primary. For Hindi and English callers in India, select hi-IN first and then en-IN" : "one explicit language, or Auto; use an Azure Speech model if you need multiple candidates"}. Choose only one locale per language, such as en-IN or en-US, not both. Streaming Azure Speech requires an explicit language and cannot use Auto.\n\nThis controls recognition, not the Agent's output voice, response language, or translation. Configure the output voice separately and describe the desired response language in Instructions.`)}
               <div class="input-language-combobox">
-                <input id="component-stt-language" type="text" role="combobox"
+                <input id="component-stt-language" type="text" role="combobox" readonly
                   value="${escapeHtml(displayTranscriptionLanguage(language))}" autocomplete="off" spellcheck="false"
-                  aria-autocomplete="list" aria-expanded="false" aria-controls="component-stt-languages"
-                  placeholder="Search language or locale" aria-describedby="component-stt-language-hint component-stt-language-error"
+                  aria-haspopup="listbox" aria-expanded="false" aria-controls="component-stt-languages"
+                  aria-describedby="component-stt-language-hint component-stt-language-error"
                   aria-invalid="${Boolean(languageError)}">
                 <button id="component-stt-language-toggle" type="button" class="input-language-toggle" aria-label="Show input languages">▾</button>
-                <div id="component-stt-languages" class="input-language-options" role="listbox" aria-label="Input languages" hidden></div>
+                <div class="input-language-options" hidden>
+                  <div id="component-stt-languages" role="listbox" aria-label="Input languages"></div>
+                </div>
               </div>
               <p id="component-stt-language-hint">${INPUT_LANGUAGE_HINT}</p>
               <p id="component-stt-language-error" role="alert"${languageError ? "" : " hidden"}>${escapeHtml(languageError)}</p>
               <a href="${INPUT_LANGUAGE_SOURCE}" target="_blank" rel="noopener noreferrer">Voice Live supported input languages</a>
+            </div>
+            ${settingsToggle("phrase-list", "Phrase list", Array.isArray(phraseList),
+              phraseListSupported ? "Help recognize product names and domain terms." : "This transcript model does not support phrase lists.",
+              !phraseListSupported && !Array.isArray(phraseList))}
+            ${Array.isArray(phraseList) ? runtimeTextarea("definition", "audio.input.transcription.phrase_list",
+              "Recognition phrases", phraseList.join("\n"), "Adds hints for words the recognizer may otherwise miss, such as product names, acronyms, or specialist terminology. Enter one word or phrase per line, for example Contoso or invoice number. These hints bias recognition; they do not restrict what the caller may say, translate audio, or add instructions for the Agent. Support depends on the selected transcript model.", { valueType: "lines" }) : ""}
+            <div class="audio-enhancement-settings">
+              ${settingsToggle("audio-enhancement", "Audio enhancement", enhanced,
+                "Reduce background noise and prevent playback from being recognized as caller speech.")}
+              ${enhanced ? `<div class="audio-enhancement-options">
+                <label class="settings-checkbox">
+                  <input type="checkbox" data-setting-control="noise-suppression" ${input.noise_reduction ? "checked" : ""}>
+                  <span>Noise suppression</span>
+                </label>
+                ${input.noise_reduction ? runtimeSelect("definition", "audio.input.noise_reduction.type", "Noise reduction",
+                  input.noise_reduction.type || "", [
+                    { value: "near_field", label: "Near field" },
+                    { value: "far_field", label: "Far field" },
+                    { value: "azure_deep_noise_suppression", label: "Azure deep noise suppression" },
+                  ], "Chooses how background noise is removed before the caller's speech is processed. Near field targets a microphone close to the speaker; far field targets speech captured farther away; Azure deep noise suppression uses the Azure denoiser. This does not change the output voice. Compare recordings from the real microphone environment before changing the mode, because overly aggressive filtering can also affect quiet speech.") : ""}
+                <label class="settings-checkbox">
+                  <input type="checkbox" data-setting-control="echo-cancellation" ${input.echo_cancellation ? "checked" : ""}>
+                  <span>Echo cancellation</span>
+                </label>
+                ${input.echo_cancellation ? runtimeSelect("definition", "audio.input.echo_cancellation.reference_source",
+                  "Echo reference", input.echo_cancellation.reference_source || "server", [
+                    { value: "server", label: "Server playback · mono" },
+                    { value: "client", label: "Client playback · stereo" },
+                  ], "Selects the playback signal used to distinguish the Agent's own voice from real caller speech, reducing false recognition and interruptions. Server reference uses the service's playback signal with mono input. Client reference sends microphone audio and the audio actually played by the browser on separate channels.\n\nClient reference requires WebSocket transport and stereo PCM16 input; the Portal selects matching capture settings. It cannot be combined with an avatar in this Portal. Use server reference unless your client and transport can supply the required playback channel.") : ""}
+                ${input.echo_cancellation?.reference_source === "client" ? `<p class="settings-hint">
+                  Requires WebSocket and stereo PCM16 input. Runtime selects the matching capture mode.
+                  Client reference cannot be combined with an avatar in this Portal.</p>` : ""}
+              </div>` : ""}
             </div>
           </div>
         </details>
@@ -3346,20 +3523,20 @@ function renderAgentRuntimeSettings(definition) {
             ${runtimeSelect("definition", "model_type", "Model serving", definition.model_type || "managed", [
               { value: "managed", label: "Managed" },
               { value: "self_deployed", label: "Self-deployed" },
-            ], "How the selected model is served. This is independent of realtime versus cascaded architecture.")}
+            ], "Specifies who hosts the selected language model. Managed uses a Voice Live-managed model; Self-deployed refers to a model deployment you provide. The model identifier must match the chosen serving mode and be accessible to the project.\n\nThis is separate from Realtime versus cascaded audio processing: changing serving mode does not automatically change the model, deployment, or voice. Keep Managed for the supplied managed-model templates; choose Self-deployed only when you have configured the corresponding deployment.")}
             ${runtimeSelect("definition", "output_modalities", "Output modalities", modalities, [
               { value: "audio", label: "Audio" },
               { value: "text", label: "Text only" },
               { value: "text,audio", label: "Text + audio" },
               { value: "audio,animation", label: "Audio + animation" },
               { value: "audio,avatar", label: "Audio + avatar" },
-            ], "The output types produced by the Agent.", "list")}
+            ], "Chooses the kinds of output the session requests: spoken audio, text, or audio with animation/avatar data. Audio enables spoken replies; Text only requests no synthesized speech; Text + audio requests both. Animation and avatar output also require compatible configuration and service support.\n\nThis does not choose the voice or convert an ordinary audio Agent into a configured avatar. Match the requested output to what your client can render; unsupported combinations are rejected by the service.", "list")}
             ${runtimeSelect("definition", "store", "Persist conversation", String(definition.store ?? false), BOOLEAN_OPTIONS,
-              "When enabled, Foundry persists the full conversation timeline and raw audio.", "boolean")}
+              "Controls whether Foundry stores the conversation timeline and raw audio for later retrieval and review. Enable it when you need service-side session history for debugging or evaluation and have permission to retain the caller's data.\n\nDisabling this does not remove previously stored sessions and is not a switch for every kind of Portal log or client-side recording. Consider consent, sensitive data, and your project's retention/access rules before enabling it.", "boolean")}
             ${runtimeInput("definition", "max_output_tokens", "Max output tokens", definition.max_output_tokens,
-              "Maximum output tokens for one response; use inf for no finite cap.", { valueType: "token" })}
+              "Caps how many output tokens the model may generate for a single response. Tokens are pieces of model output, not words or milliseconds; the supported count and treatment of audio depend on the model. A smaller cap can limit long replies, but can also cut an answer short.\n\nEnter a positive token count, use inf to request no finite cap where supported, or leave blank to omit the override. Use Instructions to ask for concise replies rather than relying on a very small cap.", { valueType: "token" })}
             ${runtimeSelect("definition", "parallel_tool_calls", "Parallel tool calls", definition.parallel_tool_calls ?? "",
-              OPTIONAL_BOOLEAN_OPTIONS, "Whether the model may invoke multiple tools in parallel.", "optional-boolean")}
+              OPTIONAL_BOOLEAN_OPTIONS, "Allows the model to request multiple tool calls in the same response when the model and tools support it. This can reduce waiting time for independent operations, such as fetching two unrelated records. It does not force tool calls or change which tools are available.\n\nChoose No when operations must run in order or modify shared state, such as updating a record before reading its new value. Service default omits the override. Tool choice separately controls whether a tool call is optional, required, or forbidden.", "optional-boolean")}
           </div>
         </details>
 
@@ -3370,47 +3547,40 @@ function renderAgentRuntimeSettings(definition) {
               { value: "", label: "No automatic greeting" },
               { value: "template", label: "Template · deterministic text" },
               { value: "llm_generated", label: "LLM-generated" },
-            ], "Controls the opening turn when a voice session starts.")}
+            ], "Chooses what happens at the start of a new voice session, before the caller's first turn. No automatic greeting waits for the caller. Template speaks the text you supply, while LLM-generated asks the model to compose an opening from the greeting prompt.\n\nUse Template for a predictable introduction or disclosure; use LLM-generated when the opening needs to vary. This is an Agent-wide session opening, not a greeting repeated each time a handoff node becomes active.")}
             ${greeting.type === "llm_generated" ? runtimeSelect(
               "definition", "greeting.tool_choice", "Greeting tool choice", greeting.tool_choice || "none", [
                 { value: "none", label: "None" },
                 { value: "auto", label: "Auto" },
                 { value: "required", label: "Required" },
-              ], "Tool policy used only while generating the opening response.",
+              ], "Controls tool use only while the model generates the initial greeting. None prevents tool calls during that opening; Auto lets the model decide; Required asks it to call a tool before completing the greeting.\n\nThis does not replace the node's normal Tool choice setting. Only require a greeting tool when the opening genuinely needs external data and that tool is configured, because a slow or unavailable tool can delay the caller's first message.",
             ) : ""}
             ${greeting.type === "template" ? runtimeTextarea(
               "definition", "greeting.text", "Greeting text", greeting.text || "",
-              "Exact Handlebars text spoken at session start.", { rows: 3, wide: true },
+              "The opening text spoken when Greeting mode is Template. Use a short, complete sentence such as Hello, you have reached Contoso support. Handlebars placeholders can insert configured session values; make sure those values are supplied by the session client.\n\nThis text is not an instruction to the model. Include any wording that must be spoken exactly here, and keep normal conversation behavior in Instructions.", { rows: 3, wide: true },
             ) : ""}
             ${greeting.type === "llm_generated" ? runtimeTextarea(
               "definition", "greeting.prompt", "Greeting prompt", greeting.prompt || "",
-              "Scoped prompt that asks the model to author the opening response.", { rows: 4, wide: true },
+              "Instructions used specifically to generate the session's first spoken message. Describe the purpose, language, tone, and required content, for example Greet the caller in Hindi and ask how you can help. The resulting wording may vary between sessions.\n\nThis is not the fixed text the caller will necessarily hear and does not replace the node's general Instructions. Choose a Template greeting instead if a disclosure or introduction must be spoken verbatim.", { rows: 4, wide: true },
             ) : ""}
             ${greeting.type ? runtimeInput(
               "definition", "greeting.fallback_text", "Fallback text", greeting.fallback_text || "",
-              "Fallback opening used when generated greeting audio cannot be produced.",
+              "A backup opening for the service to use when the normal greeting cannot be produced. Supply a short sentence that is safe without optional session data, such as Hello, how can I help you today?\n\nThis is not a second greeting spoken after a successful opening, and it does not guarantee recovery from a disconnected session or unsupported configuration. Leave it blank to omit a custom fallback.",
             ) : ""}
           </div>
         </details>
 
-        <details class="runtime-settings-card" open>
+        <details class="runtime-settings-card audio-transport-settings" open>
           <summary><span>${pipelineIcon("audio")} Audio transport</span><small>${escapeHtml(output.voice_type || "service default")}</small></summary>
           <div class="runtime-settings-body two-column">
             ${runtimeInput("definition", "audio.input.format.type", "Input format", input.format?.type,
-              "Input audio MIME type.", { valueType: "optional-string" })}
+              "Declares the encoding of audio sent from the client to the service, using an audio MIME type such as audio/pcm. The declaration must match the actual captured or encoded bytes; changing this field alone does not convert an arbitrary client stream.\n\nThis is an advanced transport setting. Keep the existing value unless you are changing the client audio pipeline, and check the sample rate and any echo-reference channel requirements at the same time.", { valueType: "optional-string" })}
             ${runtimeInput("definition", "audio.input.format.rate", "Input sample rate", input.format?.rate,
-              "Input audio sample rate in Hz.", { type: "number", min: 1, valueType: "number" })}
+              "The number of audio samples per second in the caller's input stream, measured in hertz (Hz). For example, 24000 means 24,000 samples each second. The client must send audio at the declared rate.\n\nA mismatch can make speech play or be recognized at the wrong speed and pitch. This is not a latency or speech-speed control; keep it aligned with Input format and the client capture settings.", { type: "number", min: 1, valueType: "number" })}
             ${runtimeInput("definition", "audio.output.format.type", "Output format", output.format?.type,
-              "Output audio MIME type.", { valueType: "optional-string" })}
+              "Declares the encoding requested for the Agent's generated speech, such as audio/pcm. Your client must be able to decode and play the chosen format, and the service must support it for the selected output path.\n\nThis changes audio transport, not the words, voice identity, or spoken language. Keep the existing format unless you are also updating the receiving playback pipeline.", { valueType: "optional-string" })}
             ${runtimeInput("definition", "audio.output.format.rate", "Output sample rate", output.format?.rate,
-              "Output audio sample rate in Hz.", { type: "number", min: 1, valueType: "number" })}
-            ${runtimeSelect("definition", "audio.input.noise_reduction.type", "Noise reduction",
-              input.noise_reduction?.type || "", [
-                { value: "", label: "Disabled" },
-                { value: "near_field", label: "Near field" },
-                { value: "far_field", label: "Far field" },
-                { value: "azure_deep_noise_suppression", label: "Azure deep noise suppression" },
-              ], "Input speech denoising mode.")}
+              "The requested number of samples per second in generated speech, in hertz (Hz), for example 24000 for 24 kHz. The playback client must use the matching rate or resample correctly.\n\nA higher rate is not a faster speaking speed and can increase audio data volume. Choose a rate supported by the selected format, voice, and transport; leave blank to omit this override.", { type: "number", min: 1, valueType: "number" })}
             ${runtimeSelect("definition", "audio.output.voice_type", "Voice type", output.voice_type || "", [
               { value: "", label: "Service default" },
               { value: "openai", label: "OpenAI" },
@@ -3419,13 +3589,28 @@ function renderAgentRuntimeSettings(definition) {
               { value: "azure-personal", label: "Azure personal" },
               { value: "azure-realtime-native", label: "Azure realtime native" },
               { value: "avatar-voice-sync", label: "Avatar voice sync" },
-            ], "Provider/type paired with the configured voice name.", "optional-string")}
+            ], "Identifies the voice provider or category paired with the selected voice name, such as Azure standard, Azure custom, or OpenAI/native speech. A voice ID and its type must form a compatible pair for the selected model and output path.\n\nThis field does not select a particular speaker or an input language. Prefer the Voice picker, which selects a voice with its matching metadata. Use Service default only when you want to omit an explicit type and let the service resolve it.", "optional-string")}
           </div>
         </details>
 
         <details class="runtime-settings-card turn-settings" open>
-          <summary><span>${pipelineIcon("bolt")} Turn taking</span><small>${escapeHtml(turn.type || "disabled")}</small></summary>
+          <summary><span>${pipelineIcon("bolt")} Automatic turn detection</span><small>${escapeHtml(turn.type || "disabled")}</small></summary>
           <div class="runtime-settings-body two-column">
+            <div class="runtime-field wide">
+              ${settingsToggle("turn-detection", "Automatic turn detection", Boolean(turn.type),
+                "Detect when the caller starts and finishes speaking.")}
+              ${turn.type ? `<div class="turn-detection-modes" role="group" aria-label="Turn detection strategy">
+                ${[
+                  ["azure_semantic_vad_multilingual", "Azure semantic", turn.type.startsWith("azure_")],
+                  ["server_vad", "Basic", turn.type === "server_vad"],
+                  ["semantic_vad", "OpenAI semantic", turn.type === "semantic_vad"],
+                ].map(([value, label, selected]) => `<button type="button" data-turn-mode="${value}"
+                  aria-pressed="${selected}">${label}</button>`).join("")}
+              </div><p class="settings-hint">${turn.type.startsWith("azure_")
+                ? "Uses speech understanding to detect turn boundaries."
+                : turn.type === "server_vad" ? "Detects speech and silence using audio activity."
+                  : "Uses the model's understanding of speech to decide when the caller has finished."}</p>` : ""}
+            </div>
             ${runtimeSelect("definition", "audio.input.turn_detection.type", "Detection type", turn.type || "", [
               { value: "", label: "Disabled" },
               { value: "server_vad", label: "Server VAD" },
@@ -3433,53 +3618,51 @@ function renderAgentRuntimeSettings(definition) {
               { value: "azure_semantic_vad", label: "Azure semantic VAD" },
               { value: "azure_semantic_vad_en", label: "Azure semantic VAD · English" },
               { value: "azure_semantic_vad_multilingual", label: "Azure semantic VAD · multilingual" },
-            ], "Strategy used to detect the end of the user's turn.")}
+            ], "Selects how the service decides that the caller has started and finished speaking. Server VAD uses audio activity and silence; semantic modes also use speech understanding to distinguish a pause from a completed thought. Azure variants have different language support.\n\nA faster detector can respond sooner but may cut in during a pause; a more patient detector may wait longer. Disabled removes automatic turn detection, so the client must manage turn boundaries. This does not change the transcript model or the output voice.")}
             ${turn.type === "semantic_vad" ? runtimeSelect(
               "definition", "audio.input.turn_detection.eagerness", "Eagerness", turn.eagerness || "auto", [
                 { value: "auto", label: "Auto" },
                 { value: "low", label: "Low" },
                 { value: "medium", label: "Medium" },
                 { value: "high", label: "High" },
-              ], "How quickly semantic VAD decides the user has finished speaking.",
+              ], "Adjusts how readily OpenAI semantic VAD treats the caller's utterance as complete. High favors earlier responses; Low is more patient with pauses or unfinished thoughts; Auto leaves the choice to the service.\n\nUse a more patient setting for callers who dictate numbers or pause while thinking. Faster completion may feel responsive but can interrupt a caller who has not finished. This is a semantic-VAD setting, not a silence duration in milliseconds.",
             ) : ""}
             ${turn.type && turn.type !== "semantic_vad" ? runtimeInput(
               "definition", "audio.input.turn_detection.threshold", "Activation threshold", turn.threshold,
-              "Voice-activity threshold from 0 to 1.", { type: "number", min: 0, max: 1, step: 0.05, valueType: "number" },
+              "The voice-activity score required to treat input audio as speech, from 0 to 1. A higher threshold is less sensitive and can reject background sounds, but may miss quiet callers; a lower threshold detects softer speech but may trigger on noise.\n\nTune this using recordings from the expected microphone and environment. It affects speech detection, not recognition confidence or the model's willingness to answer. Leave blank to use the service's default threshold.", { type: "number", min: 0, max: 1, step: 0.05, valueType: "number" },
             ) : ""}
             ${turn.type && turn.type !== "semantic_vad" ? runtimeInput(
               "definition", "audio.input.turn_detection.prefix_padding_ms", "Prefix padding", turn.prefix_padding_ms,
-              "Audio retained before detected speech, in milliseconds.", { type: "number", min: 0, valueType: "number" },
+              "Keeps a short amount of audio from before speech was detected, in milliseconds. This helps preserve the beginning of a word when the detector takes a moment to activate; 300 means include the preceding 0.3 seconds.\n\nToo little padding can clip the first syllable, while more padding includes additional lead-in sound. This does not add a deliberate pause to the Agent's reply. Leave blank for the service default.", { type: "number", min: 0, valueType: "number" },
             ) : ""}
             ${turn.type && turn.type !== "semantic_vad" ? runtimeInput(
               "definition", "audio.input.turn_detection.silence_duration_ms", "Silence duration", turn.silence_duration_ms,
-              "Silence required to end speech, in milliseconds.", { type: "number", min: 0, valueType: "number" },
+              "How long the caller must remain silent before audio activity detection treats speech as ended, in milliseconds. For example, 500 means a half-second pause. A shorter value can speed up responses but may split a caller's sentence; a longer value tolerates thinking pauses but adds waiting time.\n\nThis is only one part of turn detection. Semantic end detection can also influence when the turn completes. Test pauses, account numbers, and noisy calls before lowering it.", { type: "number", min: 0, valueType: "number" },
             ) : ""}
             ${turn.type && turn.type !== "semantic_vad" ? runtimeInput(
               "definition", "audio.input.turn_detection.idle_timeout_ms", "Idle timeout", turn.idle_timeout_ms,
-              "Maximum idle duration before ending the turn, in milliseconds.", { type: "number", min: 0, valueType: "number" },
+              "The maximum idle interval before the selected detector ends a turn, in milliseconds; 15000 means 15 seconds. This is a turn-detection timeout, not a limit on the full call's duration and not the normal short silence used to finish every sentence.\n\nUse it to bound long waiting periods where supported. The resulting timeout behavior depends on the detector and client; it does not by itself configure a custom reminder or hang-up message. Leave blank to omit the override.", { type: "number", min: 0, valueType: "number" },
             ) : ""}
             ${turn.type && turn.type !== "semantic_vad" ? runtimeInput(
               "definition", "audio.input.turn_detection.speech_duration_ms", "Minimum speech", turn.speech_duration_ms,
-              "Minimum speech duration required to trigger detection.", { type: "number", min: 0, valueType: "number" },
+              "The minimum amount of speech required to trigger the detector, in milliseconds. It can help reject very short noises or accidental sounds instead of treating them as caller turns.\n\nA larger value may also reject short but valid answers such as yes or a single digit. Tune with the actual responses your workflow expects; it is not the minimum length of an Agent response. Leave blank for the service default.", { type: "number", min: 0, valueType: "number" },
             ) : ""}
             ${turn.type ? runtimeSelect("definition", "audio.input.turn_detection.create_response", "Create response",
-              String(turn.create_response ?? true), BOOLEAN_OPTIONS, "Automatically create a response when speech stops.", "boolean") : ""}
+              String(turn.create_response ?? true), BOOLEAN_OPTIONS, "Controls whether the service automatically starts an Agent response after the detector finishes the caller's turn. Yes supports a normal hands-free conversation. No still permits speech detection, but the client must explicitly request a response when it is ready.\n\nChoose No only if your application manages that response timing, for example after validating external data. Otherwise the caller may finish speaking and hear no reply. This does not control whether interruptions are allowed.", "boolean") : ""}
             ${turn.type ? runtimeSelect("definition", "audio.input.turn_detection.interrupt_response", "Allow interruption",
-              String(turn.interrupt_response ?? true), BOOLEAN_OPTIONS, "Allow user speech to interrupt the Agent.", "boolean") : ""}
+              String(turn.interrupt_response ?? true), BOOLEAN_OPTIONS, "Allows detected caller speech to interrupt an Agent response that is still in progress. Yes lets the caller correct or redirect the Agent without waiting for it to finish. No prevents automatic interruption by this detector.\n\nUse recordings to check that background noise or the Agent's own playback is not mistaken for caller speech. This setting is different from cancelling a pending graph handoff, which is configured on the edge.", "boolean") : ""}
             ${turn.type ? runtimeSelect("definition", "audio.input.turn_detection.auto_truncate", "Auto truncate",
-              String(turn.auto_truncate ?? false), BOOLEAN_OPTIONS, "Automatically truncate the input buffer when speech stops.", "boolean") : ""}
-            ${turn.type?.startsWith("azure_") ? runtimeSelect(
-              "definition", "audio.input.turn_detection.remove_filler_words", "Remove filler words",
-              String(turn.remove_filler_words ?? false), BOOLEAN_OPTIONS, "Remove filler words from transcription.", "boolean",
-            ) : ""}
-            ${turn.type?.startsWith("azure_") ? runtimeInput(
+              String(turn.auto_truncate ?? false), BOOLEAN_OPTIONS, "Controls whether the service automatically truncates the input audio buffer when speech stops. The buffer is the audio currently accumulated for speech processing; this setting concerns that input-buffer lifecycle, not the maximum reply length or deletion of stored session recordings.\n\nKeep the template's value unless your client explicitly manages audio buffers. Changing it without matching client behavior can affect which audio is retained for later input processing.", "boolean") : ""}
+            ${turn.type?.startsWith("azure_")
+              ? settingsToggle("remove-filler-words", "Remove user filler words", Boolean(turn.remove_filler_words)) : ""}
+            ${["azure_semantic_vad", "azure_semantic_vad_multilingual"].includes(turn.type) ? runtimeInput(
               "definition", "audio.input.turn_detection.languages", "Detection languages",
               Array.isArray(turn.languages) ? turn.languages.join(", ") : "",
-              "Comma-separated BCP-47 language codes.", { valueType: "list" },
+              "Language hints for the Azure semantic turn detector, written as comma-separated language/region codes such as hi-IN, en-IN. They help configure the speech-understanding detector for the expected callers where the selected mode supports them.\n\nThese are not the same field as Input language: that setting configures transcript recognition. They also do not select a voice or translate responses. Keep them consistent with the conversation's expected languages and the detector's supported language set.", { valueType: "list" },
             ) : ""}
             ${turn.type ? runtimeInput(
               "definition", "audio.input.turn_detection.profile", "Latency profile", turn.profile,
-              "Optional service profile such as normal or eager.",
+              "An optional named tuning profile for the selected turn detector, such as normal or eager where supported. Profiles bundle service-specific choices about responsiveness; they are not a duration, a transcript model, or a guarantee of a particular response time.\n\nKeep the template's profile or leave blank to omit it unless you are deliberately comparing supported profiles with call recordings. The Portal preserves the supplied value; the service determines whether it is valid for this detector.",
             ) : ""}
           </div>
           ${turn.type && turn.type !== "semantic_vad" ? `
@@ -3493,7 +3676,7 @@ function renderAgentRuntimeSettings(definition) {
                     { value: "semantic_detection_v1_en", label: "Semantic detection v1 · English" },
                     { value: "semantic_detection_v1_multilingual", label: "Semantic detection v1 · multilingual" },
                     { value: "smart_end_of_turn_detection", label: "Smart end-of-turn detection" },
-                  ], "Optional semantic detector layered over VAD.")}
+                  ], "Adds a semantic end-of-utterance detector on top of voice activity detection. Rather than relying only on silence, it helps decide whether the caller has completed a thought, reducing premature replies during natural pauses. Select a language-compatible model; Disabled omits this extra detector.\n\nThis does not change the Agent's conversational model or the STT model. It can change the balance between waiting and cutting in, so compare real caller pauses before overriding the template.")}
                 ${endOfUtterance.model ? runtimeSelect(
                   "definition", "audio.input.turn_detection.end_of_utterance_detection.threshold_level",
                   "Semantic threshold", endOfUtterance.threshold_level || "default", [
@@ -3501,22 +3684,22 @@ function renderAgentRuntimeSettings(definition) {
                     { value: "low", label: "Low" },
                     { value: "medium", label: "Medium" },
                     { value: "high", label: "High" },
-                  ], "Sensitivity of semantic end detection.",
+                  ], "Selects the threshold preset used by the semantic end-of-utterance model when deciding that the caller has finished. This works with the chosen semantic model and is separate from the numeric voice-activity Activation threshold.\n\nThe preset's exact behavior depends on the service/model; do not treat it as a probability or a number of milliseconds. Start with Default or the template's value and compare examples of both short answers and longer pauses before tuning.",
                 ) : ""}
                 ${endOfUtterance.model ? runtimeInput(
                   "definition", "audio.input.turn_detection.end_of_utterance_detection.timeout_ms",
                   "Semantic timeout", endOfUtterance.timeout_ms,
-                  "Maximum semantic detection time in milliseconds.", { type: "number", min: 0, valueType: "number" },
+                  "Bounds how long semantic end detection may wait, in milliseconds. For example, 2000 is two seconds. It gives the semantic detector a waiting limit rather than changing the voice-activity silence threshold.\n\nA short limit can favor responsiveness but give the detector less time to resolve an unfinished utterance. This is not a timeout for tools or the whole call. Leave blank to use the service default.", { type: "number", min: 0, valueType: "number" },
                 ) : ""}
                 ${runtimeInput("definition", "audio.input.turn_detection.threshold_assistant_speaking",
                   "Assistant-speaking threshold", turn.threshold_assistant_speaking,
-                  "Optional threshold used while assistant audio is playing.", { type: "number", min: 0, max: 1, step: 0.05, valueType: "number" })}
+                  "Overrides the speech-activation threshold specifically while the Agent's audio is playing, from 0 to 1. A higher value can reduce false interruptions from playback or noise but can also make a quiet caller harder to detect.\n\nThis is separate from the ordinary Activation threshold used outside that playback period. Tune it only with real overlap and echo examples, and use echo cancellation when playback leaks into the microphone. Leave blank to omit this advanced override.", { type: "number", min: 0, max: 1, step: 0.05, valueType: "number" })}
                 ${runtimeInput("definition", "audio.input.turn_detection.window_size_assistant_speaking",
                   "Assistant window size", turn.window_size_assistant_speaking,
-                  "Optional assistant-speaking detection window.", { type: "number", min: 0, valueType: "number" })}
+                  "A service-specific analysis-window setting used to detect caller speech while the Agent is speaking. It tunes the evidence considered during overlapping audio, not the Agent's response length or the normal silence interval.\n\nThis is an advanced detector parameter; its scale and supported values depend on the service. Keep the existing template value or leave blank unless you have model-specific guidance and recorded overlap cases to compare. Do not interpret it as milliseconds.", { type: "number", min: 0, valueType: "number" })}
                 ${runtimeInput("definition", "audio.input.turn_detection.distinct_ci_phones_assistant_speaking",
                   "Distinct CI phones", turn.distinct_ci_phones_assistant_speaking,
-                  "Optional distinct-phone threshold while the assistant is speaking.", { type: "number", min: 0, valueType: "number" })}
+                  "An advanced speech-evidence threshold used while the Agent's audio is playing. CI phones are context-independent speech-sound units, not telephone numbers; the setting concerns distinct detected speech sounds when deciding whether caller speech is present.\n\nIt does not choose recognition languages or a minimum number of words. Supported values and behavior are service-specific, so retain the template's value or leave blank unless you are tuning recorded overlap cases with detector guidance.", { type: "number", min: 0, valueType: "number" })}
               </div>
             </details>` : ""}
         </details>
@@ -3538,33 +3721,33 @@ function renderInterimResponseSettings(config, scope) {
           { value: "", label: "Disabled" },
           { value: "static_interim_response", label: "Static text" },
           { value: "llm_interim_response", label: "LLM-generated" },
-        ], "Provides a short acknowledgement while a tool or slow operation is running.")}
+        ], "Plays a short acknowledgement while the caller waits for a tool or a slow operation, for example Let me check that for you. Static text selects from your candidate messages; LLM-generated composes an acknowledgement using the configured interim model and instructions. Disabled removes this interim-response configuration.\n\nThis does not replace the final answer or make a slow operation complete faster. Keep acknowledgements short so they reassure the caller without making unsupported claims about the result.")}
         ${type ? runtimeSelect(scope, "interim_response.triggers", "Triggers",
           Array.isArray(interim.triggers) ? interim.triggers.join(",") : "latency", [
             { value: "latency", label: "Latency" },
             { value: "tool", label: "Tool call" },
             { value: "latency,tool", label: "Latency + tool call" },
-          ], "Conditions that may trigger one interim response.", "list") : ""}
+          ], "Chooses which events may cause an interim acknowledgement. Latency uses the waiting threshold; Tool call enables acknowledgements associated with a tool operation; the combined choice permits both kinds of trigger.\n\nThese triggers do not force a tool call and are separate from the node's Tool choice setting. Choose the events that actually create noticeable waiting in your workflow, rather than adding an acknowledgement to every normal reply.", "list") : ""}
         ${type ? runtimeInput(scope, "interim_response.latency_threshold_ms", "Latency threshold",
-          interim.latency_threshold_ms, "Delay before a latency-triggered interim response, in milliseconds.",
+          interim.latency_threshold_ms, "The wait before a latency-triggered interim acknowledgement becomes eligible, in milliseconds; 1000 means one second. This applies when Latency is included in Triggers and is not a tool execution timeout.\n\nToo small a value can add unnecessary acknowledgements to quick replies; too large a value leaves the caller waiting in silence. Choose it from observed response times for this node. Leave blank to omit an explicit threshold.",
           { type: "number", min: 0, valueType: "number" }) : ""}
         ${type === "static_interim_response" ? runtimeTextarea(
           scope, "interim_response.texts", "Candidate texts",
           Array.isArray(interim.texts) ? interim.texts.join("\n") : "",
-          "One possible interim response per line.", { rows: 3, wide: true, valueType: "lines" },
+          "The messages available to Static text interim responses, one complete sentence per line. For example, enter Let me check that for you and I am still looking into it on separate lines.\n\nTreat every candidate as something the caller might hear before the operation finishes. Avoid promising success, quoting unconfirmed results, or saying that a transfer is complete before it actually is. These messages do not replace the final tool-based answer.", { rows: 3, wide: true, valueType: "lines" },
         ) : ""}
         ${type === "llm_interim_response" ? runtimeInput(
           scope, "interim_response.model", "Interim model", interim.model,
-          "Optional model used to generate interim responses.",
+          "An optional model identifier used to compose LLM-generated interim acknowledgements. This is separate from the node's main conversational model; changing it does not change the final-answer model, transcript recognizer, or voice.\n\nUse a model supported by your project and this feature. Leave blank to omit the override rather than guessing a deployment name. Keep the interim instructions focused on a short acknowledgement, not on answering before tool results arrive.",
         ) : ""}
         ${type === "llm_interim_response" ? runtimeInput(
           scope, "interim_response.max_completion_tokens", "Max completion tokens",
-          interim.max_completion_tokens, "Token cap for one generated interim response.",
+          interim.max_completion_tokens, "Caps the generated acknowledgement in model output tokens. Tokens are pieces of text, not words or seconds. The cap applies to one interim response, separately from the main response's Max output tokens.\n\nKeep acknowledgements brief, but avoid a cap so small that it cuts a sentence in half. Use Interim instructions to ask for one short sentence and test how that fits the supported model's token budget.",
           { type: "number", min: 1, valueType: "number" },
         ) : ""}
         ${type === "llm_interim_response" ? runtimeTextarea(
           scope, "interim_response.instructions", "Interim instructions", interim.instructions || "",
-          "Optional instructions for generating the acknowledgement.", { rows: 3, wide: true },
+          "Guides the model only when composing an interim acknowledgement. Specify a short, truthful message in the caller's language, for example Acknowledge that you are checking the account; do not invent a result or repeat the greeting.\n\nThese instructions do not replace the node's main Instructions or provide the final answer. The operation may still be running, so do not claim that a payment, update, or transfer has succeeded.", { rows: 3, wide: true },
         ) : ""}
       </div>
     </section>`;
@@ -3597,6 +3780,27 @@ function applyRuntimeFieldChange(scope, path, rawValue, valueType) {
       ? definition
       : definition.handoff.nodes.find((node) => node.id === selectedId)?.config;
     if (!target) return;
+    if (path === "audio.input.transcription.model") {
+      setRootSttModel(target, rawValue);
+      return;
+    }
+    if (path === "audio.input.echo_cancellation.reference_source") {
+      if (rawValue === "client" && (target.avatar || (
+        target.audio?.input?.format?.type && target.audio.input.format.type !== "audio/pcm"
+      ))) {
+        setMessage("Echo reference was not changed.", "Client reference requires PCM input and no avatar in this Portal.");
+        return;
+      }
+      const current = nestedValue(target, "audio.input.echo_cancellation") || {};
+      setNestedValue(target, "audio.input.echo_cancellation", {
+        ...current, type: "server_echo_cancellation", reference_source: rawValue,
+        channels: rawValue === "client" ? 2 : 1,
+      });
+      if (rawValue === "client" && !target.audio.input.format?.type) {
+        target.audio.input.format = { rate: 24000, ...target.audio.input.format, type: "audio/pcm" };
+      }
+      return;
+    }
     if (path === "greeting.type") {
       if (!rawValue) {
         delete target.greeting;
@@ -3621,7 +3825,17 @@ function applyRuntimeFieldChange(scope, path, rawValue, valueType) {
         return;
       }
       const current = nestedValue(target, "audio.input.turn_detection") || {};
-      setNestedValue(target, "audio.input.turn_detection", { ...current, type: rawValue });
+      const next = { ...current, type: rawValue };
+      if (rawValue === "semantic_vad") {
+        for (const key of ["threshold", "prefix_padding_ms", "silence_duration_ms", "idle_timeout_ms",
+          "speech_duration_ms", "end_of_utterance_detection", "profile", "threshold_assistant_speaking",
+          "window_size_assistant_speaking", "distinct_ci_phones_assistant_speaking"]) delete next[key];
+      } else {
+        delete next.eagerness;
+      }
+      if (!rawValue.startsWith("azure_")) delete next.remove_filler_words;
+      if (!["azure_semantic_vad", "azure_semantic_vad_multilingual"].includes(rawValue)) delete next.languages;
+      setNestedValue(target, "audio.input.turn_detection", next);
       return;
     }
     if (path === "audio.input.turn_detection.end_of_utterance_detection.model" && !rawValue) {
@@ -3667,10 +3881,44 @@ function bindAgentRuntimeSettings(root) {
           if (language) definition.audio.input.transcription.language = language;
           else delete definition.audio.input.transcription.language;
         });
-        renderNodeEditor();
       },
     });
   }
+  $$("[data-setting-control]", root).forEach((field) => {
+    field.addEventListener("change", () => {
+      const enabled = field.checked;
+      const control = field.dataset.settingControl;
+      mutate(`Updated ${control}`, (definition) => {
+        const set = (path, value) => setNestedValue(definition, `audio.input.${path}`, value);
+        if (control === "phrase-list") {
+          set("transcription.phrase_list", enabled ? [] : DELETE_RUNTIME_VALUE);
+        } else if (control === "audio-enhancement") {
+          if (enabled) set("noise_reduction", { type: "azure_deep_noise_suppression" });
+          else {
+            set("noise_reduction", DELETE_RUNTIME_VALUE);
+            set("echo_cancellation", DELETE_RUNTIME_VALUE);
+          }
+        } else if (control === "noise-suppression") {
+          set("noise_reduction", enabled ? { type: "azure_deep_noise_suppression" } : DELETE_RUNTIME_VALUE);
+        } else if (control === "echo-cancellation") {
+          set("echo_cancellation", enabled
+            ? { type: "server_echo_cancellation", reference_source: "server", channels: 1 }
+            : DELETE_RUNTIME_VALUE);
+        } else if (control === "turn-detection") {
+          set("turn_detection", enabled ? { type: "azure_semantic_vad_multilingual" } : DELETE_RUNTIME_VALUE);
+        } else if (control === "remove-filler-words") {
+          set("turn_detection.remove_filler_words", enabled);
+        }
+      });
+      renderNodeEditor();
+    });
+  });
+  $$("[data-turn-mode]", root).forEach((button) => {
+    button.addEventListener("click", () => {
+      applyRuntimeFieldChange("definition", "audio.input.turn_detection.type", button.dataset.turnMode, "string");
+      renderNodeEditor();
+    });
+  });
   $$("[data-runtime-path]", root).forEach((field) => {
     field.addEventListener("change", () => {
       applyRuntimeFieldChange(
@@ -3692,36 +3940,12 @@ function renderNodeEditor() {
   }
   const id = state.selected.id;
   const entry = id === ENTRYPOINT_ID;
-  const global = state.nodeEditorMode === "global";
-  const body = $("#node-editor-body");
-  $("#node-editor").setAttribute("aria-label", global ? "Agent General Settings" : "Node setup");
-  $("#node-editor-description-text").textContent = global
-    ? "Shared configuration for the entire Agent. No need to open the start node."
+  $("#import-agent-settings").hidden = !entry;
+  $("#node-editor").setAttribute("aria-label", entry ? "Entrypoint overall settings" : "Node setup");
+  $("#node-editor-description-text").textContent = entry
+    ? "Configure overall Agent settings and the entrypoint's model, voice, instructions, and tools in one place."
     : "Configure this node's model, voice, instructions, and tools.";
-  $("#done-node-editor").textContent = global ? "Save Agent General Settings" : "Save node";
-  if (global) {
-    $("#node-editor-title").textContent = "Agent General Settings";
-    $("#node-editor-kind-label").textContent = "Entire Agent";
-    $("#node-editor-kind-icon").innerHTML = pipelineIcon("sliders");
-    $("#delete-node-editor").hidden = true;
-    body.innerHTML = `
-      <section class="settings-scope-note" aria-label="Global configuration scope">
-        <div>
-          <strong>One place for Agent-wide configuration</strong>
-          <p>Input language, STT, greeting, audio transport, and turn detection are shared across the graph.
-            Each node keeps its own instructions, tools, model, and voice settings.</p>
-        </div>
-        <button id="global-stt-settings" type="button" class="button secondary">Configure shared STT</button>
-      </section>
-      ${renderAgentRuntimeSettings(state.definition)}`;
-    bindAgentRuntimeSettings(body);
-    $("#global-stt-settings").addEventListener("click", () => {
-      state.nodeComponentPanel = "stt";
-      renderNodeEditor();
-    });
-    renderNodeComponentPanel();
-    return;
-  }
+  $("#done-node-editor").textContent = "Save node";
   const node = entry
     ? null
     : state.definition.handoff.nodes.find((item) => item.id === id);
@@ -3754,18 +3978,18 @@ function renderNodeEditor() {
   const toolChoice = config.tool_choice ?? "auto";
   const namedToolChoice = typeof toolChoice === "object" && toolChoice !== null;
   const toolList = Array.isArray(config.tools) ? config.tools : [];
-  $("#node-editor-title").textContent = entry ? "Start node" : id;
-  $("#node-editor-kind-label").textContent = entry ? "Starter" : "Node";
+  $("#node-editor-title").textContent = entry ? "Entrypoint / Overall settings" : id;
+  $("#node-editor-kind-label").textContent = entry ? "Overall settings" : "Node";
   $("#node-editor-kind-icon").innerHTML = pipelineIcon(nodeIcon(id));
   $("#delete-node-editor").hidden = entry;
   $("#node-editor-body").innerHTML = `
     <section class="settings-scope-note" aria-label="Node configuration scope">
       <div>
-        <strong>Editing ${entry ? "the start node" : "this node"}</strong>
-        <p>For input language, greeting, audio, or turn detection, use Agent General Settings.
-          Node instructions and tools are edited here.</p>
+        <strong>${entry ? "Overall settings and entrypoint behavior" : "Editing this node"}</strong>
+        <p>${entry
+          ? "Input language, STT, greeting, audio transport, and turn detection are shared across the graph. The model, voice, instructions, and tools below configure the entrypoint; specialist nodes keep their own overrides."
+          : "Input language, greeting, audio, and turn detection are configured on $entrypoint under Overall settings. Edit this node's model, voice, instructions, and tools here."}</p>
       </div>
-      <button id="node-global-settings" type="button" class="button secondary">Agent General Settings</button>
     </section>
     ${state.debugMode ? `<section class="pipeline-overview" aria-label="Pipeline metrics">
       <div class="overview-metric">
@@ -3816,7 +4040,7 @@ function renderNodeEditor() {
         </div>` : ""}
         <p>${pipeline.architecture === "realtime"
           ? "The model reads audio natively; auxiliary STT runs in parallel and is excluded from the serial total."
-          : "Agent-level STT feeds every cascaded node, so only graph-wide compatible choices are enabled."}
+          : "Agent-level STT feeds every cascaded node. All listed transcribers are selectable; the service validates support."}
           ${escapeHtml(state.debugMode && stt.latencySource ? ` Source: ${stt.latencySource}.` : "")}</p>
       </article>
       <article class="pipeline-card model-card${state.nodeComponentPanel === "model" ? " component-selected" : ""}"
@@ -3873,8 +4097,8 @@ function renderNodeEditor() {
             "Node name",
             "node-editor-id",
             entry
-              ? "The immutable starter id for the graph. $entrypoint always represents the definition root and cannot be renamed."
-              : "The published node id. Renaming it also updates every connected edge.",
+              ? "$entrypoint is the fixed identifier for the graph's starting node and represents the root Agent definition. A new session begins with its behavior, while Overall settings on this editor also apply to the rest of the graph. It cannot be renamed; edit the Agent's name separately if you want to change the published Agent identity."
+              : "The identifier used to refer to this specialist in the published handoff graph. Choose a stable, meaningful name such as billing_support. Renaming it updates connected graph edges in the working copy; check any instructions or external references that mention the old name, because free-text references are not rewritten automatically.",
           )}
           <input id="node-editor-id" data-node-editor-field="id" value="${escapeHtml(id)}"
             ${entry ? "readonly" : ""}>
@@ -3884,7 +4108,7 @@ function renderNodeEditor() {
           ${nodeFieldLabel(
             "Description",
             "node-editor-description",
-            "A concise summary used to identify this specialist's purpose in the handoff graph.",
+            "A short summary of this node's responsibility, for example Handles invoice questions and payment status. It helps authors distinguish specialists when reading the graph. The entrypoint shows a fixed description because it represents root behavior.\n\nThis summary does not replace Instructions or determine when a handoff occurs. Put observable routing conditions on the connected edges and put detailed behavior and restrictions in the node's Instructions.",
           )}
           <input id="node-editor-description" data-node-editor-field="description"
             value="${escapeHtml(entry ? "Definition root behavior" : node.description || "")}"
@@ -3895,7 +4119,7 @@ function renderNodeEditor() {
       ${nodeFieldLabel(
         "Instructions",
         "node-editor-instructions",
-        "The prompt that controls this node's behavior, boundaries, and task-specific workflow.",
+        "The prompt that defines this node's role, speaking style, permitted actions, and workflow. State what information to collect, which tools to use, what must be verified, and when to hand off or finish. For example, require an account lookup before giving a balance, and prohibit inventing a tool result.\n\nThese instructions configure the entrypoint or selected specialist, not every specialist's overrides. They do not themselves create tools, change speech recognition, or publish the Agent. Save the working copy and publish a new version when you are ready to use the changes.",
       )}
       <textarea id="node-editor-instructions" data-node-editor-field="instructions"
         rows="12" placeholder="Define this node's focused behavior…">${escapeHtml(config.instructions || "")}</textarea>
@@ -3913,7 +4137,7 @@ function renderNodeEditor() {
           ${nodeFieldLabel(
             "Tool choice",
             "node-editor-tool-choice",
-            "Auto lets the model decide; Required forces a tool call; None prevents tool calls. The API also accepts a specific named function or MCP tool.",
+            "Controls whether this node's model may use its configured tools. Auto lets the model choose between replying and calling a tool; Required requires a tool call rather than a text-only response; None prevents tool calls. It does not add tools or decide whether independent tool calls run in parallel.\n\nRequired without suitable tools can prevent a useful response. Use Auto for normal conversation, and require a tool only where the workflow needs one. An advanced named function/MCP selection can also be preserved and edited below.",
           )}
           <select id="node-editor-tool-choice" data-node-editor-field="tool_choice">
             ${namedToolChoice ? '<option value="__named__" selected disabled>Specific named tool</option>' : ""}
@@ -3927,7 +4151,7 @@ function renderNodeEditor() {
         ${nodeFieldLabel(
           "Specific function or MCP tool selection",
           "node-editor-named-tool-choice",
-          "An advanced tool_choice object that selects one named function, one MCP server, or one MCP tool.",
+          "The structured tool_choice object that restricts selection to a named function, an MCP server, or an MCP tool. It must reference an actual tool available to this node and use the service's expected object shape.\n\nThis is not the tool declaration itself. Changing a name here does not create or rename a tool. Keep the existing object unless you intend to change the restriction, or choose Auto, Required, or None above to use a general policy.",
         )}
         <textarea id="node-editor-named-tool-choice" data-node-editor-field="tool_choice"
           rows="4">${escapeHtml(stableJson(toolChoice, 2))}</textarea>` : ""}
@@ -3941,7 +4165,7 @@ function renderNodeEditor() {
         ${nodeFieldLabel(
           "Tools (JSON array)",
           "node-editor-tools",
-          "The complete tool declarations published for this node, including MCP server settings, allowed tools, functions, system tools, and toolboxes.",
+          "The full JSON array of tools made available to this node, including MCP server connections, allowed tool names, function parameter schemas, system tools, or toolboxes. This is configuration, not a list of tool calls that have already run.\n\nKeep each declaration in the service's expected shape; valid JSON alone does not guarantee a reachable server or correct tool contract. Removing a tool also removes the model's ability to invoke it from this node. Review endpoint access and schemas, test the MCP configuration where applicable, and publish before expecting live sessions to use the change.",
         )}
         <textarea id="node-editor-tools" data-node-editor-field="tools" rows="10"
           spellcheck="false">${escapeHtml(tools)}</textarea>
@@ -3950,7 +4174,6 @@ function renderNodeEditor() {
     </section>`;
   const nodeEditorBody = $("#node-editor-body");
   bindAgentRuntimeSettings(nodeEditorBody);
-  $("#node-global-settings").addEventListener("click", () => openGlobalSettings());
   $(".node-editor-form", nodeEditorBody).before($(".tool-config-section", nodeEditorBody));
   $$("[data-node-editor-field]", nodeEditorBody).forEach((field) => {
     field.addEventListener("change", () => {
@@ -4253,8 +4476,7 @@ function renderHeader() {
     : "Try it now";
   $("#create-blank-action").disabled = state.publishing || Boolean(state.templateLoadingId);
   $("#template-action").disabled = state.publishing || Boolean(state.templateLoadingId);
-  $("#view-agent-yaml").disabled = !state.definition;
-  $("#global-settings-action").disabled = !state.definition || state.publishing;
+  $("#view-agent-yaml").disabled = state.publishing || Boolean(state.templateLoadingId);
   $("#add-node").disabled = !state.definition;
   $("#add-node-canvas").disabled = !state.definition;
   $("#add-edge").disabled = !state.definition;
@@ -4265,10 +4487,13 @@ function renderHeader() {
 }
 
 function renderDefinition() {
-  if (!state.definition || $("#definition-drawer").hidden) return;
-  const value = state.format === "json"
-    ? `${stableJson(state.definition, 2)}\n`
-    : deterministicYaml(state.definition);
+  if ($("#definition-drawer").hidden) return;
+  let value = "No Agent definition loaded. Choose Import from agent to import a working copy.";
+  if (state.definition) {
+    value = state.format === "json"
+      ? `${stableJson(state.definition, 2)}\n`
+      : deterministicYaml(state.definition);
+  }
   $("#definition-output").textContent = value;
   $("#export-format-label").textContent = state.format.toUpperCase();
   $("#export-format-guidance").textContent = state.format === "json"
@@ -4296,7 +4521,6 @@ function render() {
 }
 
 function openDefinition() {
-  if (!state.definition) return;
   state.definitionReturnFocus = document.activeElement;
   $("#definition-drawer").hidden = false;
   renderDefinition();
@@ -4313,41 +4537,6 @@ function closeDefinition() {
   $("#definition-drawer").hidden = true;
   if (state.definitionReturnFocus?.isConnected) state.definitionReturnFocus.focus();
   state.definitionReturnFocus = null;
-}
-
-async function copyDefinition() {
-  await navigator.clipboard.writeText($("#definition-output").textContent);
-  setMessage(`Copied deterministic ${state.format.toUpperCase()} generated from the canonical working definition.`);
-}
-
-async function copyPublishBody() {
-  if (!state.definition) return;
-  const body = {
-    definition: state.definition,
-    description: state.sourceDescription || "Published from a Handoff Graph export",
-    metadata: deepClone(state.sourceMetadata || {}),
-    draft: false,
-  };
-  await navigator.clipboard.writeText(`${stableJson(body, 2)}\n`);
-  setMessage(
-    "Copied a complete Foundry release-version request body.",
-    `POST it to /agents/<agent-name>/versions?api-version=${state.cfg?.apiVersion || "v1"}.`,
-  );
-}
-
-function downloadDefinition() {
-  if (!state.definition) return;
-  const extension = state.format === "json" ? "json" : "yaml";
-  const blob = new Blob([$("#definition-output").textContent], {
-    type: state.format === "json" ? "application/json" : "application/yaml",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${state.agentName || "voice-agent"}.handoff.definition.${extension}`;
-  link.click();
-  URL.revokeObjectURL(url);
-  setMessage(`Exported deterministic ${state.format.toUpperCase()} from the canonical working definition.`);
 }
 
 function returnedVersion(payload) {
@@ -4485,7 +4674,7 @@ async function publishDefinition() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          definition: state.definition,
+          definition: publicationDefinition(state.definition),
           description: state.sourceDescription || "Handoff Graph dashboard publication",
           metadata: {
             ...state.sourceMetadata,
@@ -4596,15 +4785,15 @@ function openAgentInDemo(agentName, { startSession = false } = {}) {
       // A one-shot, same-tab request must not turn shared Agent URLs into auto-start links.
       window.sessionStorage.setItem("voice-agent-editor-run", agentName);
     } catch (error) {
-      setMessage("Could not prepare the AgentRuntime session.", error.message);
+      setMessage("Could not prepare the Runtime session.", error.message);
       if (!$("#publish-progress").hidden) {
         setPublishStep("open", "failed", error.message);
-        finishPublishProgress("Could not start AgentRuntime.", error.message);
+        finishPublishProgress("Could not start Runtime.", error.message);
       }
       return;
     }
   }
-  window.location.assign(`/demo/?agent=${encodeURIComponent(agentName)}&view=handoff`);
+  window.location.assign(`/runtime/?agent=${encodeURIComponent(agentName)}&view=handoff`);
 }
 
 const AUTO_AGENT_NAME_KEY = "voice-agent-editor-auto-name";
@@ -4733,7 +4922,7 @@ async function publishAndRun() {
   openPublishProgress();
   const published = await publishDefinition();
   if (!published) return;
-  setPublishStep("open", "running", "Preparing the verified Agent in AgentRuntime…");
+  setPublishStep("open", "running", "Preparing the verified Agent in Runtime…");
   setMessage(
     `Published Agent ${published.name}, version ${published.version || "(not returned)"}.`,
     "Opening the verified release with its runtime graph expanded…",
@@ -4743,12 +4932,32 @@ async function publishAndRun() {
     "complete",
     `Opening ${published.name}, version ${published.version || "(not returned)"}.`,
   );
-  $("#publish-progress-summary").textContent = "Publication complete. Opening AgentRuntime…";
+  $("#publish-progress-summary").textContent = "Publication complete. Opening Runtime…";
   await new Promise((resolve) => window.setTimeout(resolve, 900));
   openAgentInDemo(published.name, { startSession });
 }
 
+const PLAYGROUND_WELCOME_KEY = "voice-agent-playground-welcome-v1";
+
+function showPlaygroundWelcome() {
+  try {
+    if (window.sessionStorage.getItem(PLAYGROUND_WELCOME_KEY) === "dismissed") return;
+  } catch (error) {
+    console.warn("Could not read the playground welcome preference.", error);
+  }
+  $("#playground-welcome-dialog").showModal();
+}
+
 function bindEvents() {
+  bindFieldHelp();
+  $("#playground-welcome-dialog").addEventListener("close", () => {
+    try {
+      window.sessionStorage.setItem(PLAYGROUND_WELCOME_KEY, "dismissed");
+    } catch (error) {
+      console.warn("Could not save the playground welcome preference.", error);
+    }
+    $("#create-blank-action").focus({ preventScroll: true });
+  });
   $("#retry-voice-catalog").addEventListener("click", () => void refreshVoiceCatalog(true));
   let canvasSize = null;
   new ResizeObserver(([entry]) => {
@@ -4767,7 +4976,9 @@ function bindEvents() {
   $("#agent-select").addEventListener("pointerdown", ensureAgentListLoaded);
   $("#agent-select").addEventListener("click", (event) => {
     const option = event.target.closest("[data-agent-name]");
-    if (option) selectAgentOption(option.dataset.agentName);
+    if (!option) return;
+    selectAgentOption(option.dataset.agentName);
+    void loadSelectedAgent();
   });
   $("#agent-select").addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -4786,9 +4997,21 @@ function bindEvents() {
     selectAgentOption(options[index].dataset.agentName, { focus: true });
     options[index].scrollIntoView({ block: "nearest" });
   });
-  $("#agent-select").addEventListener("dblclick", loadSelectedAgent);
-  $("#load-agent").addEventListener("click", loadSelectedAgent);
   $("#create-blank-action").addEventListener("click", loadBlank);
+  $$("[data-agent-import]").forEach((button) => button.addEventListener("click", openAgentImport));
+  $("#close-agent-import").addEventListener("click", closeAgentImport);
+  $("#agent-import-dialog").addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeAgentImport();
+  });
+  $("#agent-import-file").addEventListener("change", readAgentImportFile);
+  $("#agent-import-source").addEventListener("input", () => {
+    state.importGeneration += 1;
+    state.importFileName = "";
+    invalidateAgentImport();
+  });
+  $("#validate-agent-import").addEventListener("click", validateAgentImport);
+  $("#apply-agent-import").addEventListener("click", applyAgentImport);
   $("#template-action").addEventListener("click", openTemplatePicker);
   $("#open-tool-connections").addEventListener("click", openToolConnections);
   $("#close-tool-connections").addEventListener("click", closeToolConnections);
@@ -4858,12 +5081,8 @@ function bindEvents() {
     autoLayout({ announce: true });
     renderGraph();
   });
-  $("#global-settings-action").addEventListener("click", () => openGlobalSettings());
   $$("[data-agent-yaml]").forEach((button) => button.addEventListener("click", openAgentYaml));
   $("#close-definition").addEventListener("click", closeDefinition);
-  $("#copy-definition").addEventListener("click", copyDefinition);
-  $("#download-definition").addEventListener("click", downloadDefinition);
-  $("#copy-publish-body").addEventListener("click", copyPublishBody);
   $$(".definition-tabs button").forEach((button) => {
     button.addEventListener("click", () => {
       state.format = button.dataset.format;
@@ -4877,9 +5096,6 @@ function bindEvents() {
   $("#close-edge-editor").addEventListener("click", () => cancelEditorSession("edge"));
   $("#done-edge-editor").addEventListener("click", () => commitEditorSession("edge"));
   $("#delete-edge-editor").addEventListener("click", () => confirmDeleteEdgeById(state.selected.id));
-  $("#node-editor").addEventListener("click", (event) => {
-    if (event.target === $("#node-editor")) cancelEditorSession("node");
-  });
   $("#edge-editor").addEventListener("click", (event) => {
     if (event.target === $("#edge-editor")) cancelEditorSession("edge");
   });
@@ -4949,6 +5165,8 @@ function bindEvents() {
     if (state.panning?.pointerId === event.pointerId) state.panning = null;
   });
   window.addEventListener("keydown", (event) => {
+    if ($("#playground-welcome-dialog").open) return;
+    if ($("#agent-import-dialog").open) return;
     // The naming dialog is modal: graph shortcuts must not edit the canvas behind it.
     if (!$("#agent-name-dialog").hidden && event.key !== "Escape") return;
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
@@ -5022,6 +5240,7 @@ function renderEdgesOnly() {
 async function start() {
   bindEvents();
   render();
+  showPlaygroundWelcome();
   try {
     await loadConfig();
     const requested = new URLSearchParams(window.location.search).get("agent");

@@ -7,6 +7,8 @@ are acquired lazily when the portal calls that project.
 """
 from __future__ import annotations
 
+import copy
+import logging
 import os
 import re
 import threading
@@ -98,6 +100,46 @@ def build_voice_config(voice: str) -> dict[str, str]:
         else "azure-realtime-native"
     )
     return {"type": voice_type, "name": voice}
+
+
+def regional_model_publish_fallback(
+    definition: dict[str, Any],
+    status_code: int | None,
+    error_message: str,
+) -> dict[str, Any] | None:
+    regional_model = "gpt-realtime-regional"
+    fallback_model = "gpt-realtime"
+    if (
+        status_code != 400
+        or definition.get("kind") != "voice"
+        or f"Model '{regional_model}' is not supported in managed mode in this region."
+        not in error_message
+    ):
+        return None
+    updated = copy.deepcopy(definition)
+    configs = [updated]
+    handoff = updated.get("handoff")
+    if isinstance(handoff, dict):
+        configs.extend(
+            node["config"]
+            for node in handoff.get("nodes") or []
+            if isinstance(node, dict) and isinstance(node.get("config"), dict)
+        )
+    changed = False
+    for config in configs:
+        if (
+            config.get("model") == regional_model
+            and config.get("model_type", definition.get("model_type", "managed")) == "managed"
+        ):
+            config["model"] = fallback_model
+            changed = True
+    if not changed:
+        return None
+    logging.getLogger("voice_agent_portal").warning(
+        "Publication rejected managed model %s in this region; preparing one retry with %s.",
+        regional_model, fallback_model,
+    )
+    return updated
 
 
 @dataclass

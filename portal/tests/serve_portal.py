@@ -86,6 +86,12 @@ class FoundryFixture:
         if segments[2:] == ["versions"] and request.method == "POST":
             body = await request.json()
             assert "name" not in body
+            handoff = body["definition"].get("handoff")
+            if handoff is not None and not 1 <= len(handoff.get("edges", [])) <= 128:
+                return web.json_response({"error": {
+                    "code": "invalid_payload",
+                    "message": "A handoff graph must contain between 1 and 128 edges.",
+                }}, status=400)
             return web.json_response(self.save(name, body["definition"], body.get("description", "")))
         agent = self.agents.get(name)
         if agent is None:
