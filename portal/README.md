@@ -69,6 +69,22 @@ for example `"hi-IN"`, `"en-IN"`, or `"en-US"`. Missing metadata is displayed as
 **Locale not specified**, never guessed from a voice name. This metadata organizes
 the picker; the Agent definition still owns actual input/output language settings.
 
+## Voice selection without discovery permissions
+
+Editor, AgentRuntime and WebRTC start with a bundled reference voice catalog and
+the configured default voice. Loading the page does not wait for account-level
+Voice Live discovery or require that extra permission. The reference includes
+Azure Speech and native voice metadata; it is not a guarantee of availability
+for every project, region or model.
+
+Live discovery is an optional background update. Permission errors, timeouts,
+network failures and invalid responses retain the default catalog and show a
+visible status with **Retry live voice discovery**. Retrying or receiving live
+metadata never changes the selected voice, saved Agent or in-progress edits.
+The API also returns explicitly marked bundled data when live discovery fails,
+with a diagnostic reason; it never labels that response as live discovery.
+Project configuration errors still fail explicitly rather than using a fake backend.
+
 ## Set up
 
 Use a complete checkout of this repository, not a copy of `portal/` alone.
@@ -208,19 +224,30 @@ publish operations, including the template catalog consumed by Handoff Graph.
   South India deployment advertises prerecorded sample URLs, but the tested
   Ava, Diya, and Alloy URLs return HTTP 404. No nonworking playback buttons or
   implicit paid synthesis are added.
-- `/api/voices` reads native voice names and locales from the selected account's
-  live `/voice-live/capabilities?api-version=v1`. Short native names are grouped
-  by that metadata, not guessed from their spelling. A voice with a compound
-  locale uses its first locale as the group and retains the others as metadata.
-  Only voices without a reported locale stay under **No fixed locale**.
+- `/config` includes the complete bundled voice catalog without acquiring an
+  Azure token or calling a discovery API. Editor, AgentRuntime and WebRTC
+  initialize from these defaults immediately. Native voice names and locales
+  come from the versioned [native reference](static/handoff/native-voices.json);
+  they are not guessed from short voice names. A compound locale uses its first
+  locale as the group and retains the others as metadata.
+- `/api/voices` optionally refreshes native metadata using the selected account's
+  `/voice-live/capabilities?api-version=v1`. Account-level Speech discovery access
+  is **not required to open the Portal or select a voice**. Credential failures,
+  denied access, timeouts and invalid capabilities return the full bundled
+  catalog with `source: "bundled"`, `discoveryError` and an explicit notice,
+  rather than making the editor unavailable. Actual Agent publication and voice
+  sessions still require their normal permissions.
 - Azure Speech TTS choices use the full, generated
   [reference catalog](static/handoff/azure-voices.json), not a hand-maintained
   shortlist. It currently contains 974 voices across 154 locales. This is a
   reference list from its documented region, **not** a guarantee that every
   voice is available in the selected Project's region. The picker displays this
-  distinction. Native discovery errors are shown explicitly rather than
-  silently switching back to the old shortlist. Results are cached per Project
-  for the server process lifetime; restart to refresh live metadata.
+  distinction. Optional discovery runs in the background; a visible status and
+  **Retry live voice discovery** action explain failures without discarding the
+  current selection or edits. Server discovery is bounded to 5 seconds and
+  concurrent requests share one lookup. Live results are cached per Project
+  for 5 minutes, bundled failure results for 1 minute; explicit retries bypass
+  that failure cache. The browser also bounds discovery to 8 seconds.
   Refresh the reference using an authorized account in a supported Speech
   region, without saving any key or token:
 
@@ -229,6 +256,8 @@ publish operations, including the template catalog consumed by Handoff Graph.
     --project-endpoint "https://<account>.services.ai.azure.com/api/projects/<project>" \
     --reference-region "<account-region>"
   ```
+  The native reference records its region and capture date separately; refresh
+  it from a successful capabilities response when updating native defaults.
 - Voice choices are independent of the model in the Portal: changing models
   preserves the selected voice, and voice options are neither disabled nor
   hidden by model rules or the old project probe file. The actual voice type is

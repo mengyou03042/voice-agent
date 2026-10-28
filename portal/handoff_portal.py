@@ -13,6 +13,7 @@ HANDOFF_ASSETS = frozenset({
     "handoff-app.js",
     "handoff-core.mjs",
     "voice-picker.mjs",
+    "voice-catalog.mjs",
     "transcription-languages.mjs",
     "handoff.css",
     # Optional: written by tools/probe_pipeline_availability.py.

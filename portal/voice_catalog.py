@@ -16,6 +16,7 @@ except ImportError:
     from common import AZURE_VOICES, AgentsConfig
 
 REFERENCE_PATH = Path(__file__).parent / "static" / "handoff" / "azure-voices.json"
+NATIVE_REFERENCE_PATH = REFERENCE_PATH.with_name("native-voices.json")
 SPEECH_SCOPE = "https://cognitiveservices.azure.com/.default"
 
 
@@ -25,7 +26,7 @@ def _account_json(cfg: AgentsConfig, path: str, **params: str) -> Any:
         f"https://{cfg.account}.cognitiveservices.azure.com{path}",
         params=params,
         headers={"Authorization": f"Bearer {token}"},
-        timeout=(10, 60),
+        timeout=(3, 5),
         allow_redirects=False,
     )
     response.raise_for_status()
@@ -88,6 +89,7 @@ def build_voice_catalog(
                 "secondaryLocales": locales[1:],
             }
     return {
+        "source": "live",
         "voices": list(voices.values()),
         "sources": {
             "native": "Voice Live capabilities v1 (current project)",
@@ -104,6 +106,28 @@ def build_voice_catalog(
             "Service rejections remain visible when a voice is used."
         ),
     }
+
+
+def load_default_voice_catalog() -> dict[str, Any]:
+    reference = json.loads(REFERENCE_PATH.read_text(encoding="utf-8"))
+    native = json.loads(NATIVE_REFERENCE_PATH.read_text(encoding="utf-8"))
+    if native.get("schema_version") != 1:
+        raise ValueError("The native voice reference catalog is invalid.")
+    catalog = build_voice_catalog(native, reference, AZURE_VOICES)
+    catalog["source"] = "bundled"
+    catalog["sources"]["native"] = {
+        "source": native["source"],
+        "region": native["region"],
+        "fetchedAt": native["fetched_at"],
+    }
+    catalog["notice"] = (
+        "Using bundled reference voices; live discovery is optional. "
+        f"Native voice metadata was captured in {native['region']} ({native['fetched_at'][:10]}). "
+        f"Azure Speech metadata was captured in {reference['region']} ({reference['fetched_at'][:10]}). "
+        "This list does not verify availability in your project or region. "
+        "Service rejections remain visible when a voice is used."
+    )
+    return catalog
 
 
 def load_voice_catalog(cfg: AgentsConfig) -> dict[str, Any]:

@@ -9,6 +9,22 @@ import voice_catalog
 
 
 class VoiceCatalogTests(unittest.TestCase):
+    def test_bundled_catalog_needs_no_live_permission_and_has_default_and_hindi_voices(self):
+        with patch.object(voice_catalog, "_account_json") as upstream:
+            catalog = voice_catalog.load_default_voice_catalog()
+        upstream.assert_not_called()
+        self.assertEqual("bundled", catalog["source"])
+        self.assertGreaterEqual(len(catalog["voices"]), 900)
+        voices = {item["id"]: item for item in catalog["voices"]}
+        self.assertIn("hi-IN-SwaraNeural", voices)
+        self.assertIn("en-US-Ava:DragonHDLatestNeural", voices)
+        self.assertIn("alloy", voices)
+        self.assertEqual("en-US", voices["emma"]["locale"])
+        self.assertEqual("hi-IN", voices["diya"]["locale"])
+        self.assertEqual(["en-IN"], voices["diya"]["secondaryLocales"])
+        self.assertEqual(34, sum(voice["type"] == "azure-realtime-native" for voice in voices.values()))
+        self.assertIn("does not verify availability", catalog["notice"])
+
     def test_reference_has_full_locale_coverage_and_reproducible_provenance(self):
         reference = json.loads(voice_catalog.REFERENCE_PATH.read_text(encoding="utf-8"))
         self.assertEqual(1, reference["schema_version"])

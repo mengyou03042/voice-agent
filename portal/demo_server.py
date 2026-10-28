@@ -13,14 +13,17 @@ import json
 import logging
 import os
 import re
+import time
 import urllib.parse
 import uuid
+from dataclasses import dataclass, field
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import requests
 import websockets
 from aiohttp import WSMsgType, web
+from azure.core.exceptions import AzureError
 from dotenv import load_dotenv
 
 # Read only this portal's ignored .env, never an ancestor or the sibling samples.
@@ -48,10 +51,10 @@ except ImportError:
 
 try:
     from .handoff_portal import install_handoff_routes
-    from .voice_catalog import load_voice_catalog
+    from .voice_catalog import load_default_voice_catalog, load_voice_catalog
 except ImportError:
     from handoff_portal import install_handoff_routes
-    from voice_catalog import load_voice_catalog
+    from voice_catalog import load_default_voice_catalog, load_voice_catalog
 
 try:
     from .common import (
@@ -100,6 +103,7 @@ MAX_STRUCTURED_INPUT_BYTES = 32 * 1024
 REDACTED_QUERY_VALUE = "<redacted>"
 VOICE_WS_BASE_ENV = "VOICE_DEMO_VOICE_WS_BASE"
 PORTAL_REQUEST_ID_HEADER = "X-Portal-Request-Id"
+VOICE_DISCOVERY_TIMEOUT = 5
 # Upper bound for forwarding already-received service events after the service closes.
 UPSTREAM_CLOSE_DRAIN_SECONDS = 10
 _SENSITIVE_QUERY_KEYS = frozenset({
@@ -132,6 +136,13 @@ VOICE_WS_BASE_KEY = web.AppKey("voice_portal_voice_ws_base", str)
 REQUEST_ID_KEY = web.RequestKey("voice_portal_request_id", str)
 PROJECT_COOKIE = "voice_agent_portal_project"
 LOGGER = logging.getLogger("voice_agent_portal")
+
+
+@dataclass
+class VoiceCatalogCacheEntry:
+    catalog: dict | None = None
+    expires_at: float = 0
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 def _request_id(request: web.Request) -> str:
@@ -202,6 +213,7 @@ _HANDOFF_ASSET_FILENAMES = (
     "handoff/handoff.html", "handoff/handoff-app.js",
     "handoff/handoff-core.mjs", "handoff/handoff.css",
     "handoff/transcription-languages.mjs",
+    "handoff/voice-picker.mjs", "handoff/voice-catalog.mjs",
 )
 
 
@@ -413,22 +425,31 @@ def _mcp_auth_presets(cfg: AgentsConfig) -> list:
 async def voices(request: web.Request) -> web.Response:
     cfg = await _request_config(request)
     catalogs = request.app[VOICE_CATALOG_KEY]
-    if cfg.host not in catalogs:
-        try:
-            catalogs[cfg.host] = await asyncio.to_thread(load_voice_catalog, cfg)
-        except (requests.RequestException, ValueError, OSError) as error:
-            LOGGER.error("[voices] %s: %s", type(error).__name__, _safe_exception_text(error))
-            return _error_response(
-                request, "Cannot load the voice catalog. Check project access and retry.", status=502,
-                code="voice_catalog_unavailable",
-            )
-    return web.json_response(catalogs[cfg.host])
+    entry = catalogs.setdefault(cfg.host, VoiceCatalogCacheEntry())
+    async with entry.lock:
+        if entry.catalog is None or time.monotonic() >= entry.expires_at or request.query.get("refresh") == "1":
+            try:
+                catalog = await asyncio.wait_for(
+                    asyncio.to_thread(load_voice_catalog, cfg), timeout=VOICE_DISCOVERY_TIMEOUT,
+                )
+            except (requests.RequestException, AzureError, ValueError, OSError, TimeoutError) as error:
+                LOGGER.warning("[voices] Using bundled reference catalog: %s", _safe_exception_text(error))
+                catalog = load_default_voice_catalog()
+                response = getattr(error, "response", None)
+                status = getattr(response, "status_code", None)
+                reason = f"HTTP {status}" if status is not None else type(error).__name__
+                catalog["discoveryError"] = {"code": "voice_discovery_unavailable", "reason": reason}
+                catalog["notice"] = f"Live voice discovery unavailable ({reason}). {catalog['notice']}"
+            entry.catalog = catalog
+            entry.expires_at = time.monotonic() + (300 if catalog.get("source") == "live" else 60)
+    return web.json_response(entry.catalog)
 
 
 async def config(request: web.Request) -> web.Response:
     """Selectable models/voices + defaults for the UI."""
     cfg = await _request_config(request)
     deployed = list_byom_deployments(cfg)
+    voice_defaults = load_default_voice_catalog()
     return web.json_response({
         "models": list(dict.fromkeys([cfg.voice_model, *MODELS])),
         "realtimeModels": REALTIME_MODELS,
@@ -439,6 +460,9 @@ async def config(request: web.Request) -> web.Response:
         "byomCascadedModels": [item["deployment"] for item in deployed["cascaded"]],
         "openaiVoices": OPENAI_VOICES,
         "azureVoices": AZURE_VOICES,
+        "voiceCatalog": voice_defaults["voices"],
+        "voiceCatalogNotice": voice_defaults["notice"],
+        "voiceCatalogSource": voice_defaults["source"],
         "transcriptionModels": TRANSCRIPTION_MODELS,
         "realtimeTranscriptionModels": TRANSCRIPTION_MODELS,
         "cascadedTranscriptionModels": CASCADED_TRANSCRIPTION_MODELS,

@@ -29,6 +29,66 @@ async function readEditorDefinition(page) {
   return definition;
 }
 
+for (const failure of ["permission", "network", "malformed"]) {
+  test(`optional voice discovery ${failure} failure leaves Editor and full default voices usable`, async ({ page }) => {
+    await page.route("**/api/voices*", (route) => failure === "network" ? route.abort("failed") : route.fulfill({
+      status: failure === "permission" ? 403 : 200,
+      contentType: "application/json",
+      body: JSON.stringify(failure === "permission"
+        ? { error: "Speech discovery permission denied", request_id: "voice-fixture-request" }
+        : { voices: [] }),
+    }));
+    await page.goto("/editor/");
+    await expect(page.locator("#agent-load-state")).toHaveText(/^\d+ loaded$/, { timeout: 5000 });
+    const status = page.getByRole("status", { name: "Voice catalog status", exact: true });
+    await expect(status).toContainText("Live discovery is unavailable");
+    await page.getByRole("button", { name: "Create blank", exact: true }).click();
+    await page.locator("#node-outline button").first().click();
+    await page.locator('[data-node-component="voice"]').click();
+    await page.locator("#component-voice-locale").fill("hi-IN");
+    await expect(page.locator('[data-component-value="diya"]')).toBeEnabled();
+    await page.locator("#component-voice-search").fill("Swara");
+    await page.locator('[data-component-value="hi-IN-SwaraNeural"]').click();
+    await expect(page.locator('[data-component-value="hi-IN-SwaraNeural"]')).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Close component configuration", exact: true }).click();
+    await page.getByRole("button", { name: "Save node", exact: true }).click();
+    await page.unroute("**/api/voices*");
+    await page.getByRole("button", { name: "Retry live voice discovery", exact: true }).click();
+    await expect(status).toBeHidden();
+    await page.locator("#node-outline button").first().click();
+    await page.locator('[data-node-component="voice"]').click();
+    await expect(page.locator('[data-component-value="hi-IN-SwaraNeural"]')).toHaveAttribute("aria-pressed", "true");
+  });
+}
+
+test("pending optional voice discovery cannot delay Editor startup or discard an edited voice", async ({ page }) => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  await page.route("**/api/voices*", async (route) => {
+    const response = await route.fetch();
+    await gate;
+    await route.fulfill({ response });
+  });
+  try {
+    await page.goto("/editor/");
+    await expect(page.locator("#agent-load-state")).toHaveText(/^\d+ loaded$/, { timeout: 5000 });
+    await expect(page.locator("#voice-catalog-status")).toContainText("Checking optional live discovery");
+    await page.getByRole("button", { name: "Create blank", exact: true }).click();
+    await page.locator("#node-outline button").first().click();
+    await page.locator('[data-node-component="voice"]').click();
+    await page.locator("#component-voice-search").fill("Swara");
+    await page.locator('[data-component-value="hi-IN-SwaraNeural"]').click();
+    await page.locator("#component-voice-search").focus();
+    release();
+    await expect(page.locator("#voice-catalog-status")).toBeHidden();
+    await expect(page.locator("#component-voice-search")).toHaveValue("Swara");
+    await expect(page.locator("#component-voice-search")).toBeFocused();
+    await expect(page.locator('[data-component-value="hi-IN-SwaraNeural"]')).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    release();
+  }
+});
+
 test("View Agent YAML opens the complete read-only working copy and always selects YAML", async ({ page }) => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -204,11 +264,13 @@ test("Editor publishes the selected input locale and reloads the same service va
   await page.getByLabel("Input language", { exact: true }).fill("Hindi");
   await page.getByLabel("Input language", { exact: true }).press("Enter");
   await page.getByRole("button", { name: "Save Agent General Settings", exact: true }).click();
-  const publication = page.waitForRequest((request) =>
-    request.method() === "POST" && new URL(request.url()).pathname.endsWith("/versions"));
+  const publication = page.waitForResponse((response) =>
+    response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/versions"));
   await page.locator("#publish-run-action").click();
   await page.getByRole("button", { name: "Publish and try it", exact: true }).click();
-  const request = await publication;
+  const published = await publication;
+  expect(published.ok()).toBe(true);
+  const request = published.request();
   expect(request.postDataJSON().definition.audio.input.transcription).toMatchObject({
     model: "azure-speech", language: "hi-IN",
   });
@@ -1486,18 +1548,29 @@ test("Handoff Graph loads a Portal template, publishes it, and opens the runtime
   await page.locator("#done-node-editor").click();
 
   await expect(page.locator("#publish-run-action")).toBeEnabled();
+  let releaseReadback;
+  const readbackGate = new Promise((resolve) => { releaseReadback = resolve; });
+  await page.route("**/agents/*/versions/*?*", async (route) => {
+    const response = await route.fetch();
+    await readbackGate;
+    await route.fulfill({ response });
+  }, { times: 1 });
   const verified = page.waitForFunction(
     () => document.querySelector('[data-publish-step="verify"]')?.dataset.status === "complete",
   );
-  await page.locator("#publish-run-action").click();
-  await page.getByRole("button", { name: "Publish and try it", exact: true }).click();
-  const progress = page.getByRole("dialog", { name: "Try it now" });
-  await expect(progress).toBeVisible();
-  await expect(progress).toContainText("Validate working copy");
-  await expect(progress).toContainText("Refresh MCP connection");
-  await expect(progress).toContainText("Publish Agent version");
-  await expect(progress).toContainText("Verify published version");
-  await expect(progress).toContainText("Open AgentRuntime");
+  try {
+    await page.locator("#publish-run-action").click();
+    await page.getByRole("button", { name: "Publish and try it", exact: true }).click();
+    const progress = page.getByRole("dialog", { name: "Try it now" });
+    await expect(progress).toBeVisible();
+    await expect(progress).toContainText("Validate working copy");
+    await expect(progress).toContainText("Refresh MCP connection");
+    await expect(progress).toContainText("Publish Agent version");
+    await expect(progress).toContainText("Verify published version");
+    await expect(progress).toContainText("Open AgentRuntime");
+  } finally {
+    releaseReadback();
+  }
   await verified;
 
   await expect(page).toHaveURL(/\/demo\/\?agent=local-only-elevator-service-example-[^&]+&view=handoff$/);

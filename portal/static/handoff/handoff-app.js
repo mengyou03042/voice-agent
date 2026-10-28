@@ -31,6 +31,11 @@ import {
 } from "./handoff-core.mjs?v=20261027-15-language-picker";
 import { filterVoiceGroups, voiceMatchCount } from "./voice-picker.mjs?v=20261027-voice-search";
 import {
+  loadLiveVoiceCatalog,
+  voiceCatalogStatusText,
+  withDefaultVoiceCatalog,
+} from "./voice-catalog.mjs?v=20261028-optional-discovery";
+import {
   INPUT_LANGUAGE_HINT,
   INPUT_LANGUAGE_SOURCE,
   displayTranscriptionLanguage,
@@ -57,6 +62,8 @@ const NODE_ICONS = Object.freeze([
 
 const state = {
   cfg: null,
+  voiceCatalogLoading: false,
+  voiceCatalogError: "",
   agents: [],
   selectedAgentName: "",
   agentListLoaded: false,
@@ -656,14 +663,53 @@ function redo() {
 
 async function loadConfig() {
   const response = await fetch("/config");
-  const cfg = await readResponse(response);
-  const catalog = await readResponse(await fetch("/api/voices"));
-  cfg.voiceCatalog = catalog.voices;
-  cfg.voiceCatalogNotice = catalog.notice;
+  const cfg = withDefaultVoiceCatalog(await readResponse(response));
   state.cfg = cfg;
   document.body.classList.toggle("playground-mode", cfg.playground === true);
   $("#environment").textContent = `${cfg.backend} · ${cfg.project} · API ${cfg.apiVersion}`;
   void loadPipelineAvailability();
+  void refreshVoiceCatalog();
+}
+
+function renderVoiceCatalogStatus() {
+  const banner = $("#voice-catalog-status");
+  banner.hidden = !state.cfg || (
+    state.cfg.voiceCatalogSource === "live" && !state.voiceCatalogLoading && !state.voiceCatalogError
+  );
+  $("#voice-catalog-status-text").textContent = voiceCatalogStatusText(
+    state.cfg, state.voiceCatalogLoading, state.voiceCatalogError,
+  );
+  $("#retry-voice-catalog").disabled = state.voiceCatalogLoading;
+  $("#retry-voice-catalog").textContent = state.voiceCatalogLoading
+    ? "Checking voices…" : "Retry live voice discovery";
+}
+
+async function refreshVoiceCatalog(refresh = false) {
+  if (!state.cfg || state.voiceCatalogLoading) return;
+  state.voiceCatalogLoading = true;
+  renderVoiceCatalogStatus();
+  try {
+    const catalog = await loadLiveVoiceCatalog({ refresh });
+    Object.assign(state.cfg, catalog);
+    state.voiceCatalogError = "";
+    if (state.nodeComponentPanel === "voice" && !$("#node-component-panel").hidden) {
+      const active = document.activeElement;
+      const field = active instanceof HTMLInputElement ? active.id : "";
+      const selection = field ? [active.selectionStart, active.selectionEnd] : null;
+      renderNodeComponentPanel();
+      if (field && document.getElementById(field)) {
+        const input = document.getElementById(field);
+        input.focus();
+        if (selection[0] !== null) input.setSelectionRange(...selection);
+      }
+    }
+  } catch (error) {
+    console.warn("Optional live voice discovery failed; retaining the current voice catalog.", error);
+    state.voiceCatalogError = error.message;
+  } finally {
+    state.voiceCatalogLoading = false;
+    renderVoiceCatalogStatus();
+  }
 }
 
 // Choices probed against one Project by portal/tools/probe_pipeline_availability.py.
@@ -4703,6 +4749,7 @@ async function publishAndRun() {
 }
 
 function bindEvents() {
+  $("#retry-voice-catalog").addEventListener("click", () => void refreshVoiceCatalog(true));
   let canvasSize = null;
   new ResizeObserver(([entry]) => {
     const { width, height } = entry.contentRect;

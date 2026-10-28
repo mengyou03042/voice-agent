@@ -5,6 +5,31 @@ import {
   mockWebRtcPeer, mountStudio, resource, selectSessionAgent, selectTab, CONFIG,
 } from "./studio-fixtures.mjs";
 
+test("optional voice discovery failure preserves Studio defaults and session controls", async ({ page }) => {
+  await mountStudio(page, {}, "/demo/", { voiceCatalogError: "Speech permission denied" });
+  const status = page.getByRole("status", { name: "Voice catalog status", exact: true });
+  await expect(status).toContainText("Speech permission denied");
+  await expect(status).toContainText("voice-fixture-request");
+  await selectSessionAgent(page, "realtime-agent");
+  await expect(page.getByRole("button", { name: "Connect & start session" })).toBeEnabled();
+  await page.getByText("Session settings", { exact: true }).click();
+  await page.getByLabel("Voice override", { exact: true }).selectOption("en-US-JennyNeural");
+  await page.getByRole("button", { name: "Retry live voice discovery", exact: true }).click();
+  await expect(status).toContainText("Live discovery is unavailable");
+  await expect(page.getByLabel("Voice override", { exact: true })).toHaveValue("en-US-JennyNeural");
+});
+
+test("optional voice discovery failure does not block standalone WebRTC agent loading", async ({ page }) => {
+  await mountStudio(page, {}, "/demo/", { voiceCatalogError: "Speech permission denied" });
+  await page.goto("/static/demo/webrtc.html");
+  await expect(page.locator(".wrtc-shell")).toBeVisible();
+  await expect(page.getByRole("status", { name: "Voice catalog status", exact: true }))
+    .toContainText("Speech permission denied");
+  await expect(page.locator("#wrtc-agent-options option")).toHaveCount(4);
+  await page.getByLabel("Agent", { exact: true }).fill("realtime-agent");
+  await expect(page.getByRole("button", { name: "Start WebRTC session" })).toBeEnabled();
+});
+
 test("keeps auxiliary notice links behind Debug mode without hiding the notice or licenses", async ({ page }) => {
   await mountStudio(page, { notice: "Synthetic evaluation notice." });
   const notice = page.getByRole("status").filter({ hasText: "Synthetic evaluation notice." });

@@ -279,7 +279,7 @@ class LiveProxyTests(unittest.IsolatedAsyncioTestCase):
         self.addAsyncCleanup(self.client.close)
 
     async def test_live_voice_catalog_is_cached_per_selected_project(self):
-        catalog = {"voices": [{"id": "hi-IN-SwaraNeural", "locale": "hi-IN"}]}
+        catalog = {"source": "live", "voices": [{"id": "hi-IN-SwaraNeural", "locale": "hi-IN"}]}
         with patch.object(server, "load_voice_catalog", return_value=catalog) as load:
             for _ in range(2):
                 response = await self.client.get("/api/voices")
@@ -287,14 +287,80 @@ class LiveProxyTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(catalog, await response.json())
         load.assert_called_once_with(self.cfg)
 
-    async def test_live_voice_catalog_errors_are_visible_not_a_small_list_fallback(self):
-        with patch.object(server, "load_voice_catalog", side_effect=server.requests.HTTPError("HTTP 403")):
-            response = await self.client.get("/api/voices")
-        self.assertEqual(502, response.status)
+    async def test_live_voice_catalog_errors_return_full_explicit_defaults(self):
+        for error in (
+            server.requests.HTTPError("HTTP 401"),
+            server.requests.HTTPError("HTTP 403"),
+            server.requests.Timeout(),
+            server.AzureError("Azure credential is unavailable"),
+            ValueError("Malformed capabilities"),
+        ):
+            with self.subTest(error=type(error).__name__):
+                self.app[server.VOICE_CATALOG_KEY].clear()
+                with patch.object(server, "load_voice_catalog", side_effect=error):
+                    with self.assertLogs("voice_agent_portal", level="WARNING"):
+                        response = await self.client.get("/api/voices")
+                self.assertEqual(200, response.status)
+                body = await response.json()
+                self.assertEqual("bundled", body["source"])
+                self.assertEqual("voice_discovery_unavailable", body["discoveryError"]["code"])
+                self.assertIn("Live voice discovery unavailable", body["notice"])
+                self.assertGreaterEqual(len(body["voices"]), 1000)
+                self.assertIn("diya", {voice["id"] for voice in body["voices"]})
+
+    async def test_live_voice_catalog_failure_cache_supports_explicit_retry(self):
+        catalog = {"source": "live", "voices": [{"id": "emma", "locale": "en-US"}]}
+        with patch.object(server, "load_voice_catalog", side_effect=[
+            server.requests.HTTPError("HTTP 403"), catalog,
+        ]) as load:
+            with self.assertLogs("voice_agent_portal", level="WARNING"):
+                first = await self.client.get("/api/voices")
+            cached = await self.client.get("/api/voices")
+            self.assertEqual("bundled", (await first.json())["source"])
+            self.assertEqual("bundled", (await cached.json())["source"])
+            self.assertEqual(1, load.call_count)
+            retried = await self.client.get("/api/voices?refresh=1")
+        self.assertEqual(catalog, await retried.json())
+        self.assertEqual(2, load.call_count)
+
+    async def test_live_voice_catalog_requests_are_coalesced_and_expire(self):
+        catalog = {"source": "live", "voices": [{"id": "emma", "locale": "en-US"}]}
+        def delayed_catalog(cfg):
+            time.sleep(.03)
+            return catalog
+        with patch.object(server, "load_voice_catalog", side_effect=delayed_catalog) as load:
+            responses = await asyncio.gather(*(self.client.get("/api/voices") for _ in range(4)))
+            self.assertTrue(all(response.status == 200 for response in responses))
+            self.assertEqual(1, load.call_count)
+            self.app[server.VOICE_CATALOG_KEY][self.cfg.host].expires_at = 0
+            await self.client.get("/api/voices")
+        self.assertEqual(2, load.call_count)
+
+    async def test_live_voice_discovery_timeout_does_not_block_configuration(self):
+        def delayed_catalog(cfg):
+            time.sleep(.05)
+            return {"source": "live", "voices": []}
+        with patch.object(server, "load_voice_catalog", side_effect=delayed_catalog):
+            with patch.object(server, "VOICE_DISCOVERY_TIMEOUT", .005):
+                with self.assertLogs("voice_agent_portal", level="WARNING"):
+                    response, config = await asyncio.gather(
+                        self.client.get("/api/voices"), self.client.get("/config"),
+                    )
+        self.assertEqual(200, config.status)
         body = await response.json()
-        self.assertEqual("voice_catalog_unavailable", body["code"])
-        self.assertIn("Cannot load the voice catalog", body["error"])
-        self.assertNotIn("voices", body)
+        self.assertEqual("bundled", body["source"])
+        self.assertEqual("TimeoutError", body["discoveryError"]["reason"])
+
+    async def test_configuration_has_full_defaults_even_when_live_voice_discovery_is_denied(self):
+        with patch.object(server, "load_voice_catalog", side_effect=server.requests.HTTPError("HTTP 403")) as live:
+            response = await self.client.get("/config")
+        self.assertEqual(200, response.status)
+        cfg = await response.json()
+        self.assertEqual("bundled", cfg["voiceCatalogSource"])
+        self.assertGreaterEqual(len(cfg["voiceCatalog"]), 900)
+        self.assertIn("hi-IN-SwaraNeural", {item["id"] for item in cfg["voiceCatalog"]})
+        live.assert_not_called()
+        self.cfg._credential.get_token.assert_not_called()
 
     async def test_pages_and_configuration_require_the_configured_project(self):
         for path in (

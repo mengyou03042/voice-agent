@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Config loading + model/voice helpers (mirrors the demo's /config contract).
 import { groupVoicesByLocale, PIPELINE_COMPONENTS } from "../../static/handoff/handoff-core.mjs";
+import { withDefaultVoiceCatalog } from "../../static/handoff/voice-catalog.mjs";
 
 async function readJson(response, path) {
   const text = await response.text();
@@ -30,8 +31,7 @@ async function readJson(response, path) {
 export async function loadConfig() {
   const resp = await fetch("/config");
   const cfg = await readJson(resp, "/config");
-  const catalog = await readJson(await fetch("/api/voices"), "/api/voices");
-  return { ...cfg, voiceCatalog: catalog.voices, voiceCatalogNotice: catalog.notice };
+  return withDefaultVoiceCatalog(cfg);
 }
 
 // Dynamically discover the BYOM Foundry account's usable deployments (realtime + cascaded), so BYOM

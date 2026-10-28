@@ -35,6 +35,8 @@ import { ChatPanel } from "./components/ChatPanel.jsx";
 import { HandoffGraphPanel } from "./components/HandoffGraphPanel.jsx";
 import { SessionControls } from "./components/SessionControls.jsx";
 import { StudioHeader } from "./components/StudioHeader.jsx";
+import { VoiceCatalogStatus } from "./components/VoiceCatalogStatus.jsx";
+import { useVoiceCatalog } from "./hooks/useVoiceCatalog.js";
 
 const WORKSPACE_MIN_SIDE_WIDTH = 360;
 const WORKSPACE_MIN_PLAYGROUND_WIDTH = 320;
@@ -63,6 +65,7 @@ export function App() {
   const showRuntimeGraph = new URLSearchParams(window.location.search).get("view") === "handoff";
   const [cfg, setCfg] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  const voiceCatalogState = useVoiceCatalog(cfg, setCfg);
   const [agent, setAgent] = useState(null); // { name, model, voice, cascaded }
   const [transport, setTransport] = useState(
     () => new URLSearchParams(window.location.search).get("transport") ?? "websocket",
@@ -633,6 +636,7 @@ export function App() {
     <div className="studio">
       <StudioHeader cfg={cfg} disabled={session.isConnected}
         debugMode={session.verbose} />
+      <VoiceCatalogStatus cfg={cfg} {...voiceCatalogState} />
       <div
         ref={shellRef}
         className={`shell${resizingWorkspace ? " is-resizing" : ""}`}

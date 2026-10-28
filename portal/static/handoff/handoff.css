@@ -38,6 +38,28 @@ body {
     radial-gradient(circle at 90% 0, rgba(37, 99, 235, .05), transparent 30rem),
     var(--void);
 }
+.voice-catalog-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px;
+  border-bottom: 1px solid #e8d5ae;
+  color: #705325;
+  background: #fff8e9;
+  font-size: .64rem;
+  flex-wrap: wrap;
+}
+.voice-catalog-status[hidden] { display: none; }
+.voice-catalog-status span { flex: 1 1 260px; overflow-wrap: anywhere; }
+.voice-catalog-status button {
+  padding: 6px 10px;
+  border: 1px solid #ceba95;
+  border-radius: 6px;
+  color: inherit;
+  background: #fff;
+  cursor: pointer;
+}
+.voice-catalog-status button:disabled { cursor: wait; opacity: .7; }
 .pipeline-card.component-selected {
   border-color: currentColor;
   background: linear-gradient(145deg, #ffffff, rgba(15, 159, 118, .045));

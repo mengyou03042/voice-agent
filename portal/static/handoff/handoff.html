@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>Editor · Voice Agents</title>
-  <link rel="stylesheet" href="/static/handoff/handoff.css?v=20261027-expanded-template-groups">
+  <link rel="stylesheet" href="/static/handoff/handoff.css?v=20261028-optional-discovery">
 </head>
 <body>
   <div class="app">
@@ -46,6 +46,11 @@
         <button id="publish-run-action" class="button publish canvas-template" type="button" disabled>Try it now</button>
       </div>
     </header>
+
+    <aside id="voice-catalog-status" class="voice-catalog-status" role="status" aria-label="Voice catalog status" hidden>
+      <span id="voice-catalog-status-text"></span>
+      <button id="retry-voice-catalog" type="button">Retry live voice discovery</button>
+    </aside>
 
     <aside id="mock-tools-banner" class="mock-tools-banner" role="note" hidden>
       <div>
@@ -453,6 +458,6 @@
     </div>
   </template>
 
-  <script type="module" src="/static/handoff/handoff-app.js?v=20261027-expanded-template-groups"></script>
+  <script type="module" src="/static/handoff/handoff-app.js?v=20261028-optional-discovery"></script>
 </body>
 </html>

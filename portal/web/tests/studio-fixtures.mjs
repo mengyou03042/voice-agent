@@ -170,6 +170,9 @@ export async function mountStudio(page, configPatch = {}, path = "/demo/", optio
       return json({ ...CONFIG, ...configPatch });
     }
     if (url.pathname === "/api/voices") {
+      if (options.voiceCatalogError) return json({
+        error: options.voiceCatalogError, request_id: "voice-fixture-request",
+      }, 403);
       return json(voiceCatalogFixture({ ...CONFIG, ...configPatch }));
     }
     if (url.pathname === "/api/projects") return json({
