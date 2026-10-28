@@ -107,7 +107,10 @@ Project configuration errors still fail explicitly rather than using a fake back
 On the first Editor visit in each browser tab, a **Welcome to the Azure Voice
 Agent Playground** dialog explains the sample experience and links to the
 [Microsoft Foundry setup guide](https://learn.microsoft.com/en-us/azure/foundry/tutorials/quickstart-create-foundry-resources?tabs=portal)
-in a new tab. **Try the playground** or Escape dismisses it for that tab's
+and then the
+[Voice Agent quickstart](https://learn.microsoft.com/en-us/azure/foundry/agents/quickstarts/prompt-voice-agent?pivots=portal)
+to create and test a voice agent in the user's own project. Both are inline
+text links that open in new tabs. **Try the playground** or Escape dismisses it for that tab's
 session. The dialog also reminds users not to enter sensitive or confidential data.
 
 Use a complete checkout of this repository, not a copy of `portal/` alone.

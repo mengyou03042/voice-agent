@@ -3,6 +3,7 @@ import { test, expect } from "@playwright/test";
 
 const welcomeTitle = "Welcome to the Azure Voice Agent Playground";
 const foundryUrl = "https://learn.microsoft.com/en-us/azure/foundry/tutorials/quickstart-create-foundry-resources?tabs=portal";
+const voiceAgentUrl = "https://learn.microsoft.com/en-us/azure/foundry/agents/quickstarts/prompt-voice-agent?pivots=portal";
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/*", (route) => new URL(route.request().url()).hostname === "127.0.0.1"
@@ -21,19 +22,26 @@ for (const width of [1440, 768, 390, 320]) {
     await expect(welcome).toContainText("limited set of capabilities");
     await expect(welcome).toContainText("full development experience");
     await expect(welcome).toContainText("Do not enter sensitive or confidential information.");
-    const foundry = welcome.getByRole("link", { name: "Set up Microsoft Foundry", exact: true });
-    await expect(foundry).toHaveAttribute("href", foundryUrl);
-    await expect(foundry).toHaveAttribute("target", "_blank");
-    await expect(foundry).toHaveAttribute("rel", "noopener noreferrer");
+    await expect(welcome.getByRole("link")).toHaveText(["Set up Microsoft Foundry", "Voice Agent quickstart"]);
+    await expect(welcome).toContainText("to create and test your first voice agent.");
+    for (const [name, url] of [
+      ["Set up Microsoft Foundry", foundryUrl],
+      ["Voice Agent quickstart", voiceAgentUrl],
+    ]) {
+      const link = welcome.getByRole("link", { name, exact: true });
+      await expect(link).toHaveAttribute("href", url);
+      await expect(link).toHaveAttribute("target", "_blank");
+      await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+      await expect(link.locator("..")).toHaveJSProperty("tagName", "P");
+      expect(await link.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return style.color === "rgb(8, 121, 92)"
+          && style.display === "inline"
+          && style.backgroundColor === "rgba(0, 0, 0, 0)"
+          && style.borderTopWidth === "0px";
+      })).toBe(true);
+    }
     await expect(welcome.getByRole("button")).toHaveCount(1);
-    await expect(foundry.locator("..")).toHaveJSProperty("tagName", "P");
-    expect(await foundry.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return style.color === "rgb(8, 121, 92)"
-        && style.display === "inline"
-        && style.backgroundColor === "rgba(0, 0, 0, 0)"
-        && style.borderTopWidth === "0px";
-    })).toBe(true);
     const bounds = await welcome.boundingBox();
     expect(bounds.x).toBeGreaterThanOrEqual(8);
     expect(bounds.y).toBeGreaterThanOrEqual(8);
