@@ -33,12 +33,19 @@ changes before using Hindi birthday verification or early termination.
 
 ## Configure and run
 
-Follow the [setup guide](../../docs/01_setup_subscription.md) and
+**Default Portal path:** start the [Portal](../../portal/README.md) and select
+**Example 1: Finance with Handoff - Realtime (Hindi, hi-IN)**. The public no-auth
+MCP is already configured; local MCP hosting, Dev Tunnel, setup scripts, and
+local E2E are not required.
+
+The following CLI workflow is optional and retains its generated managed MCP
+configuration requirements. Dev Tunnel applies only to a locally hosted MCP,
+not an already deployed server. Follow the [setup guide](../../docs/01_setup_subscription.md) and
 [MCP configuration guide](../../docs/02_mcp_settings.md).
 
 ```bash
 cd samples/example1_finance_with_handoff_realtime_hi_in
-cp .env.example .env
+[ -f .env ] || cp .env.example .env
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 ```

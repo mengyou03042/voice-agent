@@ -6,6 +6,13 @@ as YAML or as a visual graph, publish the checked-in sample templates, and
 connect to your own Azure Foundry project. No other repository or private
 package feed is needed.
 
+**Default startup is Portal only.** Use the public no-auth MCP below; do not run
+`scripts/setup-local-examples.sh`, install or authenticate Dev Tunnel, or start
+`shared_mcp/scripts/e2e-local.sh` as part of Portal setup. Local MCP development
+and hosting are optional and documented separately in the
+[MCP guide](../docs/02_mcp_settings.md). An already deployed MCP needs no tunnel.
+Azure Foundry project access and authentication are still required.
+
 ## Prerequisites
 
 - **Python 3.10+**. Built browser assets are checked in, so Node.js is not
@@ -42,7 +49,7 @@ Front Desk uses `/mcp/frontdesk`, and Examples 5–34 use mock tool calls on
 No local MCP process, Dev Tunnel, bearer token, or Foundry Project connection
 is needed for these Templates, and you do not need to start
 [`../shared_mcp`](../shared_mcp/README.md); it is only for the Finance CLI
-samples or for hosting those Finance routes yourself. To use your own systems
+samples' customer-managed path or for hosting those Finance routes yourself. To use your own systems
 instead of the mock tools, see
 [Connect real tools](../docs/05_connect_real_tools.md). The public tools use fictional shared sample
 data; availability and state resets depend on the service. Do not send real
@@ -193,6 +200,18 @@ macOS / Linux:
 az login
 .venv/bin/python demo_server.py
 ```
+
+On macOS / Linux, the equivalent wrapper forwards all arguments to the same
+Python entry point:
+
+```bash
+./run.sh --port 9530 --no-record-sessions
+```
+
+Both entry points read this directory's `.env`. Explicit command-line arguments
+override process environment variables, which override `.env`; the wrapper does
+not supply a second set of host or port defaults. It does not install dependencies
+or perform Azure/MCP connectivity checks.
 
 Alternatively, supply the project on the command line instead of in `.env`:
 

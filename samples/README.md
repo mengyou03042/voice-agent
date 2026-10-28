@@ -14,6 +14,12 @@ For the general browser UI, use the local
 independent shared MCP reference implementation, start with the
 [Finance documentation index](../docs/README.md).
 
+**Default Portal Templates use the public no-auth MCP.** Local MCP hosting,
+Dev Tunnel, `setup-local-examples.sh`, and local E2E are optional development
+paths, not prerequisites for browsing, publishing, or trying Templates.
+Finance CLI examples have separate managed-MCP configuration requirements;
+an existing customer-hosted MCP does not need a local tunnel.
+
 ## Choose a sample
 
 | Sample | What it demonstrates |
@@ -156,7 +162,7 @@ PowerShell:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r samples\requirements.txt
-Copy-Item samples\.env.example samples\.env
+if (-not (Test-Path samples\.env)) { Copy-Item samples\.env.example samples\.env }
 ```
 
 Linux, macOS, or WSL2:
@@ -164,7 +170,7 @@ Linux, macOS, or WSL2:
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -r samples/requirements.txt
-cp samples/.env.example samples/.env
+[ -f samples/.env ] || cp samples/.env.example samples/.env
 ```
 
 The single `pip install` command installs every common Python sample

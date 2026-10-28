@@ -20,8 +20,12 @@ through legacy SSE.
 **You do not need to start this server to use the Portal or its Templates.**
 Every Portal Template uses the public no-auth service configured in
 [`portal/templates.config.json`](../portal/templates.config.json), with no
-Project connections. Start or deploy this runtime only for the Finance CLI
-samples, or to host the Finance and Elevator routes yourself.
+Project connections. Local MCP hosting and Dev Tunnel are optional developer
+workflows, not Portal prerequisites. Do not run `setup-local-examples.sh`,
+Dev Tunnel login, or local E2E just to use Templates. Start or deploy this runtime
+only when deliberately choosing customer-owned hosting or development. The
+Finance CLI samples retain their managed MCP URL/connection requirements;
+an already deployed MCP does not need Dev Tunnel.
 
 This directory remains the source for those business packs. It also holds the
 [`mock_tool_call`](app/shared_mcp/mock_tool_call/README.md) pack behind the
@@ -43,7 +47,7 @@ Customers who need a real adapter should preserve the `ZendeskBackend`
 contract and follow the
 [Zendesk integration guide](../docs/integration_zendesk.md).
 
-The local runtime is always native Python plus Dev Tunnel. Local setup, E2E,
+The optional local E2E workflow uses native Python plus Dev Tunnel. Local setup, E2E,
 and lifecycle scripts do not require or invoke Docker. The separate
 `scripts/package.sh` command remains available only for explicitly building
 and testing the optional container image; Azure Container Apps deployment uses
@@ -61,7 +65,7 @@ it does not change the Portal's default public MCP configuration.
 For startup, local hosting, Azure deployment, configuration, and modification
 instructions, use [02: MCP settings](../docs/02_mcp_settings.md).
 
-For the complete execution order, use
+For the execution order of that optional CLI/local MCP path, use
 [03: Start and run the samples](../docs/03_run_samples.md).
 
 ## Validate transport changes
@@ -79,7 +83,7 @@ legacy SSE `endpoint` event used by Foundry RemoteTool. A successful Portal
 template probe is an additional live Streamable HTTP check, not a substitute
 for the legacy SSE regression.
 
-For any Project connection, MCP authentication, missing tool call, or
+For a customer-owned MCP Project connection, authentication, missing tool call, or
 post-tool response failure, use the shared
 [`debug-local-session` Skill](../skills/debug-local-session/) and start with:
 
@@ -88,6 +92,10 @@ cd VoiceAgent
 curl -fsS http://127.0.0.1:18003/healthz
 python skills/debug-local-session/scripts/analyze_session.py --list
 ```
+
+The `18003` check applies only if you started this local MCP. For default Portal
+Templates, inspect the published public MCP URL and Portal/session evidence;
+do not start a local server or Dev Tunnel as a troubleshooting prerequisite.
 
 For `handoff_target_activation_failed` or `handoff_target_prepare_timeout`,
 correlate the session timestamp with the newest
