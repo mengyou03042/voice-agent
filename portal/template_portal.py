@@ -21,15 +21,16 @@ from urllib.parse import quote, urlparse
 import requests
 from aiohttp import web
 from azure.ai.projects import AIProjectClient
+from azure.core.exceptions import HttpResponseError
 from dotenv import dotenv_values
 
 from voice_policy import VOICE_POLICY_KEY
 
 try:
-    from .common import AgentsConfig, FOUNDRY_FEATURES
+    from .common import AgentsConfig, FOUNDRY_FEATURES, regional_model_publish_fallback
     from .guide_render import render_page
 except ImportError:
-    from common import AgentsConfig, FOUNDRY_FEATURES
+    from common import AgentsConfig, FOUNDRY_FEATURES, regional_model_publish_fallback
     from guide_render import render_page
 
 
@@ -757,6 +758,7 @@ class TemplateSource:
     mcp_config_path: Path | None
     mcp_token_file: Path | None
     lock_runtime: bool
+    target_locale: str = ""
 
 
 class TemplateCatalog:
@@ -811,6 +813,14 @@ class TemplateCatalog:
                 lock_runtime = entry.get("lock_runtime", False)
                 if not isinstance(lock_runtime, bool):
                     raise ValueError("lock_runtime must be a boolean")
+                target_locale = entry.get("target_locale", "")
+                if not isinstance(target_locale, str) or (
+                    target_locale and not re.fullmatch(
+                        r"[a-z]{2,3}(?:-[A-Z][a-z]{3})?-(?:[A-Z]{2}|[0-9]{3})",
+                        target_locale,
+                    )
+                ):
+                    raise ValueError("target_locale must be a locale such as hi-IN or en-US")
                 folder_value = str(entry.get("folder") or "").strip()
                 if not folder_value:
                     raise ValueError("folder is required")
@@ -895,6 +905,7 @@ class TemplateCatalog:
                     mcp_config_path=mcp_config_path,
                     mcp_token_file=mcp_token_file,
                     lock_runtime=lock_runtime,
+                    target_locale=target_locale,
                 )
                 self._validate_source(source)
             except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:
@@ -976,6 +987,7 @@ class TemplateCatalog:
             "id": source.id,
             "name": source.name or str(document.get("name") or source.id),
             "category": source.category,
+            "target_locale": source.target_locale,
             "summary": source.summary or str(document.get("description") or "Voice Agent template."),
             "accent": source.accent,
             "accent_color": source.accent,
@@ -1060,6 +1072,7 @@ class TemplateCatalog:
                 {
                     "title": "Voice Agent",
                     "items": [
+                        {"label": "Target locale", "value": source.target_locale or "Not specified"},
                         {"label": "Model", "value": definition.get("model") or "—"},
                         {"label": "Voice", "value": voice_name(definition) or "—"},
                         {
@@ -1257,11 +1270,18 @@ def publish_agent(
         credential=cfg.credential(),
         allow_preview=True,
     ) as client:
-        created = client.agents.create_version(
-            name,
-            body,
-            headers=preview_headers,
-        )
+        try:
+            created = client.agents.create_version(name, body, headers=preview_headers)
+        except HttpResponseError as error:
+            retry_definition = regional_model_publish_fallback(
+                definition, error.status_code, str(error),
+            )
+            if retry_definition is None:
+                raise
+            definition = retry_definition
+            created = client.agents.create_version(
+                name, {**body, "definition": definition}, headers=preview_headers,
+            )
         client.agents.enable(name, headers=preview_headers)
         version = str(getattr(created, "version", "") or "")
         readback = client.agents.get_version(name, version, headers=preview_headers)

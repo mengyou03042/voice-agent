@@ -90,6 +90,26 @@ class TemplateVersionCatalogTests(TemplateVersionFixture, unittest.TestCase):
     def setUp(self) -> None:
         self.create_catalog()
 
+    def test_target_locale_is_explicit_and_shared_by_template_versions(self) -> None:
+        self.assertEqual("", self.catalog.cards()[0]["target_locale"])
+        config = json.loads(self.config.read_text())
+        config["templates"][0]["target_locale"] = "hi-IN"
+        self.config.write_text(json.dumps(config))
+        self.catalog.reload()
+        self.assertEqual("hi-IN", self.catalog.cards()[0]["target_locale"])
+        self.assertEqual("hi-IN", self.catalog.detail("example", VERSION)["target_locale"])
+
+    def test_invalid_target_locale_is_reported_instead_of_guessed(self) -> None:
+        for locale in ("en-*", "hi-in", "English", None, ["hi-IN"]):
+            with self.subTest(locale=locale):
+                config = json.loads(self.config.read_text())
+                config["templates"][0]["target_locale"] = locale
+                self.config.write_text(json.dumps(config))
+                self.catalog.reload()
+                self.assertEqual([], self.catalog.cards())
+                self.assertEqual(1, len(self.catalog.errors))
+                self.assertIn("target_locale", self.catalog.errors[0]["error"])
+
     def test_versions_keep_one_card_and_independent_documents(self) -> None:
         cards = self.catalog.cards()
         self.assertEqual(1, len(cards))
