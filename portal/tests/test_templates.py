@@ -820,13 +820,6 @@ class TemplatePublicationTests(unittest.TestCase):
 
 class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
-        self.voice_policy_patch = patch.object(
-            VoicePolicy, "resolve", side_effect=lambda cfg, body: {
-                "definition": body["definition"], "region": "westus2", "resolutions": [],
-            },
-        )
-        self.voice_policy_patch.start()
-        self.addCleanup(self.voice_policy_patch.stop)
         args = demo_server.parse_args([
             "--project-endpoint",
             ENDPOINT,
@@ -995,8 +988,14 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
         for template_id in MCP_TEMPLATES:
             with (
                 self.subTest(template_id=template_id),
-                patch("template_portal.validate_mcp_probe_url") as validate_url,
+                patch("template_portal.socket.getaddrinfo", side_effect=OSError("Offline DNS")) as dns,
+                patch("template_portal.requests.sessions.Session.request",
+                      side_effect=AssertionError("Public Template preparation attempted HTTP")) as network,
                 patch("template_portal.create_mcp_connection") as create_connection,
+                patch.object(
+                    VoicePolicy, "resolve",
+                    side_effect=AssertionError("Publication must not perform voice availability checks."),
+                ) as resolve_voice,
                 patch(
                     "template_portal.publish_agent",
                     return_value={"name": "local-only-synthetic", "version": "1"},
@@ -1014,15 +1013,43 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual("", (await response.json())["mcp_connection_name"])
                 create_connection.assert_not_called()
                 publish.assert_called_once()
+                resolve_voice.assert_not_called()
+                authored = template_portal.TemplateCatalog().document(template_id)["definition"]
+                submitted = publish.call_args.kwargs["definition"]
+                self.assertEqual(
+                    authored["audio"]["output"]["voice"],
+                    submitted["audio"]["output"]["voice"],
+                )
+                self.assertEqual(
+                    [node["config"].get("voice") for node in authored.get("handoff", {}).get("nodes", [])],
+                    [node["config"].get("voice") for node in submitted.get("handoff", {}).get("nodes", [])],
+                )
                 self.assertEqual(
                     {"source_template_id": template_id, "source_template_version": "."},
                     publish.call_args.kwargs["metadata"],
                 )
-                self.assertEqual(2, validate_url.call_count)
-                validate_url.assert_called_with(MCP_BASE_URL + MCP_ROUTES[template_id])
+                dns.assert_not_called()
+                network.assert_not_called()
                 for tool in template_portal.iter_mcp_tools(publish.call_args.kwargs["definition"]):
                     self.assertEqual(MCP_BASE_URL + MCP_ROUTES[template_id], tool["server_url"])
                     self.assertNotIn("project_connection_id", tool)
+
+    async def test_template_publication_reports_the_actual_service_voice_error(self) -> None:
+        with (
+            patch("template_portal.validate_mcp_probe_url"),
+            patch.object(VoicePolicy, "resolve") as resolve_voice,
+            patch(
+                "template_portal.publish_agent",
+                side_effect=HttpResponseError(message="The selected voice is not supported."),
+            ) as publish,
+        ):
+            response = await self.client.post(
+                "/api/templates/finance-example-realtime-hi-in/publish", json={"name": "voice-error"}
+            )
+        self.assertEqual(502, response.status)
+        self.assertIn("The selected voice is not supported.", (await response.json())["error"])
+        publish.assert_called_once()
+        resolve_voice.assert_not_called()
 
     async def test_editor_connects_and_disconnects_one_system_of_a_working_copy(self) -> None:
         detail = await (await self.client.get("/api/templates/order-status-tracking-example")).json()
@@ -1077,16 +1104,22 @@ class TemplateRouteTests(unittest.IsolatedAsyncioTestCase):
             handshake.assert_not_called()
 
     async def test_public_template_configuration_keeps_private_address_guard(self) -> None:
-        with patch(
-            "template_portal.validate_mcp_probe_url",
-            side_effect=McpProbeError("MCP probes cannot target private addresses"),
-        ), patch("template_portal.create_mcp_connection") as create_connection:
-            response = await self.client.post(
-                "/api/templates/finance-example-realtime/mcp/configure", json={}
-            )
-        self.assertEqual(502, response.status)
-        self.assertIn("cannot target private", (await response.json())["error"])
-        create_connection.assert_not_called()
+        catalog = self.client.server.app[template_portal.CATALOG_KEY]
+        source = catalog.source("finance-example-realtime")
+        for url in ("https://127.0.0.1/mcp", "https://10.0.0.1/mcp", "https://localhost/mcp"):
+            with (
+                self.subTest(url=url),
+                patch.object(catalog, "source", return_value=replace(source, mcp_server_url=url)),
+                patch("template_portal.socket.getaddrinfo") as dns,
+                patch("template_portal.create_mcp_connection") as create_connection,
+            ):
+                response = await self.client.post(
+                    "/api/templates/finance-example-realtime/mcp/configure", json={}
+                )
+                self.assertEqual(502, response.status)
+                self.assertIn("cannot target", (await response.json())["error"])
+                dns.assert_not_called()
+                create_connection.assert_not_called()
 
     async def test_template_assets_are_served_without_azure_credentials(self) -> None:
         for name in (

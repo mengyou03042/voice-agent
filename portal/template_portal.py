@@ -24,7 +24,6 @@ from azure.ai.projects import AIProjectClient
 from azure.core.exceptions import HttpResponseError
 from dotenv import dotenv_values
 
-from voice_policy import VOICE_POLICY_KEY
 
 try:
     from .common import AgentsConfig, FOUNDRY_FEATURES, regional_model_publish_fallback
@@ -160,12 +159,30 @@ class McpProbeError(RuntimeError):
         self.http_status = http_status
 
 
-def validate_mcp_probe_url(url: str) -> None:
+def validate_mcp_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme.lower() != "https" or not parsed.hostname:
         raise McpProbeError("MCP probes require an absolute HTTPS URL")
     if parsed.username or parsed.password or parsed.fragment:
         raise McpProbeError("MCP probe URLs cannot contain credentials or fragments")
+    try:
+        parsed.port
+    except ValueError as error:
+        raise McpProbeError("MCP server port is invalid") from error
+    hostname = parsed.hostname.lower().rstrip(".")
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        raise McpProbeError("MCP URLs cannot target localhost")
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        return
+    if not address.is_global:
+        raise McpProbeError("MCP URLs cannot target private, loopback, link-local, or reserved addresses")
+
+
+def validate_mcp_probe_url(url: str) -> None:
+    validate_mcp_url(url)
+    parsed = urlparse(url)
     try:
         addresses = {
             ipaddress.ip_address(record[4][0])
@@ -1696,7 +1713,7 @@ async def ensure_template_mcp_connection(
     if not list(iter_mcp_tools(definition)):
         return ""
     if source.connection_mode == "public":
-        validate_mcp_probe_url(source.mcp_server_url)
+        validate_mcp_url(source.mcp_server_url)
         return ""
     if (
         not source.mcp_server_url
@@ -1969,15 +1986,6 @@ async def publish_template(request: web.Request) -> web.Response:
             mcp_connection_id=connection_name,
             mcp_public=source.connection_mode == "public",
         )
-        voice_selection = await asyncio.to_thread(
-            request.app[VOICE_POLICY_KEY].resolve, cfg, {
-                "definition": definition,
-                "mode": "automatic" if body.get("language") else "fallback",
-                "language": str(body.get("language") or ""),
-                "region": str(body.get("region") or ""),
-            },
-        )
-        definition = voice_selection["definition"]
         result = await asyncio.to_thread(
             publish_agent,
             cfg,
@@ -2000,7 +2008,6 @@ async def publish_template(request: web.Request) -> web.Response:
         "source_agent_name": str(document.get("name") or template_id),
         "source_template_version": version,
         "mcp_connection_name": connection_name,
-        "voice_selection": {key: value for key, value in voice_selection.items() if key != "definition"},
     }, status=201)
 
 

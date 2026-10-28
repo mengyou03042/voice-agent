@@ -15,7 +15,7 @@ from pathlib import Path
 import sys
 import tempfile
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from aiohttp import WSMsgType, web
 from aiohttp.test_utils import TestServer
@@ -185,8 +185,10 @@ async def create_test_app() -> web.Application:
     ]))
     app[portal.DEFAULT_CONFIG_KEY]._credential = FixtureCredential()
     voice_policy = app[portal.VOICE_POLICY_KEY]
-    voice_policy.discover_projects = lambda cfg, endpoint: [{"endpoint": endpoint, "region": "centralindia"}]
-    voice_policy.catalog = lambda region: [
+    voice_policy.discover_projects = Mock(
+        return_value=[{"endpoint": ENDPOINT, "region": "centralindia"}],
+    )
+    voice_policy.catalog = Mock(return_value=[
         {"ShortName": name, "Locale": locale, "Gender": gender, "Status": "GA"}
         for locale, genders in portal.VOICE_PRESETS.items()
         for gender, names in genders.items()
@@ -194,7 +196,7 @@ async def create_test_app() -> web.Application:
     ] + [
         {"ShortName": voice["id"], "Locale": voice["locale"], "Status": "GA"}
         for voice in json.loads(voice_catalog.REFERENCE_PATH.read_text(encoding="utf-8"))["voices"]
-    ]
+    ])
     mcp_files = tempfile.TemporaryDirectory(prefix="voice-portal-browser-mcp-")
     token_file = Path(mcp_files.name) / "token"
     token_file.write_text("synthetic-browser-mcp-token\n", encoding="utf-8")
@@ -218,6 +220,8 @@ async def create_test_app() -> web.Application:
         source = original_source(template_id, version)
         if source is None:
             return None
+        if source.connection_mode == "public":
+            return replace(source, mcp_server_url=f"https://example.com/mcp/{template_id}")
         return replace(
             source,
             mcp_server_url=f"https://example.com/mcp/{template_id}",

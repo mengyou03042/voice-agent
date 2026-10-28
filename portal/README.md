@@ -102,6 +102,33 @@ The API also returns explicitly marked bundled data when live discovery fails,
 with a diagnostic reason; it never labels that response as live discovery.
 Project configuration errors still fail explicitly rather than using a fake backend.
 
+**Try it now does not perform voice or region discovery before publishing.**
+It submits the authored definition, preserving root and handoff-node voices.
+The editor's local graph checks are advisory: errors remain visible, but do not
+disable **Try it now** or prevent submission. Foundry's version-creation response
+determines publication success or failure.
+
+Template MCP configuration and published-version readback are retained.
+A readback failure is reported as **published, but verification failed**, not
+as a failed version creation. The separate **Automatic voice language** action
+in the Editor Voice panel can still query regional metadata when explicitly
+requested; it is not part of publication or Runtime connection.
+
+Public Template MCP configuration also checks URL syntax without DNS or an MCP
+handshake. Explicit **Test connection** probes still resolve and check public
+addresses before contacting the server. Configuring a customer-managed Project
+connection still requires Azure access.
+
+To reproduce unavailable discovery safely, block external metadata requests
+only for the Portal process or test fixture; do not disable the host's network.
+The built-in voice picker remains usable. Actual publication and
+readback require the configured Foundry project and Azure authentication; voice
+conversations also require the voice service and any configured MCP tools.
+If those required services are unreachable, the Portal reports the failure and
+preserves the working copy rather than claiming publication succeeded offline.
+Restart the Python Portal after backend changes; a browser refresh alone does
+not reload the server.
+
 ## Set up
 
 On the first Editor visit in each browser tab, a **Welcome to the Azure Voice
@@ -487,11 +514,10 @@ publish operations, including the template catalog consumed by Handoff Graph.
   are not selectable versions. These parameter changes are not a new live
   latency, interruption or listening acceptance.
 - Examples 5–34 have independently named personas and greetings. Their default en-US output uses `en-US-Emma:DragonHDOmniLatestNeural` or `en-US-Brian:DragonHDOmniLatestNeural`. Voice names are speaker identities, not the names the agents introduce themselves with.
-- **Automatic voice language** is available in the Editor's starter-node Voice panel and Runtime's Session settings. Changing the Editor's STT language also selects a matching voice. Session settings change only the connection, never the published Agent. This selects the voice before the session, not per-utterance switching; it does not translate prompts or greetings.
+- **Automatic voice language** is an explicit action in the Editor's starter-node Voice panel. It does not run when publishing or connecting from Runtime. Changing the shared STT input language does not automatically change the output voice. Voice selection does not translate prompts or greetings.
 - The priorities in `static/voice-presets.json` cover en-US, en-IN, hi-IN, zh-CN, en-GB, es-US, fr-FR, de-DE, and ja-JP. Preferred Hindi output uses Diya Dragon, with Swara Neural as a regional fallback; Chinese uses Xiaoqi/Yunfan Dragon, with Xiaoxiao/Yunxi Neural fallbacks. Male voice preferences use male variants when available. Other explicitly requested locales can use voices listed for that locale in the regional catalog.
-- Before UI publication or connection, the Portal checks the selected project's region and the public catalog at `https://<region>.tts.speech.microsoft.com/synthesize/list/cognitive-service/voices?showHidden=true`. Region discovery uses existing Foundry project discovery and requires management-plane read access; if unavailable, enter the project's actual region in Session settings or the Editor Voice panel. Successful lookups are cached for ten minutes. Catalog names are matched case-insensitively because preview entries can differ in casing.
-- Unavailable Azure standard voices are replaced only with catalog-listed voices that support the selected locale, including explicitly listed multilingual support. The UI reports every replacement. A failed/empty catalog or a locale with no available voice blocks the operation; it never silently substitutes English. This is an availability check, not a guarantee against service outages, quota limits, or deployment-specific restrictions. Explicit native/custom voices are not automatically replaced; Azure Realtime native models cannot use automatic Azure standard selection.
-- Editor publication resolves explicit handoff-node voices as well as the root. Runtime cannot change stored node voices through a root session override: if a node needs fallback, publish the corrected working copy from Editor first. Direct REST forwarding and standalone WebRTC clients retain their service-native behavior.
+- Editor and Templates publish the selected root and handoff-node voices without a regional voice-availability precheck or automatic substitution. Runtime also connects with the published voices. A failed metadata catalog must not block these operations; Foundry's actual publication/session response determines whether the voice is supported.
+- Only an explicit **Automatic voice language** selection queries the selected project's region and the public catalog at `https://<region>.tts.speech.microsoft.com/synthesize/list/cognitive-service/voices?showHidden=true`. That optional action may require management-plane read access for region discovery; its Voice panel accepts the actual Project region when discovery is unavailable. Successful lookups are cached for ten minutes. This helper reports selections and errors but does not gate subsequent publication.
 
 - Template MCP readiness calls `initialize` and `tools/list` against the hosted
   endpoint without an Authorization header and checks every declared tool.

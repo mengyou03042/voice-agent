@@ -4554,7 +4554,7 @@ function renderHeader() {
   $("#valid-badge").textContent = !state.definition ? "Not loaded" : errors ? `${errors} error${errors === 1 ? "" : "s"}` : "Valid";
   $("#valid-badge").className = `badge ${!state.definition ? "quiet" : errors ? "invalid" : "valid"}`;
   const canTry = Boolean(
-    state.definition && state.agentName.trim() && !errors
+    state.definition && state.agentName.trim()
       && !state.publishing,
   );
   $("#publish-run-action").disabled = !canTry;
@@ -4683,18 +4683,6 @@ async function publishDefinition() {
   setPublishStep("validate", "running", "Checking graph topology and required Agent fields…");
   const localProblems = validateDefinition(state.definition);
   const errors = localProblems.filter((item) => item.severity === "error");
-  if (errors.length) {
-    state.serverProblems = [];
-    setPublishStep(
-      "validate",
-      "failed",
-      `${errors.length} blocking validation error${errors.length === 1 ? "" : "s"} must be fixed.`,
-    );
-    finishPublishProgress("Publication stopped during validation.", "The working copy was not published.");
-    setMessage("Publication blocked by local validation.", `Fix ${errors.length} blocking error${errors.length === 1 ? "" : "s"} first.`);
-    render();
-    return null;
-  }
   const name = state.agentName.trim();
   if (!name) {
     setPublishStep("validate", "failed", "A publication name is required.");
@@ -4708,8 +4696,10 @@ async function publishDefinition() {
   const warnings = localProblems.length - errors.length;
   setPublishStep(
     "validate",
-    "complete",
-    warnings
+    errors.length ? "skipped" : "complete",
+    errors.length
+      ? `${errors.length} local issue${errors.length === 1 ? "" : "s"} noted; submitting to Foundry without blocking.`
+      : warnings
       ? `Validation passed with ${warnings} warning${warnings === 1 ? "" : "s"}.`
       : "Validation passed with no blocking problems.",
   );
@@ -4718,12 +4708,12 @@ async function publishDefinition() {
   const templateId = sourceTemplateId();
   setMessage(
     templateId
-      ? `Checking the template MCP configuration for ${name}…`
+      ? `Configuring the template MCP connection for ${name}…`
       : `Publishing release for ${name} through the server-held Foundry credential…`,
   );
   render();
   if (templateId) {
-    setPublishStep("mcp", "running", "Checking the template MCP endpoint and any required Project connection…");
+    setPublishStep("mcp", "running", "Configuring the template MCP endpoint and any required Project connection…");
     try {
       await readResponse(
         await fetch(
@@ -4740,10 +4730,7 @@ async function publishDefinition() {
       state.publishing = false;
       setPublishStep("mcp", "failed", error.message);
       finishPublishProgress("Publication stopped while configuring MCP.", error.message);
-      setMessage(
-        "MCP configuration failed. The Agent was not published.",
-        error.message,
-      );
+      setMessage("MCP configuration failed. The Agent was not published.", error.message);
       render();
       return null;
     }
@@ -4755,12 +4742,6 @@ async function publishDefinition() {
   render();
   let posted;
   try {
-    const selected = await resolveVoiceSelection(state.definition, {
-      language: state.voiceLanguage, region: state.voiceRegion,
-      mode: state.voiceLanguage ? "automatic" : "fallback",
-    });
-    state.definition = selected.definition;
-    setMessage(voiceSelectionNotice(selected));
     posted = await serviceRequest(
       serviceUrl(`/agents/${encodeURIComponent(name)}/versions`),
       {
@@ -4813,10 +4794,7 @@ async function publishDefinition() {
     );
     const readbackResource = readback?.name
       ? readback
-      : {
-          name: returned.name,
-          versions: { latest: readback },
-        };
+      : { name: returned.name, versions: { latest: readback } };
     const agent = extractLatestAgent(readbackResource);
     const expectedVersion = returned.version;
     state.definition = agent.definition;
@@ -4850,11 +4828,7 @@ async function publishDefinition() {
         : "",
     );
     render();
-    return {
-      name: agent.name,
-      version: agent.version || expectedVersion,
-      draft: agent.draft,
-    };
+    return { name: agent.name, version: agent.version || expectedVersion, draft: agent.draft };
   } catch (error) {
     state.publishing = false;
     setPublishStep("verify", "failed", error.message);
@@ -5015,10 +4989,10 @@ async function publishAndRun() {
   openPublishProgress();
   const published = await publishDefinition();
   if (!published) return;
-  setPublishStep("open", "running", "Preparing the verified Agent in Runtime…");
+  setPublishStep("open", "running", "Opening the published Agent in Runtime…");
   setMessage(
     `Published Agent ${published.name}, version ${published.version || "(not returned)"}.`,
-    "Opening the verified release with its runtime graph expanded…",
+    "Opening the published release with its runtime graph expanded…",
   );
   setPublishStep(
     "open",
