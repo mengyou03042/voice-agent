@@ -620,6 +620,102 @@
         "source_label": "Conference MCP pack (shared no-auth MCP)",
         "source_reference": "voice-agent/shared_mcp conference"
       }
+    },
+    {
+      "id": "general-receptionist-example",
+      "folder": "../samples/example39_general_receptionist",
+      "name": "Example 39: General Receptionist",
+      "target_locale": "en-US",
+      "category": "Front desk",
+      "summary": "Answer front desk questions from business facts and help-center articles, email a message to the right department, and file a callback request.",
+      "accent_color": "#0f766e",
+      "lock_runtime": true,
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "https://voice-agent-noauth-mcp.lemonsky-36682081.westus2.azurecontainerapps.io/mcp/mock-tool-call",
+        "source_label": "Mock tools (shared no-auth MCP)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    {
+      "id": "after-hours-answering-service-example",
+      "folder": "../samples/example40_after_hours_answering_service",
+      "name": "Example 40: After-hours Answering Service",
+      "target_locale": "en-US",
+      "category": "Front desk",
+      "summary": "Answer after-hours calls, separate emergencies from routine calls, text the on-call technician about urgent issues, and log messages for the next business day.",
+      "accent_color": "#0f766e",
+      "lock_runtime": true,
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "https://voice-agent-noauth-mcp.lemonsky-36682081.westus2.azurecontainerapps.io/mcp/mock-tool-call",
+        "source_label": "Mock tools (shared no-auth MCP)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    {
+      "id": "faq-assistant-example",
+      "folder": "../samples/example41_faq_assistant",
+      "name": "Example 41: FAQ Assistant",
+      "target_locale": "en-US",
+      "category": "Customer support",
+      "summary": "Answer customer questions only from help-center articles, name the article, text its link, and open a support ticket when the answer is not there.",
+      "accent_color": "#2563eb",
+      "lock_runtime": true,
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "https://voice-agent-noauth-mcp.lemonsky-36682081.westus2.azurecontainerapps.io/mcp/mock-tool-call",
+        "source_label": "Mock tools (shared no-auth MCP)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    {
+      "id": "ecommerce-shopping-assistant-example",
+      "folder": "../samples/example42_ecommerce_shopping_assistant",
+      "name": "Example 42: E-commerce Shopping Assistant",
+      "target_locale": "en-US",
+      "category": "Retail",
+      "summary": "Recommend and compare products from the store catalog, check verified order status and tracking, and start a return on a support ticket.",
+      "accent_color": "#7c3aed",
+      "lock_runtime": true,
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "https://voice-agent-noauth-mcp.lemonsky-36682081.westus2.azurecontainerapps.io/mcp/mock-tool-call",
+        "source_label": "Mock tools (shared no-auth MCP)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    {
+      "id": "hospitality-concierge-example",
+      "folder": "../samples/example43_hospitality_concierge",
+      "name": "Example 43: Hotel Concierge",
+      "target_locale": "en-US",
+      "category": "Hospitality",
+      "summary": "Help in-house hotel guests with requests and room problems, answer hotel questions, suggest places nearby from a local guide, log each request for the right team, and text details. New bookings and changes use Hotel reservations.",
+      "accent_color": "#b45309",
+      "lock_runtime": true,
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "https://voice-agent-noauth-mcp.lemonsky-36682081.westus2.azurecontainerapps.io/mcp/mock-tool-call",
+        "source_label": "Mock tools (shared no-auth MCP)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
+    },
+    {
+      "id": "restaurant-host-example",
+      "folder": "../samples/example44_restaurant_host",
+      "name": "Example 44: Restaurant Host",
+      "target_locale": "en-US",
+      "category": "Food service",
+      "summary": "Book, look up, change, and cancel restaurant table reservations, answer menu, allergen, hours, and policy questions from restaurant facts, and text the confirmation. Phone food orders use Restaurant phone order taker.",
+      "accent_color": "#b91c1c",
+      "lock_runtime": true,
+      "mcp": {
+        "connection_mode": "public",
+        "server_url": "https://voice-agent-noauth-mcp.lemonsky-36682081.westus2.azurecontainerapps.io/mcp/mock-tool-call",
+        "source_label": "Mock tools (shared no-auth MCP)",
+        "source_reference": "voice-agent/shared_mcp mock-tool-call"
+      }
     }
   ]
 }

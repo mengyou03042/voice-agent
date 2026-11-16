@@ -108,6 +108,18 @@ CONFERENCE_TOOLS = [
 ]
 EXPECTED_TEMPLATES.append(CONFERENCE_TEMPLATE)
 MCP_TEMPLATES.append(CONFERENCE_TEMPLATE)
+# Single-agent Foundry templates without a handoff graph: (template ID, sample folder, systems in card order).
+SINGLE_AGENT_TEMPLATES = [
+    ("general-receptionist-example", "example39_general_receptionist", ["zendesk", "work_iq"]),
+    ("after-hours-answering-service-example", "example40_after_hours_answering_service", ["zendesk", "twilio"]),
+    ("faq-assistant-example", "example41_faq_assistant", ["zendesk", "twilio"]),
+    ("ecommerce-shopping-assistant-example", "example42_ecommerce_shopping_assistant", ["zendesk", "catalog", "orders"]),
+    ("hospitality-concierge-example", "example43_hospitality_concierge", ["zendesk", "twilio"]),
+    ("restaurant-host-example", "example44_restaurant_host", ["twilio", "reservations"]),
+]
+SINGLE_AGENT_TEMPLATE_IDS = [template_id for template_id, *_ in SINGLE_AGENT_TEMPLATES]
+EXPECTED_TEMPLATES.extend(SINGLE_AGENT_TEMPLATE_IDS)
+MCP_TEMPLATES.extend(SINGLE_AGENT_TEMPLATE_IDS)
 END_CONVERSATION_TOOL = {"type": "system", "name": "end_conversation"}
 MCP_BASE_URL = (
     "https://voice-agent-noauth-mcp"
@@ -121,6 +133,7 @@ MCP_ROUTES = {
     "elevator-service-example": "/mcp/elevator-service",
     "frontdesk-receptionist-example": "/mcp/frontdesk",
     **{template_id: "/mcp/mock-tool-call" for template_id in MOCK_TOOL_TEMPLATE_IDS},
+    **{template_id: "/mcp/mock-tool-call" for template_id in SINGLE_AGENT_TEMPLATE_IDS},
     CONFERENCE_TEMPLATE: "/mcp/conference",
     OTP_SHOWCASE_TEMPLATE: "/mcp/ex35-auth-ladder",
 }
@@ -216,6 +229,29 @@ class TemplateCatalogTests(unittest.TestCase):
                 self.assertNotIn("handoff", definition)
                 for subagent in definition["subagent_config"]["subagents"]:
                     self.assertEqual(expected, subagent.get("voice", expected))
+
+    def test_single_agent_templates_keep_one_mock_server_at_the_top_level(self) -> None:
+        catalog = TemplateCatalog()
+        for template_id, folder, systems in SINGLE_AGENT_TEMPLATES:
+            with self.subTest(template_id=template_id):
+                self.assertEqual(folder, catalog.source(template_id).path.parent.name)
+                document = catalog.document(template_id)
+                self.assertIsNotNone(document)
+                definition = document["definition"]
+                self.assertNotIn("handoff", definition)
+                self.assertNotIn("subagent_config", definition)
+                self.assertIn(END_CONVERSATION_TOOL, definition["tools"])
+                mcp_tools = [tool for tool in definition["tools"] if tool["type"] == "mcp"]
+                self.assertEqual(["mock_tool_call"], [tool["server_label"] for tool in mcp_tools])
+                self.assertTrue(all(name.startswith(MOCK_TOOL_PREFIX) for name in mcp_tools[0]["allowed_tools"]))
+                # Each system gets its own Connect real tools card.
+                self.assertEqual(systems, [group["id"] for group in template_portal.tool_groups(definition)])
+                published = materialize_template(
+                    document, model="", voice="",
+                    mcp_server_url=MCP_BASE_URL + MCP_ROUTES[template_id],
+                    mcp_connection_id="", mcp_public=True,
+                )
+                self.assertEqual(MCP_BASE_URL + "/mcp/mock-tool-call", published["tools"][0]["server_url"])
 
     def test_tuned_handoff_examples_use_example1_vad_with_600ms_silence(self) -> None:
         catalog = TemplateCatalog()
