@@ -16,6 +16,12 @@ This folder is an **optional** alternative for teams that want one shared URL. T
 
 In both Container App options, everyone who gets in acts as the same managed identity: they can publish and delete Agents in your project and start sessions that incur cost, and the portal does not record who did what. Only let in people you would give that access to.
 
+## How it fits together
+
+![The portal runs in an Azure Container App in your subscription and calls your Foundry project with its managed identity](../../../assets/portal-container-apps-architecture.png)
+
+The browser talks only to the portal, and the portal calls your Foundry project with its managed identity. Agents you publish are stored in your project, so your own applications connect to an Agent's voice endpoint directly, and removing the portal does not affect them. The diagram's editable source is [`portal-container-apps-architecture.svg`](../../../assets/portal-container-apps-architecture.svg).
+
 ## Deploy from Azure Cloud Shell
 
 You need **Contributor** on the subscription or resource group you deploy to. Step 2 also grants the portal's identity roles on your Foundry project and resource, which needs Owner, User Access Administrator or Role Based Access Control Administrator there; without that, add `--skip-roles` to step 2 and it prints the roles an admin must grant.
