@@ -383,20 +383,55 @@ case "$AUTH:$code" in
   *) msg="unexpected HTTP $code; check: az containerapp logs show -n $NAME -g $RG --follow" ;;
 esac
 
-cat <<EOF
+# ---------- summary for the user: where to open it, its limits, how to change it ----------
+IPS_TEXT="${ALLOWED_IPS[*]+${ALLOWED_IPS[*]}}"
+case "$AUTH" in
+  ip) HOW="No sign-in. Open the address on a computer in your office or on your VPN."
+      WHO="Only browsers whose internet traffic comes from: $IPS_TEXT" ;;
+  entra) HOW="Open the address and sign in with your work account."
+      WHO="People in your Microsoft Entra tenant${IPS_TEXT:+, and only from: $IPS_TEXT}" ;;
+  none) HOW="Open the address."
+      WHO="Anyone who has the address (no protection)" ;;
+esac
+SUMMARY_FILE="$HOME/voice-agent-portal.txt"
+{
+  cat <<EOF
 
-Portal URL      : https://$FQDN/editor/
-Status          : $msg
-Foundry project : $PROJECT_ENDPOINT
-Image           : $IMAGE
-Identity        : $ID_NAME (client id $ID_CLIENT, principal $ID_PRINCIPAL)
-Access          : $AUTH${ENTRA_CLIENT_ID:+ (app $ENTRA_CLIENT_ID)}
-Logs            : az containerapp logs show -n $NAME -g $RG --follow
-Remove          : az group delete -n $RG   (Agents in the Foundry project are not deleted)
+========================================================================
+Voice Agent portal
+
+Open it       : https://$FQDN/editor/
+How to get in : $HOW
+Who can open  : $WHO
+Check now     : $msg
+
+Limits
+  - Everyone who gets in uses the portal's identity '$ID_NAME': they can publish and delete Agents
+    in project '${PROJECT_ENDPOINT##*/}' and start voice sessions that cost money. The portal does
+    not record who did what. Only let in people you would give that access to.
+  - One copy runs (0.5 vCPU, 1 GiB). Fine for a team; a restart or upgrade ends sessions in progress.
+  - A voice session that sends no audio for about four minutes is closed.
 EOF
-if [[ "$AUTH" == entra ]]; then
-  echo "                  The app registration $ENTRA_CLIENT_ID is not in the resource group; when no longer needed: az ad app delete --id $ENTRA_CLIENT_ID"
-fi
+  [[ "$AUTH" != ip ]] || echo "  - From any other network (Cloud Shell included) the address answers 403."
+  [[ "$AUTH" != entra ]] || echo "  - Sign-in uses a client secret that lasts one year; if sign-in stops working, see Troubleshooting in skills/portal-remote/README.md."
+  cat <<EOF
+
+To change it, from $REPO_ROOT:
+  Who can open it : skills/portal-remote/scripts/prepare.sh   (answer n at "Is this right?" and choose again)
+                    then skills/portal-remote/scripts/deploy.sh
+  Newer portal    : git pull, then skills/portal-remote/scripts/build.sh, then skills/portal-remote/scripts/deploy.sh
+  Logs            : az containerapp logs show -n $NAME -g $RG --follow
+  Remove it all   : az group delete -n $RG   (Agents in your Foundry project are kept)
+EOF
+  [[ "$AUTH" != entra ]] || echo "                    and the sign-in app registration: az ad app delete --id $ENTRA_CLIENT_ID"
+  cat <<EOF
+
+Details: image $IMAGE
+         identity $ID_NAME (client id $ID_CLIENT), project $PROJECT_ENDPOINT
+========================================================================
+EOF
+} | tee "$SUMMARY_FILE"
+printf 'Saved to %s (Cloud Shell: Manage files > Download, to share it with your team).\n' "$SUMMARY_FILE" >&2
 # In Cloud Shell a correct office/VPN allowlist answers 403 above. A 200 means the list includes this
 # Cloud Shell's outbound address, an Azure address that other Azure tenants can use too.
 if [[ "$AUTH:$code" == ip:200 && ( "${AZUREPS_HOST_ENVIRONMENT:-}" == cloud-shell* || -n "${ACC_CLOUD:-}" ) ]]; then

@@ -65,12 +65,16 @@ It creates the resource group (if new) and a private container registry in it, a
 skills/portal-remote/scripts/deploy.sh
 ```
 
-The first run takes about five minutes, or about ten if your organization requires Container Apps to use a virtual network (the script notices this and creates one for the portal). It ends with:
+The first run takes about five minutes, or about ten if your organization requires Container Apps to use a virtual network (the script notices this and creates one for the portal). It ends with a short summary, also saved to `~/voice-agent-portal.txt` so you can share it with your team (in Cloud Shell: **Manage files > Download**):
 
 ```text
-Portal URL      : https://voice-agent-portal.<environment>.<region>.azurecontainerapps.io/editor/
-Status          : running; this machine's IP is not in the allowlist (HTTP 403)
+Open it       : https://voice-agent-portal.<environment>.<region>.azurecontainerapps.io/editor/
+How to get in : No sign-in. Open the address on a computer in your office or on your VPN.
+Who can open  : Only browsers whose internet traffic comes from: 203.0.113.0/24
+Check now     : running; this machine's IP is not in the allowlist (HTTP 403)
 ```
+
+Below that it lists the limits (everyone who gets in shares the portal's identity; one copy runs) and the commands to change who can open it, upgrade, see logs, or remove it.
 
 In Cloud Shell that **403 is the expected result**: Cloud Shell is not on your office network. Open the URL in a browser on your office network or VPN.
 
