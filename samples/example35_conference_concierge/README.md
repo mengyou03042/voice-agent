@@ -97,15 +97,16 @@ The shipped agent calls two more tools that have no public implementation in thi
 repository. `agent.json` keeps their structure so the shape is visible, and leaves
 `server_url` empty for you to fill in.
 
-| Production tool | What it does | What you need to do |
+| Production tool | What it does | How to get it |
 | --- | --- | --- |
-| `conference_find_speaker` | Finds a speaker by how a caller pronounced the name, so an accent or a recognition error still reaches the right person, and returns their title, company, and bio. The instructions call it every time a caller says a person's name | Implement it in your copy of the `conference` pack, or drop it from `allowed_tools` and delete the two instruction paragraphs that call it. Without it, speakers are still searchable through the `speaker` filter of `conference_search_sessions` |
+| `conference_find_speaker` | Finds a speaker by how a caller pronounced the name, so an accent or a recognition error still reaches the right person, and returns their title, company, and bio. The instructions call it every time a caller says a person's name | Use the [hosted tools](#use-the-hosted-tools), which include it. To run the pack yourself, implement it or drop it from `allowed_tools` and delete the two instruction paragraphs that call it; speakers stay searchable through the `speaker` filter of `conference_search_sessions` |
 | `ignite_email_sessions` | Sends the one-time email of saved sessions through an Office 365 shared mailbox | Point the `email` subagent at your own email MCP server, or delete the subagent together with the `to_email` and `email_to_*` handoff conditions. The privacy notice and address confirmation live in the subagent's instructions |
 
 Everything else, including every instruction, handoff condition, and audio setting,
 is the configuration that served live calls.
 
-**A missing tool is silent, not an error.** `allowed_tools` filters what the MCP server
+**A missing tool is silent, not an error.** This matters when you run the pack yourself;
+the hosted tools already include the speaker lookup. `allowed_tools` filters what the MCP server
 lists; it does not require it. If the server does not expose `conference_find_speaker`,
 the other tools still register, the model never sees it, and the two instruction
 paragraphs that call it cannot be followed. Speaker questions then fall back to the
@@ -115,8 +116,9 @@ pronunciation, so "Zakia" or "Sathiya" no longer reaches "Satya Nadella", and
 
 ### Implementing `conference_find_speaker`
 
-The contract is small, and this repository already ships a working phonetic matcher you
-can port: [`samples/ignite_planner/web/name-search.mjs`](../ignite_planner/web/name-search.mjs)
+Only needed if you run the pack yourself. The contract is small, and this repository
+already ships a working phonetic matcher you can port:
+[`samples/ignite_planner/web/name-search.mjs`](../ignite_planner/web/name-search.mjs)
 with its tuning data [`name-search-data.json`](../ignite_planner/data/name-search-data.json)
 (letter-to-sound rules, phoneme confusion costs, nicknames, and the score thresholds).
 
@@ -167,11 +169,26 @@ To remove the feature instead, delete the `email` subagent together with the `to
 handoff on `$entrypoint` and the two `email_to_*` handoffs, and drop the paragraphs about
 emailing from the instructions.
 
-## Run locally
+## Use the hosted tools
 
-The hosted no-auth MCP does not serve `/mcp/conference` yet, so run the pack
-locally and expose it with a Dev Tunnel (Foundry calls MCP servers from the
-cloud). From the repository root, in PowerShell, after `az login` and
+The conference tools are served without a sign-in at
+
+```
+https://voice-agent-noauth-mcp.lemonsky-36682081.westus2.azurecontainerapps.io/mcp/conference
+```
+
+Put that in the `conference` tool's `server_url` and the Agent is ready; the
+catalog behind it refreshes from the official source. This is the fastest way to
+hear the Agent, and the only way to get `conference_find_speaker`, which the pack
+in this repository does not implement.
+
+Run the pack yourself instead when you want to change a tool, use your own event
+data, or keep every call inside your own subscription.
+
+## Run the tools yourself
+
+Foundry calls MCP servers from the cloud, so a local pack needs a Dev Tunnel.
+From the repository root, in PowerShell, after `az login` and
 `devtunnel user login`:
 
 ```powershell
