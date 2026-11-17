@@ -111,7 +111,7 @@ the other tools still register, the model never sees it, and the two instruction
 paragraphs that call it cannot be followed. Speaker questions then fall back to the
 `speaker` filter of `conference_search_sessions`, which matches words rather than
 pronunciation, so "Zakia" or "Sathiya" no longer reaches "Satya Nadella", and
-"tell me about &lt;name&gt;" has no biography source.
+`tell me about <name>` has no biography source.
 
 ### Implementing `conference_find_speaker`
 
