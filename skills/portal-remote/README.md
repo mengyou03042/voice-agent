@@ -49,7 +49,7 @@ Then it checks, before anything is created, everything the next two steps need, 
 - **WARN**: the deployment can continue, but something will need someone else, for example an admin granting the portal's roles. The line says who and how.
 - **FAIL**: fix this first. The line says what is missing, where to click in the Azure portal, and which people in your organization can do it. Then run `prepare.sh` again.
 
-Your choices are saved in `portal/.env` in this folder, so you never type them again. Cloud Shell keeps this folder between sessions: if you come back later, `cd voice-agent` and continue with the next step. To change a choice, run `skills/portal-remote/scripts/prepare.sh --reconfigure`.
+Your choices are saved in `portal/.env` in this folder, so you never type them again. Cloud Shell keeps this folder between sessions: if you come back later, `cd voice-agent` and continue with the next step. To change a choice, run `prepare.sh` again and answer **n** at **Is this right?**: it asks everything again.
 
 ## Step 5: build the portal image
 
@@ -80,13 +80,13 @@ In Cloud Shell that **403 is the expected result**: Cloud Shell is not on your o
 
 | To | Run |
 |---|---|
-| Change who can open the portal | `prepare.sh --reconfigure`, then `deploy.sh` (the new address list replaces the old one) |
+| Change who can open the portal | `prepare.sh`, answer **n** at **Is this right?** and choose again, then `deploy.sh` (the new address list replaces the old one) |
 | Upgrade to a newer portal | `git pull`, then `build.sh`, then `deploy.sh` (settings and roles are kept; sessions in progress end) |
-| Roll back | `deploy.sh --image <older image>`; list images with `az acr repository show-tags -n <registry> --repository voice-agent-portal -o table` |
-| See logs | `az containerapp logs show -n voice-agent-portal -g <resource group> --follow` |
-| Remove the portal | `az group delete -n <resource group>`. Agents in your Foundry project are **not** deleted. Remove the identity's leftover "Identity not found" role entries under **Access control (IAM)** on the project and the Foundry resource |
+| Roll back | `git checkout <older version>`, then `build.sh`, then `deploy.sh` (it always runs the newest image) |
+| See logs | In the Azure portal, open the Container App `voice-agent-portal` > **Monitoring > Log stream** |
+| Remove the portal | In the Azure portal, open the resource group `voice-agent-portal` > **Delete resource group**. Agents in your Foundry project are **not** deleted. Remove the identity's leftover "Identity not found" role entries under **Access control (IAM)** on the project and the Foundry resource |
 
-All commands are in `skills/portal-remote/scripts/`; `--help` on each lists every option.
+All three scripts are in `skills/portal-remote/scripts/`; run them from the `voice-agent` folder.
 
 ## Who can do what
 
@@ -105,7 +105,7 @@ The browser talks only to the portal, and the portal calls your Foundry project 
 
 ## Add Microsoft Entra sign-in
 
-Use this when people need the portal off your network, or only named people should get in. Choose **Entra sign-in** in `prepare.sh --reconfigure` (or run `deploy.sh --auth entra`). It creates a single-tenant app registration with a one-year client secret, turns on sign-in, and then removes the IP rules (add `--allowed-ip` to keep both). If you cannot register applications, an admin creates one (platform **Web**, redirect URI `https://<app host>/.auth/login/aad/callback`, **ID tokens** enabled, a client secret); then run `read -rs ENTRA_CLIENT_SECRET && export ENTRA_CLIENT_SECRET` and `deploy.sh --auth entra --entra-client-id <client-id>`. Before the secret expires, run `deploy.sh --entra-renew-secret`. `--entra-assigned-only` limits sign-in to assigned users; an admin then grants admin consent once.
+Use this when people need the portal off your network, or only named people should get in. Run `prepare.sh`, answer **n** at **Is this right?**, choose **People in my organization who sign in with Microsoft Entra**, then run `deploy.sh`. It creates a single-tenant app registration with a one-year client secret, turns on sign-in, and then removes the IP rules. Creating an app registration needs permission in Microsoft Entra ID; without it, use the Azure portal steps below or ask an admin to do them.
 
 In the Azure portal instead: open the Container App > **Security > Authentication** > **Add identity provider** > **Microsoft**, keep **Create new app registration** and **Current tenant - Single tenant**, keep **Require authentication**, and select **Add**. Only after sign-in works, remove the IP rules under **Ingress** if you want off-network access.
 
@@ -141,9 +141,9 @@ When Azure refuses something, the scripts print **What happened / Why / What to 
 | Situation | What happens / what to do |
 |---|---|
 | A policy requires Container Apps environments in a virtual network | Handled: `deploy.sh` creates a dedicated virtual network for the portal. |
-| A policy requires tags | `build.sh --tag KEY=VALUE` (repeatable), or create the resource group with its tags first. |
-| A policy allows only some regions | `prepare.sh --reconfigure --location <allowed region>`. |
-| A policy allows only approved container registries | Have the platform team create one and pass `--acr <name>` to `build.sh` and `deploy.sh`. |
+| A policy requires tags | In the Azure portal, create the resource group `voice-agent-portal` with the required tags first. The scripts use it and keep its tags. |
+| A policy allows only some regions | In the Azure portal, create the resource group `voice-agent-portal` in an allowed region first. The portal runs in that group's region. |
+| A policy allows only approved container registries | Not covered by these three commands. Run the portal locally. |
 | A policy denies public endpoints for Container Apps | Not supported by these scripts. Run the portal locally on a computer inside your network. |
 | Your Foundry resource allows only private network access | The container cannot reach it (`prepare.sh` reports this). Run the portal locally on a computer that can reach the private endpoint. |
 | Users' browsers go through a proxy that blocks unknown domains | Allow `*.azurecontainerapps.io` (or the exact portal host) for HTTPS and WebSocket. |
@@ -167,19 +167,12 @@ Network connections, for network teams:
 | Symptom | Cause and fix |
 |---|---|
 | `deploy.sh` says nothing is prepared | Run `prepare.sh` first, from the `voice-agent` folder. |
-| HTTP 403 when opening the URL from the office | Your office address is not in the list, often because it was looked up in Cloud Shell. `prepare.sh --reconfigure`, then `deploy.sh`. |
+| HTTP 403 when opening the URL from the office | Your office address is not in the list, often because it was looked up in Cloud Shell. Run `prepare.sh`, answer **n** at **Is this right?**, enter the right ranges, then `deploy.sh`. |
 | Publishing an Agent fails with 403 | The identity does not have **Foundry User** on the project yet; see `~/voice-agent-portal-admin-steps.txt`. |
 | The voice list or project picker is short | The optional **Cognitive Services Speech User** or **Reader** roles are missing on the Foundry resource. |
 | A session that sends no audio is closed after about four minutes | The Container Apps ingress closes idle connections. Keep the microphone stream running. |
-| Sign-in fails after it used to work | The Entra client secret expired: `deploy.sh --entra-renew-secret`. |
+| Sign-in fails after it used to work | The Entra client secret expired (it lasts one year). Create a new one for the app registration and enter it in the Container App under **Security > Authentication**, Microsoft provider, **Edit**. |
 
-## Without prompts (automation and coding agents)
+## For coding agents
 
-Every choice can be passed to `prepare.sh` instead of answered; it then asks nothing except the final confirmation, which is skipped when input is not a terminal:
-
-```bash
-skills/portal-remote/scripts/prepare.sh --project <project endpoint or name> --resource-group <rg> \
-  --auth ip --allowed-ip <CIDR>[,<CIDR>...] [--location <region>] [--name <app name>]
-skills/portal-remote/scripts/build.sh
-skills/portal-remote/scripts/deploy.sh [--skip-roles]
-```
+An Agent that runs these scripts for you follows [SKILL.md](SKILL.md).
