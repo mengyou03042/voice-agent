@@ -65,7 +65,7 @@ It creates the resource group (if new) and a private container registry in it, a
 skills/portal-remote/scripts/deploy.sh
 ```
 
-The first run takes about five minutes, or about ten if your organization requires Container Apps to use a virtual network (the script notices this and creates one for the portal). It ends with a short summary, also saved to `~/voice-agent-portal.txt` so you can share it with your team (in Cloud Shell: **Manage files > Download**):
+The first run takes about five minutes. If your organization requires Container Apps to use a virtual network, the script notices this and creates one for the portal, and the first run takes 10 to 25 minutes; most of it is Azure creating the environment, so let it run. It ends with a short summary, also saved to `~/voice-agent-portal.txt` so you can share it with your team (in Cloud Shell: **Manage files > Download**):
 
 ```text
 Open it       : https://voice-agent-portal.<environment>.<region>.azurecontainerapps.io/editor/
