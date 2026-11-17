@@ -1,4 +1,15 @@
-# SDK packages
+# Bundled packages and offline installers
+
+## Offline Voice Agent portal installation bundle
+
+[`portal-offline/`](portal-offline/README.md) contains the self-contained installation bundle (`voice-agent-portal-delivery-d112175c0dcb.zip`, split into ten `< 25 MB` slices under `portal-offline/parts/`) for running the Voice Agent portal in virtual networks or VMs without internet access to PyPI, Docker Hub, or GitHub:
+
+- Source commit: [`d112175c0dcb355902d6129d5a09dbf279cd39ee`](https://github.com/microsoft/voice-agent/pull/138) (tree identical to merged PR #138, `dad3d8f4c7f619825b56fef05cb651b084ac53e7`)
+- Contents: Linux x64 and Windows x64 VM packages with portable CPython `3.12.16` and 39 locked runtime dependencies, a prebuilt `linux/amd64` Azure Container Apps image pack (`sha256:954490bef731e0174faf371ea5e03eea398fc480882909f8644009467d05ce3c`) with standalone `crane` binaries and deployment scripts, and standalone `agent` CLI packages
+- Reassembled archive SHA-256: `0744e4a0b0f6c7dc33fb536543df2969fc95753977124864b81be465a839ddaa`
+- Guides and reassembly instructions: [`portal-offline/README.md`](portal-offline/README.md)
+
+## SDK packages
 
 Python samples now install `azure-ai-projects>=2.7.0`
 from PyPI, using the `[voice]` extra for SDK voice connections. Use the

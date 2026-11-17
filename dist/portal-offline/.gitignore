@@ -1,0 +1,3 @@
+# Ignore locally reassembled archive and extracted bundle directory inside a git checkout.
+/voice-agent-portal-delivery-*.zip
+/voice-agent-portal-delivery-*/

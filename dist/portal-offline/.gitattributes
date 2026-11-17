@@ -1,0 +1,8 @@
+# Keep split archive parts strictly binary and script/checksum line endings portable across OSes.
+* text=auto eol=lf
+*.part-* binary
+*.sh text eol=lf
+*.sha256 text eol=lf
+SHA256SUMS text eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf

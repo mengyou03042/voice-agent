@@ -260,6 +260,15 @@ Azure Cloud Shell build the image in your own container registry and deploy it
 behind an IP allowlist, with optional Microsoft Entra sign-in. See
 [`skills/portal-remote/README.md`](../skills/portal-remote/README.md).
 
+### Install without internet access
+
+If the VM or virtual network where the portal will run cannot reach PyPI, Docker
+Hub, or GitHub directly, use the self-contained offline installation bundle in
+[`dist/portal-offline/README.md`](../dist/portal-offline/README.md). It includes
+portable Linux and Windows VM packages (with Python 3.12 and locked dependencies
+pre-installed), a prebuilt Azure Container Apps image pack, and the command-line
+`agent` tool.
+
 ## Using the portal
 
 - The header has two main destinations. **Editor** is the default landing page

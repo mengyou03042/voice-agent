@@ -4,6 +4,8 @@ The [Voice Agent portal](../../portal/README.md) runs on your own computer by de
 
 You do not need to know Azure. You run three commands in Azure Cloud Shell; the first one looks at what your account can see and do, asks you to choose where something is not clear, and saves your choices. The other two need no input. If a permission is missing, the scripts tell you what to ask for, from whom, and where they click.
 
+If your environment has no internet access to GitHub, PyPI, or Docker Hub (or cannot run `az acr build`), use the prebuilt offline installation bundle in [`dist/portal-offline/README.md`](../../dist/portal-offline/README.md) instead.
+
 ## Before you start
 
 | You need | Why | If you do not have it |
