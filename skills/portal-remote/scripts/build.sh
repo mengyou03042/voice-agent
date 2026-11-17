@@ -26,7 +26,7 @@ check_region() {
   display="$(az account list-locations --query "[?name=='$1'].displayName | [0]" -o tsv)"
   [[ -n "$display" ]] || die "Unknown region '$1'. Use a short name such as westus2, eastus2 or swedencentral."
   az provider show -n Microsoft.App --query "resourceTypes[?resourceType=='managedEnvironments'].locations[]" -o tsv \
-    | grep -qixF "$display" || die "Azure Container Apps is not available in $1 ($display). Rerun prepare.sh --reconfigure and choose another region."
+    | grep -qixF "$display" || die "Azure Container Apps is not available in $1 ($display). Rerun prepare.sh, answer n at 'Is this right?' and choose again."
 }
 
 RG="$(setting PORTAL_ACA_RESOURCE_GROUP)" LOCATION="$(setting PORTAL_ACA_LOCATION)"
@@ -70,13 +70,13 @@ if [[ "$(az group exists -n "$RG" -o tsv)" == "true" ]]; then
   LOCATION="$(az group show -n "$RG" --query location -o tsv)"
   check_region "$LOCATION"
 else
-  [[ -n "$LOCATION" ]] || die "Resource group $RG does not exist and no region is saved: rerun prepare.sh --reconfigure."
+  [[ -n "$LOCATION" ]] || die "Resource group $RG does not exist and no region is saved: rerun prepare.sh."
   check_region "$LOCATION"
   log "Creating resource group $RG ($LOCATION)"
   TAG_ARGS=()
   if [[ ${#TAGS[@]} -gt 0 ]]; then TAG_ARGS=(--tags "${TAGS[@]}"); fi
   az group create -n "$RG" -l "$LOCATION" ${TAG_ARGS[@]+"${TAG_ARGS[@]}"} --only-show-errors -o none \
-    || die "Cannot create resource group $RG (see above). If a policy requires tags, rerun with --tag KEY=VALUE."
+    || die "Cannot create resource group $RG (see above). If a policy requires tags, create resource group $RG with those tags in the Azure portal, then rerun build.sh."
 fi
 
 log "Container registry $ACR"

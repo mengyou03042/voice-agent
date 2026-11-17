@@ -111,8 +111,10 @@ def _policy(text: str) -> Hint | None:
         "An Azure Policy of your organization blocked this resource.",
         f"Policy: {named}." + (f" Its reason: {reason.group(1)}" if reason else "")
         + " Policies are set by your Azure administrators, not by these scripts.",
-        ["Required tags: rerun with --tag KEY=VALUE (repeatable).",
-         "Allowed regions only: rerun with --location <an allowed region>.",
+        ["Required tags: in the Azure portal, create the portal's resource group (voice-agent-portal by default) "
+         "with those tags, then rerun this step.",
+         "Allowed regions only: in the Azure portal, create that resource group in an allowed region, "
+         "then rerun prepare.sh.",
          "Container Apps must use your own virtual network, or public endpoints are denied: this setup "
          "is not supported there; run the portal locally (skills/portal-local).",
          "Otherwise send the policy name above to your Azure administrator."],
@@ -141,8 +143,8 @@ SIMPLE_RULES: tuple[tuple[str, Hint], ...] = (
     (r"QuotaExceeded|MaxNumberOfRegionalEnvironmentsInSubAndRegionExceeded|EnvironmentCountQuota",
      Hint("A subscription limit was reached.",
           "Each subscription can have only a few Container Apps environments per region.",
-          ["Reuse an existing environment with --environment <name>, choose another region with "
-           "--location, or request more quota in the Azure portal (Quotas)."])),
+          ["Request more quota in the Azure portal (Quotas), or delete Container Apps environments you "
+           "no longer use in this region; then rerun this step."])),
     (r"SubscriptionNotFound|InvalidAuthenticationTokenTenant|subscription '[^']+' could not be found",
      Hint("That subscription is not in the directory you are signed in to.",
           "Azure accounts can belong to several directories (tenants); each Cloud Shell session uses one.",
@@ -160,8 +162,9 @@ SIMPLE_RULES: tuple[tuple[str, Hint], ...] = (
     (r"Authorization_RequestDenied|Insufficient privileges to complete the operation",
      Hint("You cannot create or change app registrations in Microsoft Entra ID.",
           "Your tenant lets only some roles register applications.",
-          ["Use IP-allowlist access instead (no app registration needed), or ask an Application "
-           "Administrator to create one and rerun with --entra-client-id and ENTRA_CLIENT_SECRET."])),
+          ["Use office/VPN access instead (no app registration needed): rerun skills/portal-remote/scripts/prepare.sh, "
+           "answer n at 'Is this right?' and choose it. Or ask an Application Administrator to add sign-in as described in "
+           "skills/portal-remote/README.md."])),
     (r"ScopeLocked",
      Hint("A resource lock blocks this change.",
           "A read-only or delete lock is set on the resource, its group or the subscription.",
@@ -173,7 +176,8 @@ SIMPLE_RULES: tuple[tuple[str, Hint], ...] = (
     (r"LocationNotAvailableForResourceType|is not available in (?:the )?(?:location|region)",
      Hint("This Azure service is not offered in the chosen region.",
           "Not every region offers Azure Container Apps or Container Registry.",
-          ["Rerun with --location <another region>, for example eastus2 or swedencentral."])),
+          ["In the Azure portal, create the portal's resource group (voice-agent-portal by default) in "
+           "another region, for example eastus2 or swedencentral, then rerun prepare.sh."])),
 )
 
 

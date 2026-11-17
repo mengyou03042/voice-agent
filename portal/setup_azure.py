@@ -354,6 +354,12 @@ def check_local(project: dict[str, str], user: str) -> list[Check]:
     return checks
 
 
+def choose_again(mode: str) -> str:
+    if mode == "remote":
+        return "Rerun skills/portal-remote/scripts/prepare.sh and answer n at 'Is this right?' to choose again."
+    return f"Choose again: setup_azure.py pick --mode {mode} --reconfigure"
+
+
 def check_remote(values: dict[str, str], project: dict[str, str], user: str) -> list[Check]:
     checks: list[Check] = []
     if project["public_network_access"].lower() == "disabled":
@@ -369,7 +375,7 @@ def check_remote(values: dict[str, str], project: dict[str, str], user: str) -> 
     except AzError:
         checks.append(Check("FAIL", f"Use subscription {subscription}",
                             "It is not visible to your sign-in in this directory.",
-                            ["Rerun 'setup_azure.py pick --mode remote --reconfigure' and keep the default subscription."]))
+                            [choose_again("remote")]))
         return checks
     sub_scope = f"/subscriptions/{subscription}"
     group_scope = f"{sub_scope}/resourceGroups/{group}"
@@ -446,7 +452,7 @@ def check_remote(values: dict[str, str], project: dict[str, str], user: str) -> 
                             "If your tenant refuses it, the deployment says so and what to ask for."))
     elif not ips:
         checks.append(Check("FAIL", "Limit access to your office or VPN addresses", "No addresses are saved yet.",
-                            ["Rerun: setup_azure.py pick --mode remote --reconfigure"]))
+                            [choose_again("remote")]))
     else:
         checks.append(Check("PASS", f"Only these addresses can open the portal: {ips}"))
     return checks
@@ -474,7 +480,7 @@ def check(args: argparse.Namespace) -> int:
     if project is None:
         checks.append(Check("FAIL", f"Find Foundry project {endpoint}",
                             "Your sign-in cannot see it: another directory, a typo, or no role on it.",
-                            [f"Choose again: setup_azure.py pick --mode {args.mode} --reconfigure"]))
+                            [choose_again(args.mode)]))
     else:
         checks.append(Check("PASS", f"Foundry project '{project['name']}' (resource {project['account']}, {project['region']})"))
         checks += check_local(project, user) if args.mode == "local" else check_remote(values, project, user)

@@ -5,7 +5,7 @@
 # Needs no options: it reads what prepare.sh saved in portal/.env and runs the newest image that
 # build.sh put in your registry, with a user-assigned managed identity, grants that identity access to
 # your project, and protects the public URL before exposing it. Re-running is safe: existing resources
-# are reused. To change who may open the portal, rerun prepare.sh --reconfigure and then only this step.
+# are reused. To change who may open the portal, rerun prepare.sh (answer n at "Is this right?") and then only this step.
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
@@ -86,7 +86,7 @@ $IPS_GIVEN || [[ -z "$saved_ips" ]] || ALLOWED_IPS=("$saved_ips")
 if ! $LIST_PROJECTS; then
   [[ -n "$RG" && -n "$PROJECT_ENDPOINT" ]] || die "Nothing prepared yet: run skills/portal-remote/scripts/prepare.sh first."
   [[ "$PROJECT_ENDPOINT" =~ $re ]] \
-    || die "'$PROJECT_ENDPOINT' is not a project endpoint (https://<account>.services.ai.azure.com/api/projects/<project>). Rerun prepare.sh --reconfigure."
+    || die "'$PROJECT_ENDPOINT' is not a project endpoint (https://<account>.services.ai.azure.com/api/projects/<project>). Rerun prepare.sh and answer n at 'Is this right?'."
 fi
 [[ "$NAME" =~ ^[a-z][a-z0-9-]{0,30}[a-z0-9]$ ]] || die "--name must be 2-32 lowercase letters, digits or hyphens."
 # --allowed-ip values may be comma- or space-separated lists; a bare address means /32.
@@ -109,7 +109,7 @@ done
 ALLOWED_IPS=(${IPS[@]+"${IPS[@]}"})
 case "$AUTH" in
   entra) ;;
-  ip) $LIST_PROJECTS || [[ ${#ALLOWED_IPS[@]} -gt 0 ]] || die "No allowed addresses are saved: rerun prepare.sh --reconfigure (or pass --allowed-ip)." ;;
+  ip) $LIST_PROJECTS || [[ ${#ALLOWED_IPS[@]} -gt 0 ]] || die "No allowed addresses are saved: rerun prepare.sh and answer n at 'Is this right?'." ;;
   none) $ALLOW_PUBLIC || die "--auth none exposes your project to anyone with the URL; add --i-understand-public to confirm."
         [[ ${#ALLOWED_IPS[@]} -eq 0 ]] || die "--allowed-ip with --auth none: use --auth ip instead." ;;
   *) die "--auth must be ip, entra or none." ;;
@@ -129,7 +129,7 @@ if $LIST_PROJECTS; then python3 "$SETUP" projects; exit 0; fi
 PROJECT_ID="" FOUNDRY_ACCOUNT_ID=""
 log "Foundry project $PROJECT_ENDPOINT"
 IFS=$'\t' read -r _ PROJECT_ID FOUNDRY_ACCOUNT_ID < <(python3 "$SETUP" projects --endpoint "$PROJECT_ENDPOINT" || true)
-[[ -n "$PROJECT_ID" ]] || die "Rerun prepare.sh --reconfigure to choose a project you can see."
+[[ -n "$PROJECT_ID" ]] || die "Rerun prepare.sh and answer n at 'Is this right?' to choose a project you can see."
 az resource show --ids "$PROJECT_ID" --query id -o tsv >/dev/null || die "Project not found or not readable: $PROJECT_ID"
 FOUNDRY_SUB="$(cut -d/ -f3 <<<"$FOUNDRY_ACCOUNT_ID")" FOUNDRY_RG="$(cut -d/ -f5 <<<"$FOUNDRY_ACCOUNT_ID")"
 
@@ -316,14 +316,14 @@ configure_entra() {
   if [[ -z "$ENTRA_CLIENT_ID" ]]; then
     local app_name="$NAME-portal-signin-$SUFFIX"
     ENTRA_CLIENT_ID="$(az ad app list --display-name "$app_name" --query '[0].appId' -o tsv)" \
-      || die "Cannot read app registrations (Microsoft Graph). Ask an admin for one and rerun with --entra-client-id and ENTRA_CLIENT_SECRET, or use --auth ip."
+      || die "Cannot read app registrations (Microsoft Graph). Rerun prepare.sh, answer n at 'Is this right?' and choose the office/VPN network; to add sign-in later, see Add Microsoft Entra sign-in in skills/portal-remote/README.md."
     if [[ -z "$ENTRA_CLIENT_ID" ]]; then
       log "Creating Entra app registration $app_name"
       ENTRA_CLIENT_ID="$(az ad app create --display-name "$app_name" --sign-in-audience AzureADMyOrg \
         --web-redirect-uris "$callback" --enable-id-token-issuance true \
         ${ENTRA_SMR:+--service-management-reference "$ENTRA_SMR"} \
         --query appId -o tsv)" \
-        || die "Cannot create an app registration. Ask an admin for one (single tenant, Web redirect URI $callback, ID tokens enabled, plus a client secret) and rerun with --entra-client-id and ENTRA_CLIENT_SECRET, or use --auth ip."
+        || die "Cannot create an app registration. Rerun prepare.sh, answer n at 'Is this right?' and choose the office/VPN network; to add sign-in later, see Add Microsoft Entra sign-in in skills/portal-remote/README.md."
     fi
   fi
   current="$(az containerapp auth show -n "$NAME" -g "$RG" \
@@ -335,7 +335,7 @@ configure_entra() {
       || die "Cannot create a client secret for $ENTRA_CLIENT_ID (you must own the app registration). Or set ENTRA_CLIENT_SECRET to an existing secret of it."
   fi
   if [[ -z "$secret" ]]; then
-    log "Entra sign-in already configured (app $ENTRA_CLIENT_ID). Its client secret lasts 1 year: rerun with --entra-renew-secret before it expires."
+    log "Entra sign-in already configured (app $ENTRA_CLIENT_ID). Its client secret lasts 1 year: renew it before it expires (see Troubleshooting in skills/portal-remote/README.md)."
   else
     log "Configuring Entra sign-in (app $ENTRA_CLIENT_ID)"
     az containerapp secret set -n "$NAME" -g "$RG" --secrets "microsoft-provider-authentication-secret=$secret" --only-show-errors -o none
@@ -400,5 +400,5 @@ fi
 # In Cloud Shell a correct office/VPN allowlist answers 403 above. A 200 means the list includes this
 # Cloud Shell's outbound address, an Azure address that other Azure tenants can use too.
 if [[ "$AUTH:$code" == ip:200 && ( "${AZUREPS_HOST_ENVIRONMENT:-}" == cloud-shell* || -n "${ACC_CLOUD:-}" ) ]]; then
-  warn "Cloud Shell can open the portal, so your --allowed-ip list includes an Azure address (probably looked up in Cloud Shell). Rerun with the egress ranges of your office/VPN, looked up from a browser there."
+  warn "Cloud Shell can open the portal, so your allowed address list includes an Azure address (probably looked up in Cloud Shell). Rerun prepare.sh, answer n at 'Is this right?' and enter your office/VPN ranges, looked up in a browser there; then rerun deploy.sh."
 fi
