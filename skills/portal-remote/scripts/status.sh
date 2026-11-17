@@ -33,7 +33,17 @@ echo
 [[ -z "$SUBSCRIPTION" ]] || command az account set --subscription "$SUBSCRIPTION" 2>/dev/null \
   || die "Subscription $SUBSCRIPTION is not visible to this sign-in. In Cloud Shell, switch directory in the Azure portal and restart it."
 SUB_ID="$(q account show --query id)" || die "Not signed in: restart Cloud Shell, or run az login on your computer."
+# Cloud Shell can come back on another subscription: look where build.sh made the resources (read-only).
+MOVED=""
+if [[ "$(q group exists -n "$RG")" != "true" ]]; then
+  FOUND="$(python3 "$SETUP" locate --resource-group "$RG" --name "$NAME" 2>/dev/null || true)"
+  if [[ -n "$FOUND" && "$FOUND" != *$'\n'* && "$FOUND" != "$SUB_ID" ]] && command az account set --subscription "$FOUND" 2>/dev/null; then
+    MOVED="$(q account show --subscription "$SUB_ID" --query name)" SUB_ID="$FOUND"
+  fi
+fi
 ok "Signed in as $(q account show --query user.name), subscription '$(q account show --query name)'"
+[[ -z "$MOVED" ]] || warn_ "The portal's resources are in this subscription, not in '$MOVED' saved by prepare.sh" \
+  "status.sh checks them here. deploy.sh switches here and saves it on its next run."
 command az extension show --name containerapp >/dev/null 2>&1 \
   || command az extension add --name containerapp --only-show-errors -y >/dev/null 2>&1 || true
 
