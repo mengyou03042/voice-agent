@@ -1,65 +1,59 @@
 #!/usr/bin/env bash
 # Copyright (c) Microsoft. All rights reserved.
-# Step 2 of 2: run the Voice Agent Portal in YOUR Azure Container App, connected to YOUR Foundry project.
+# Step 3 of 3: run the Voice Agent portal in YOUR Azure Container App, connected to YOUR Foundry project.
 #
-# Runs the newest image that build_image.sh (step 1) put in your registry, with a user-assigned managed
-# identity, grants that identity access to your project, and protects the public URL before exposing it.
-# Re-running is safe: existing resources are reused. Rerun only this step to change access (IP ranges,
-# Entra sign-in); run step 1 first to move to a new version.
+# Needs no options: it reads what prepare.sh saved in portal/.env and runs the newest image that
+# build.sh put in your registry, with a user-assigned managed identity, grants that identity access to
+# your project, and protects the public URL before exposing it. Re-running is safe: existing resources
+# are reused. To change who may open the portal, rerun prepare.sh --reconfigure and then only this step.
 set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 usage() {
   cat <<'EOF'
-Usage: portal/deploy/aca/deploy_app.sh --resource-group RG --allowed-ip CIDR[,CIDR...] [--project-endpoint URL] [options]
-       portal/deploy/aca/deploy_app.sh --list-projects
+Usage: skills/portal-remote/scripts/deploy.sh [options]
+       skills/portal-remote/scripts/deploy.sh --list-projects
 
-All values are checked before anything is created.
-  --resource-group RG      The resource group of step 1 (build_image.sh); the app is created there
-  --project-endpoint URL   https://<account>.services.ai.azure.com/api/projects/<project>. Empty or omitted:
-                           the only Foundry project your sign-in can see is used; with several, they are
-                           listed and you pick one. --list-projects only prints them.
+Every value defaults to what prepare.sh saved; options override it for this run only. All values are
+checked before anything is created.
+  --resource-group RG      The resource group of build.sh; the app is created there
+  --project-endpoint URL   https://<account>.services.ai.azure.com/api/projects/<project>
 
-Access protection (choose one; default ip). Re-running with another mode switches the app over;
-the new protection is applied before the old one is removed, so there is no unprotected moment.
-  --auth ip --allowed-ip CIDR[,CIDR...]   Allow only these source IP ranges (default mode). Repeatable;
-                           a bare address means /32. Use your office/VPN egress range, looked up from a
-                           browser on that network; an IP looked up inside Azure Cloud Shell is an Azure
-                           address, not yours.
+Access protection (default: what prepare.sh saved). Switching modes applies the new protection before
+the old one is removed, so there is no unprotected moment.
+  --auth ip --allowed-ip CIDR[,CIDR...]   Allow only these public source ranges (repeatable; a bare
+                           address means /32). Look them up in a browser on your office/VPN network;
+                           an address looked up inside Azure Cloud Shell is an Azure address, not yours.
   --auth entra             Microsoft Entra sign-in for users of YOUR tenant (Container Apps built-in auth).
                            Creates a single-tenant app registration in your tenant unless you pass:
     --entra-client-id ID     Use an app registration an admin created (Web redirect URI
                              https://<app fqdn>/.auth/login/aad/callback, ID tokens enabled). Also set
-                             ENTRA_CLIENT_SECRET=<its client secret> in the environment: then you need
-                             neither ownership of the app nor Microsoft Graph access.
-    --entra-renew-secret     Create a new client secret (1 year) even if sign-in is already configured;
-                             run this before the current secret expires
-    --entra-assigned-only    Only users assigned to the app can sign in (you are assigned). An admin must
-                             then grant tenant-wide admin consent once; the script prints where
+                             ENTRA_CLIENT_SECRET=<its client secret> in the environment.
+    --entra-renew-secret     Create a new client secret (1 year); run this before the current one expires
+    --entra-assigned-only    Only users assigned to the app can sign in; an admin grants consent once
     --entra-service-management-reference REF  Set on a new app registration, if your tenant requires one
     --allowed-ip CIDR        Optional with entra: keep an IP allowlist as a second layer
   --auth none --i-understand-public   No protection: anyone with the URL acts as the app identity
 
 Optional:
-  --name NAME              Container App name (default voice-agent-portal; same as in step 1)
-  --subscription ID        Subscription for the deployment (default: current az account)
+  --name NAME              Container App name (default voice-agent-portal)
+  --subscription ID        Subscription for the deployment
   --image IMAGE            Run this image instead of the newest one in the registry (must be in that registry)
-  --acr NAME               Registry of step 1, if you passed --acr there
+  --acr NAME               Registry of build.sh, if you passed --acr there
   --location REGION        Region for the app (default: the resource group's region)
   --environment NAME       Container Apps environment (default <name>-env; created if missing)
-  --foundry-account-id ID  Resource ID of the Foundry account, if not found automatically
   --env KEY=VALUE          Extra portal setting, repeatable (e.g. VOICE_PORTAL_REALTIME_DEPLOYMENTS=my-rt)
-  --skip-roles             Do not create role assignments (an admin grants them; see output)
+  --skip-roles             Do not try to grant roles; print them for an admin instead
 EOF
 }
 
-log() { printf '\n==> %s\n' "$*" >&2; }
-warn() { printf 'WARNING: %s\n' "$*" >&2; }
-die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
-
-PROJECT_ENDPOINT="" RG="" LOCATION="" NAME="voice-agent-portal" SUBSCRIPTION="" IMAGE=""
-ACR="" ENV_NAME="" FOUNDRY_ACCOUNT_ID="" AUTH="ip" ENTRA_CLIENT_ID="" ENTRA_ASSIGNED_ONLY=false
+saved_ips="$(setting PORTAL_ACA_ALLOWED_IPS)"
+PROJECT_ENDPOINT="$(setting endpoint)" RG="$(setting PORTAL_ACA_RESOURCE_GROUP)" LOCATION=""
+NAME="$(setting PORTAL_ACA_NAME)" SUBSCRIPTION="$(setting PORTAL_ACA_SUBSCRIPTION_ID)" IMAGE=""
+ACR="" ENV_NAME="" AUTH="$(setting PORTAL_ACA_AUTH)" ENTRA_CLIENT_ID="" ENTRA_ASSIGNED_ONLY=false
 ENTRA_SMR="" ENTRA_RENEW_SECRET=false ALLOW_PUBLIC=false SKIP_ROLES=false
-ALLOWED_IPS=() EXTRA_ENV=() LIST_PROJECTS=false
+ALLOWED_IPS=() EXTRA_ENV=() LIST_PROJECTS=false IPS_GIVEN=false
+NAME="${NAME:-voice-agent-portal}" AUTH="${AUTH:-ip}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -72,9 +66,8 @@ while [[ $# -gt 0 ]]; do
     --image) IMAGE="$2"; shift 2 ;;
     --acr) ACR="$2"; shift 2 ;;
     --environment) ENV_NAME="$2"; shift 2 ;;
-    --foundry-account-id) FOUNDRY_ACCOUNT_ID="$2"; shift 2 ;;
     --auth) AUTH="$2"; shift 2 ;;
-    --allowed-ip) ALLOWED_IPS+=("$2"); shift 2 ;;
+    --allowed-ip) $IPS_GIVEN || ALLOWED_IPS=(); IPS_GIVEN=true; ALLOWED_IPS+=("$2"); shift 2 ;;
     --entra-client-id) ENTRA_CLIENT_ID="$2"; shift 2 ;;
     --entra-assigned-only) ENTRA_ASSIGNED_ONLY=true; shift ;;
     --entra-renew-secret) ENTRA_RENEW_SECRET=true; shift ;;
@@ -89,10 +82,11 @@ done
 
 # ---------- validate input (nothing is created before all of it passes) ----------
 re='^https://([a-z0-9][a-z0-9-]*)\.services\.ai\.azure\.com/api/projects/([A-Za-z0-9][A-Za-z0-9._-]*)$'
+$IPS_GIVEN || [[ -z "$saved_ips" ]] || ALLOWED_IPS=("$saved_ips")
 if ! $LIST_PROJECTS; then
-  [[ -n "$RG" ]] || { usage; die "--resource-group is required (the same one as in step 1)."; }
-  [[ -z "$PROJECT_ENDPOINT" || "$PROJECT_ENDPOINT" =~ $re ]] \
-    || die "'$PROJECT_ENDPOINT' is not a project endpoint. It looks like https://<account>.services.ai.azure.com/api/projects/<project>; leave it empty to pick it automatically, or run: $0 --list-projects"
+  [[ -n "$RG" && -n "$PROJECT_ENDPOINT" ]] || die "Nothing prepared yet: run skills/portal-remote/scripts/prepare.sh first."
+  [[ "$PROJECT_ENDPOINT" =~ $re ]] \
+    || die "'$PROJECT_ENDPOINT' is not a project endpoint (https://<account>.services.ai.azure.com/api/projects/<project>). Rerun prepare.sh --reconfigure."
 fi
 [[ "$NAME" =~ ^[a-z][a-z0-9-]{0,30}[a-z0-9]$ ]] || die "--name must be 2-32 lowercase letters, digits or hyphens."
 # --allowed-ip values may be comma- or space-separated lists; a bare address means /32.
@@ -115,7 +109,7 @@ done
 ALLOWED_IPS=(${IPS[@]+"${IPS[@]}"})
 case "$AUTH" in
   entra) ;;
-  ip) $LIST_PROJECTS || [[ ${#ALLOWED_IPS[@]} -gt 0 ]] || die "Access defaults to an IP allowlist: pass --allowed-ip with your office/VPN egress ranges, e.g. --allowed-ip 203.0.113.0/24,198.51.100.7. Look them up from a browser on that network; an IP looked up in Azure Cloud Shell is an Azure address, not yours." ;;
+  ip) $LIST_PROJECTS || [[ ${#ALLOWED_IPS[@]} -gt 0 ]] || die "No allowed addresses are saved: rerun prepare.sh --reconfigure (or pass --allowed-ip)." ;;
   none) $ALLOW_PUBLIC || die "--auth none exposes your project to anyone with the URL; add --i-understand-public to confirm."
         [[ ${#ALLOWED_IPS[@]} -eq 0 ]] || die "--allowed-ip with --auth none: use --auth ip instead." ;;
   *) die "--auth must be ip, entra or none." ;;
@@ -130,41 +124,13 @@ log "Checking Azure sign-in"
 SUB_ID="$(az account show --query id -o tsv)" || die "Run az login first."
 TENANT_ID="$(az account show --query tenantId -o tsv)"
 
-# ---------- find the Foundry project ----------
-# Foundry projects this sign-in can read, in all its subscriptions (Azure Resource Graph), as
-# "endpoint<TAB>resource id" lines. $1 is an extra filter.
-find_projects() {
-  local q="resources | where type =~ 'microsoft.cognitiveservices/accounts/projects' | extend ep = tostring(properties.endpoints['AI Foundry API']) | where isnotempty(ep) $1 | project ep, id | order by ep asc"
-  az rest --method post --url 'https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01' \
-    --body "{\"query\": \"$q\", \"options\": {\"\$top\": 1000}}" --query 'data[].[ep, id]' -o tsv 2>/dev/null || true
-}
-first20() {
-  cut -f1 <<<"$1" | sed '/^$/d' | head -20 | sed 's/^/  /'
-  [[ "$(grep -c . <<<"$1" || true)" -le 20 ]] || echo "  ... (all of them: $0 --list-projects)"
-}
-if $LIST_PROJECTS; then
-  ALL="$(find_projects '')"
-  [[ -n "$ALL" ]] || die "No Foundry projects are visible to your sign-in in tenant $TENANT_ID."
-  echo "Foundry projects visible to your sign-in:"; cut -f1 <<<"$ALL" | sed 's/^/  /'; exit 0
-fi
-if [[ -z "$PROJECT_ENDPOINT" ]]; then
-  ALL="$(find_projects '')"
-  [[ -n "$ALL" ]] || die "No Foundry projects are visible to your sign-in in tenant $TENANT_ID. Pass --project-endpoint."
-  [[ "$(grep -c . <<<"$ALL")" -eq 1 ]] || die "Several Foundry projects are visible; set the one the portal should use with --project-endpoint:"$'\n'"$(first20 "$ALL")"
-  PROJECT_ENDPOINT="$(cut -f1 <<<"$ALL")"
-fi
-[[ "$PROJECT_ENDPOINT" =~ $re ]] || die "Unexpected project endpoint format: $PROJECT_ENDPOINT"
-PROJECT="${BASH_REMATCH[2]}"
+# ---------- find the Foundry project (portal/setup_azure.py: one implementation for all scripts) ----------
+if $LIST_PROJECTS; then python3 "$SETUP" projects; exit 0; fi
+PROJECT_ID="" FOUNDRY_ACCOUNT_ID=""
 log "Foundry project $PROJECT_ENDPOINT"
-if [[ -n "$FOUNDRY_ACCOUNT_ID" ]]; then
-  PROJECT_ID="$FOUNDRY_ACCOUNT_ID/projects/$PROJECT"
-else
-  # The endpoint passed the format check above, so it is safe inside the query.
-  PROJECT_ID="$(find_projects "| where ep =~ '$PROJECT_ENDPOINT' or ep =~ '$PROJECT_ENDPOINT/'" | cut -f2 | head -1)"
-  [[ -n "$PROJECT_ID" ]] || die "No project with this endpoint is visible to your sign-in (check the endpoint, the tenant you signed in to, and that you have at least Reader on it; a project created minutes ago may need --foundry-account-id). Projects you can see:"$'\n'"$(first20 "$(find_projects '')")"
-  FOUNDRY_ACCOUNT_ID="${PROJECT_ID%/projects/*}"
-fi
-az resource show --ids "$PROJECT_ID" --query id -o tsv >/dev/null 2>&1 || die "Project not found or not readable: $PROJECT_ID"
+IFS=$'\t' read -r _ PROJECT_ID FOUNDRY_ACCOUNT_ID < <(python3 "$SETUP" projects --endpoint "$PROJECT_ENDPOINT" || true)
+[[ -n "$PROJECT_ID" ]] || die "Rerun prepare.sh --reconfigure to choose a project you can see."
+az resource show --ids "$PROJECT_ID" --query id -o tsv >/dev/null || die "Project not found or not readable: $PROJECT_ID"
 FOUNDRY_SUB="$(cut -d/ -f3 <<<"$FOUNDRY_ACCOUNT_ID")" FOUNDRY_RG="$(cut -d/ -f5 <<<"$FOUNDRY_ACCOUNT_ID")"
 
 # ---------- tooling (only after every value checked out) ----------
@@ -173,21 +139,20 @@ for ns in Microsoft.App Microsoft.OperationalInsights Microsoft.ContainerRegistr
   az provider register --namespace "$ns" --only-show-errors >/dev/null
 done
 
-# ---------- names (the registry name is derived exactly as in build_image.sh) ----------
+# ---------- names (the registry name is derived exactly as in build.sh) ----------
 SUFFIX="$(printf '%s' "$SUB_ID/$RG/$NAME" | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-8)"
 ACR="${ACR:-vaportal$SUFFIX}" ENV_NAME="${ENV_NAME:-$NAME-env}" ID_NAME="$NAME-id"
 
-# ---------- image from step 1 ----------
-STEP1="portal/deploy/aca/build_image.sh --resource-group $RG"
-[[ "$NAME" == voice-agent-portal ]] || STEP1+=" --name $NAME"
-[[ "$(az group exists -n "$RG" -o tsv)" == "true" ]] || die "Resource group $RG not found. Run step 1 first: $STEP1 --location \"\$LOCATION\""
+# ---------- image from build.sh ----------
+STEP1="skills/portal-remote/scripts/build.sh"
+[[ "$(az group exists -n "$RG" -o tsv)" == "true" ]] || die "Resource group $RG not found. Run $STEP1 first."
 LOCATION="${LOCATION:-$(az group show -n "$RG" --query location -o tsv)}"
 ACR_ID="$(az acr show -n "$ACR" --query id -o tsv 2>/dev/null || true)"
-[[ -n "$ACR_ID" ]] || die "Registry $ACR not found. Run step 1 first: $STEP1 (same --resource-group and --name as here)."
+[[ -n "$ACR_ID" ]] || die "Registry $ACR not found. Run $STEP1 first."
 ACR_LOGIN="$(az acr show -n "$ACR" --query loginServer -o tsv)"
 if [[ -z "$IMAGE" ]]; then
   TAG="$(az acr repository show-tags -n "$ACR" --repository voice-agent-portal --orderby time_desc --top 1 -o tsv 2>/dev/null || true)"
-  [[ -n "$TAG" ]] || die "No portal image in $ACR yet. Run step 1 first: $STEP1"
+  [[ -n "$TAG" ]] || die "No portal image in $ACR yet. Run $STEP1 first."
   IMAGE="$ACR_LOGIN/voice-agent-portal:$TAG"
 fi
 log "Image $IMAGE"
@@ -195,7 +160,28 @@ log "Image $IMAGE"
 # ---------- environment & identity ----------
 log "Container Apps environment $ENV_NAME"
 if ! az containerapp env show -n "$ENV_NAME" -g "$RG" -o none 2>/dev/null; then
-  az containerapp env create -n "$ENV_NAME" -g "$RG" -l "$LOCATION" --only-show-errors -o none
+  ENV_ERR="$(mktemp)"
+  if ! az containerapp env create -n "$ENV_NAME" -g "$RG" -l "$LOCATION" --enable-workload-profiles true \
+      --only-show-errors -o none 2>"$ENV_ERR"; then
+    grep -q 'RequestDisallowedByPolicy' "$ENV_ERR" && grep -qiE 'vnet|virtual network' "$ENV_ERR" \
+      || { cat "$ENV_ERR" >&2; die "Cannot create the Container Apps environment (see above)."; }
+    # Many organizations require Container Apps environments inside a virtual network (Azure Policy).
+    # The portal still gets its public HTTPS address, protected as configured below.
+    VNET="$NAME-vnet" SUBNET="container-apps"
+    log "Your organization requires a virtual network for Container Apps: creating $VNET"
+    az network vnet show -g "$RG" -n "$VNET" -o none 2>/dev/null \
+      || az network vnet create -g "$RG" -n "$VNET" -l "$LOCATION" --address-prefixes 10.240.0.0/16 --only-show-errors -o none \
+      || die "Cannot create the virtual network (see above)."
+    az network vnet subnet show -g "$RG" --vnet-name "$VNET" -n "$SUBNET" -o none 2>/dev/null \
+      || az network vnet subnet create -g "$RG" --vnet-name "$VNET" -n "$SUBNET" --address-prefixes 10.240.0.0/23 \
+           --delegations Microsoft.App/environments --only-show-errors -o none \
+      || die "Cannot create the subnet (see above)."
+    SUBNET_ID="$(az network vnet subnet show -g "$RG" --vnet-name "$VNET" -n "$SUBNET" --query id -o tsv)"
+    az containerapp env create -n "$ENV_NAME" -g "$RG" -l "$LOCATION" --enable-workload-profiles true \
+      --infrastructure-subnet-resource-id "$SUBNET_ID" --only-show-errors -o none \
+      || die "Cannot create the Container Apps environment in the virtual network (see above)."
+  fi
+  rm -f "$ENV_ERR"
 fi
 ENV_DOMAIN="$(az containerapp env show -n "$ENV_NAME" -g "$RG" --query properties.defaultDomain -o tsv --only-show-errors)"
 FQDN="$NAME.$ENV_DOMAIN"
@@ -206,31 +192,57 @@ ID_RES="$(az identity show -n "$ID_NAME" -g "$RG" --query id -o tsv)"
 ID_PRINCIPAL="$(az identity show -n "$ID_NAME" -g "$RG" --query principalId -o tsv)"
 ID_CLIENT="$(az identity show -n "$ID_NAME" -g "$RG" --query clientId -o tsv)"
 
-# role-definition-id|display name|scope|why. Built-in IDs never change; display names do
-# (53ca6127 was renamed from "Azure AI User" to "Foundry User").
-ROLES=(
-  "7f951dda-4ed3-4680-a7ca-43fe172d538d|AcrPull|$ACR_ID|pull the portal image"
-  "53ca6127-db72-4b80-b1b0-d745d6d5456d|Foundry User (formerly Azure AI User)|$PROJECT_ID|create, read and run Voice Agents in the project (required)"
-  "f2dc8367-1007-4938-bd23-fe263f013447|Cognitive Services Speech User|$FOUNDRY_ACCOUNT_ID|live voice discovery (optional; bundled catalog otherwise)"
-  "acdd72a7-3385-48ef-bd42-f606fba81ae7|Reader|$FOUNDRY_ACCOUNT_ID|project region lookup and project picker (optional)"
-)
-NEW_GRANTS=0
-for entry in "${ROLES[@]}"; do
-  IFS='|' read -r role_id role scope why <<<"$entry"
-  if $SKIP_ROLES; then
-    printf '  admin must grant: %s (%s) to principal %s on %s  -- %s\n' "$role" "$role_id" "$ID_PRINCIPAL" "$scope" "$why" >&2
+# Roles of the portal identity (one list for all scripts: portal/setup_azure.py roles). Granting needs
+# Owner, User Access Administrator or Role Based Access Control Administrator. Without it, the exact steps
+# for an admin are printed and saved, and the run stops here if a required role is missing.
+NEW_GRANTS=0 MISSING_REQUIRED=false ADMIN_STEPS=()
+GRANT_ERR="$(mktemp)"
+while IFS='|' read -r role_id role scope why need <&4; do
+  # No Graph lookups here: some tenants block Graph from developer machines (AADSTS530084).
+  if [[ -n "$(az role assignment list --scope "$scope" --fill-principal-name false --fill-role-definition-name false \
+      --query "[?principalId=='$ID_PRINCIPAL' && ends_with(roleDefinitionId, '$role_id')].id | [0]" -o tsv 2>/dev/null)" ]]; then
     continue
   fi
-  # No Graph lookups here: some tenants block Graph from developer machines (AADSTS530084).
-  if [[ -z "$(az role assignment list --scope "$scope" --fill-principal-name false --fill-role-definition-name false \
-      --query "[?principalId=='$ID_PRINCIPAL' && ends_with(roleDefinitionId, '$role_id')].id | [0]" -o tsv 2>/dev/null)" ]]; then
+  if ! $SKIP_ROLES; then
     log "Granting '$role' ($why)"
-    az role assignment create --assignee-object-id "$ID_PRINCIPAL" --assignee-principal-type ServicePrincipal \
-      --role "$role_id" --scope "$scope" --only-show-errors -o none \
-      || die "Cannot grant '$role' on $scope. Ask an Owner / User Access Administrator to grant it, then rerun with --skip-roles."
-    NEW_GRANTS=1
+    if az role assignment create --assignee-object-id "$ID_PRINCIPAL" --assignee-principal-type ServicePrincipal \
+        --role "$role_id" --scope "$scope" --only-show-errors -o none 2>"$GRANT_ERR"; then
+      NEW_GRANTS=1
+      continue
+    fi
+    grep -q 'AuthorizationFailed' "$GRANT_ERR" || cat "$GRANT_ERR" >&2
   fi
-done
+  ADMIN_STEPS+=("$role|$role_id|$scope|$why|$need")
+  [[ "$need" != required ]] || MISSING_REQUIRED=true
+done 4< <(python3 "$SETUP" roles --registry-id "$ACR_ID" --project-id "$PROJECT_ID" --account-id "$FOUNDRY_ACCOUNT_ID")
+rm -f "$GRANT_ERR"
+if [[ ${#ADMIN_STEPS[@]} -gt 0 ]]; then
+  STEPS_FILE="$HOME/voice-agent-portal-admin-steps.txt"
+  {
+    echo "The Voice Agent portal needs these roles for its managed identity '$ID_NAME' (object id $ID_PRINCIPAL)."
+    echo "Only an Owner, User Access Administrator or Role Based Access Control Administrator of each resource can grant them."
+    echo
+    echo "In the Azure portal, for each line: open the resource > Access control (IAM) > Add > Add role assignment >"
+    echo "the role > Next > Assign access to: Managed identity > Select members > '$ID_NAME' > Review + assign."
+    for step in "${ADMIN_STEPS[@]}"; do
+      IFS='|' read -r role role_id scope why need <<<"$step"
+      echo "  - '$role' on resource '${scope##*/}' ($need: $why)"
+    done
+    echo
+    echo "Or with the Azure CLI (for example in Azure Cloud Shell):"
+    for step in "${ADMIN_STEPS[@]}"; do
+      IFS='|' read -r role role_id scope why need <<<"$step"
+      echo "  az role assignment create --assignee-object-id $ID_PRINCIPAL --assignee-principal-type ServicePrincipal --role $role_id --scope $scope"
+    done
+  } > "$STEPS_FILE"
+  printf '\n------------------------------------------------------------------------\n' >&2
+  printf 'Your account cannot grant the portal its roles (Contributor is not enough).\nSend these steps to an admin:\n\n' >&2
+  cat "$STEPS_FILE" >&2
+  printf '\nSaved to %s (Cloud Shell: Manage files > Download, to send it).\n' "$STEPS_FILE" >&2
+  printf -- '------------------------------------------------------------------------\n' >&2
+  $MISSING_REQUIRED && die "Stopped before creating the app. After the admin granted the roles, run deploy.sh again (nothing is rebuilt)."
+  warn "Only optional roles are missing; the portal works without them."
+fi
 [[ $NEW_GRANTS -eq 1 ]] && { log "Waiting 60 s for role assignments to propagate"; sleep 60; }
 
 # ---------- container app (internal until protected) ----------
