@@ -64,6 +64,7 @@ class TestTemplatePersonas:
         }
         male_voices = {
             "en-US-Brian:DragonHDOmniLatestNeural",
+            "en-US-Andrew:DragonHDOmniLatestNeural",
         }
         paths = sorted(SAMPLES.glob("example*/agent.json"))
         assert len(paths) == 45
