@@ -10,6 +10,13 @@ clash detection, reports what is starting now and official room and time changes
 answers FAQ and on-site logistics questions, replies in the attendee's language and
 time zone, and explains its own design in dev mode.
 
+`agent.json` is exported from the agent that answered real phone calls during the
+event, so the instructions, audio settings, handoff graph, and tool contract are the
+shipped configuration rather than a simplified illustration. Two production
+dependencies are not public and are therefore left for you to supply: the speaker
+lookup tool and the email tool (see [Differences from the production
+agent](#differences-from-the-production-agent)).
+
 It is meant for external attendees, so it uses **only official data**. Where no
 official source exists (walking routes, restroom and booth locations, Wi-Fi, full
 rooms, cancellations), it points to the official interactive map, the Microsoft Events
@@ -34,15 +41,23 @@ before_event`, and the agent says the event has not started and helps plan inste
 
 ## Design
 
-- Model `gpt-realtime` (speech to speech), voice `en-US-Emma:DragonHDLatestNeural`
-  (Emma Dragon HD), Azure semantic VAD with barge-in (800 ms
-  prefix padding, 400 ms silence), server echo cancellation and noise suppression,
+- Model `gpt-realtime-2.1` (speech to speech), voice `en-US-Ava:DragonHDLatestNeural`
+  (Ava Dragon HD), Azure semantic VAD with barge-in (800 ms prefix padding, 200 ms
+  silence), server echo cancellation and headset noise suppression,
   LLM-generated interim acknowledgements while a tool runs, `store: false`.
-- **One node, no handoff graph.** With a three-stage handoff graph, Voice Live
-  intermittently emitted the MCP tools as plain function calls that were never
-  executed, and the entrypoint sometimes spoke tool JSON aloud (1 of 4 repeated
-  runs correct). The single-node agent was correct in 4 of 4 runs and in the full
-  acceptance. Dev mode is a section of the instructions.
+- **Three inline subagents with a handoff graph**: `$entrypoint` (concierge),
+  `email`, and `end`. The concierge keeps the conference tools; the email stage owns
+  the privacy notice and address collection; the end stage says goodbye and calls
+  `end_conversation`. Each handoff condition names the exact caller wording that
+  triggers it, including the cases that must *not* trigger it, because a vague
+  condition transfers on "thanks" alone. An earlier revision of this sample ran as a
+  single node after a three-stage graph emitted MCP tools as unexecuted function
+  calls; the current contract is stable with `response_scheduling: when_idle` on the
+  MCP tools. Dev mode is a section of the instructions.
+- **Transcription is disclosed in the greeting** and the one-time email requires
+  two-step verbal consent: the concierge asks before transferring, and the email
+  stage states the Microsoft privacy notice before collecting an address.
+  With `store: false` no audio is persisted, and traces stay text-only.
 - The agenda is stateless: every agenda tool takes the current list of session
   IDs and returns the new one, so no sign-in or stored profile is needed.
 - Short spoken answers: at most three sentences and two sessions, then
@@ -50,10 +65,12 @@ before_event`, and the agent says the event has not started and helps plan inste
 - Replies in the language of the attendee's latest message; tool arguments are
   always English keywords. Times are Pacific; with `time_zone` (for example
   `Beijing`) the session tools add `your_time` for online attendees.
-- No calendar, email, knowledge, or avatar tool is attached, so the Template needs no
-  user-specific connection. Asked to add a session to a calendar or send an email, the
-  agent says it can't and offers to read the agenda back. Knowledge IQ was not used:
-  combined with an FAQ-style tool it intermittently left MCP calls unexecuted.
+- No calendar, knowledge, or avatar tool is attached, and the conference tools need no
+  user-specific connection, so the Template works as soon as it is created. The one
+  email tool is optional and ships without a `server_url`. Asked to add a session to a
+  calendar, the agent says it can't and offers to read the agenda back or email it.
+  Knowledge IQ was not used: combined with an FAQ-style tool it intermittently left
+  MCP calls unexecuted.
 - GPT Live was evaluated and is not used: its tools must run behind a delegation
   backend, and the delegated calls failed with `invalid_delegation_result`.
 
@@ -63,6 +80,7 @@ before_event`, and the agent says the event has not started and helps plan inste
 | --- | --- |
 | `conference_get_event_info` | Dates, current event time, keynotes, topics, types, levels, catalog freshness, dev-mode facts |
 | `conference_search_sessions` | Keywords plus day, part of day, time window, topic, level, type, speaker, in-person/online, recorded |
+| `conference_find_speaker` | Finds a speaker from how the caller pronounced the name and returns their title, company, and bio. **Not in the public `conference` pack**: see [Differences from the production agent](#differences-from-the-production-agent) |
 | `conference_get_session` | One session's details, with alternatives if it is no longer in the catalog |
 | `conference_recommend_sessions` | Non-overlapping picks per day from role and interests, avoiding the agenda |
 | `conference_similar_sessions` | Similar sessions by topic, speakers, and content (no attendance data) |
@@ -72,6 +90,20 @@ before_event`, and the agent says the event has not started and helps plan inste
 | `conference_get_faq` | Answers from the official FAQ and event guide only, including where to find venue maps; `found: false` otherwise |
 
 Session, recommendation, agenda, and event-info tools take an optional `time_zone`.
+
+## Differences from the production agent
+
+The shipped agent calls two more tools that have no public implementation in this
+repository. `agent.json` keeps their structure so the shape is visible, and leaves
+`server_url` empty for you to fill in.
+
+| Production tool | What it does | What you need to do |
+| --- | --- | --- |
+| `conference_find_speaker` | Finds a speaker by how a caller pronounced the name, so an accent or a recognition error still reaches the right person, and returns their title, company, and bio. The instructions call it every time a caller says a person's name | Implement it in your copy of the `conference` pack, or drop it from `allowed_tools` and delete the two instruction paragraphs that call it. Without it, speakers are still searchable through the `speaker` filter of `conference_search_sessions` |
+| `ignite_email_sessions` | Sends the one-time email of saved sessions through an Office 365 shared mailbox | Point the `email` subagent at your own email MCP server, or delete the subagent together with the `to_email` and `email_to_*` handoff conditions. The privacy notice and address confirmation live in the subagent's instructions |
+
+Everything else, including every instruction, handoff condition, and audio setting,
+is the configuration that served live calls.
 
 ## Run locally
 
