@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft. All rights reserved.
 # Voice Agent Portal for Azure Container Apps.
 #
-# Build context (git archive of a voice-agent checkout, uploaded by build_image.sh to az acr build):
+# Build context (git archive of a voice-agent checkout, uploaded by skills/portal-remote/scripts/build.sh to az acr build):
 #   portal/   samples/   docs/        tracked files only, no .env, no node_modules
 #   (portal/deploy/aca/ brings nginx.conf and supervise.py along)
 #
