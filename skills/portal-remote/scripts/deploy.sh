@@ -123,6 +123,18 @@ log "Checking Azure sign-in"
 [[ -n "$SUBSCRIPTION" ]] && az account set --subscription "$SUBSCRIPTION"
 SUB_ID="$(az account show --query id -o tsv)" || die "Run az login first."
 TENANT_ID="$(az account show --query tenantId -o tsv)"
+# The portal's resources must be in the subscription where build.sh made them. If prepare.sh was rerun
+# while Cloud Shell used another subscription, find them, switch back and save that.
+if [[ -n "$RG" ]] && [[ "$(az group exists -n "$RG" -o tsv 2>/dev/null)" != "true" ]]; then
+  FOUND="$(python3 "$SETUP" locate --resource-group "$RG" --name "$NAME" 2>/dev/null || true)"
+  if [[ -n "$FOUND" && "$FOUND" != *$'\n'* && "$FOUND" != "$SUB_ID" ]]; then
+    warn "Resource group $RG is not in the subscription you are using; build.sh made it in subscription $FOUND. Switching to that one."
+    az account set --subscription "$FOUND"
+    SUB_ID="$FOUND" TENANT_ID="$(az account show --query tenantId -o tsv)"
+    python3 "$SETUP" --env-file "$ENV_FILE" set "PORTAL_ACA_SUBSCRIPTION_ID=$FOUND"
+  fi
+fi
+log "Subscription '$(az account show --query name -o tsv)' ($SUB_ID)"
 
 # ---------- find the Foundry project (portal/setup_azure.py: one implementation for all scripts) ----------
 if $LIST_PROJECTS; then python3 "$SETUP" projects; exit 0; fi
@@ -145,7 +157,7 @@ ACR="${ACR:-vaportal$SUFFIX}" ENV_NAME="${ENV_NAME:-$NAME-env}" ID_NAME="$NAME-i
 
 # ---------- image from build.sh ----------
 STEP1="skills/portal-remote/scripts/build.sh"
-[[ "$(az group exists -n "$RG" -o tsv)" == "true" ]] || die "Resource group $RG not found. Run $STEP1 first."
+[[ "$(az group exists -n "$RG" -o tsv)" == "true" ]] || die "Resource group $RG is not in subscription '$(az account show --query name -o tsv)'. Run $STEP1 first: it creates it there."
 LOCATION="${LOCATION:-$(az group show -n "$RG" --query location -o tsv)}"
 ACR_ID="$(az acr show -n "$ACR" --query id -o tsv 2>/dev/null || true)"
 [[ -n "$ACR_ID" ]] || die "Registry $ACR not found. Run $STEP1 first."

@@ -8,6 +8,8 @@
   setup_azure.py projects [--json]           list the Foundry projects you can see
   setup_azure.py explain FILE                plain-language reason for an Azure CLI error saved in FILE
   setup_azure.py get KEY                     print one saved setting (used by the scripts)
+  setup_azure.py locate --resource-group RG  subscription where build.sh made the portal's registry
+  setup_azure.py set KEY=VALUE ...           save settings (used by the scripts)
   setup_azure.py roles ...                   roles the portal's managed identity needs (used by the scripts)
 
 Standard library and the Azure CLI only: runs in Azure Cloud Shell as is.
@@ -16,6 +18,7 @@ Standard library and the Azure CLI only: runs in Azure Cloud Shell as is.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import ipaddress
 import json
 import os
@@ -227,8 +230,18 @@ def pick(args: argparse.Namespace) -> int:
 
 def pick_remote(args: argparse.Namespace, saved: dict[str, str], project: dict[str, str],
                 account: dict[str, Any]) -> dict[str, str]:
-    # The portal goes into the subscription selected with 'az account set' (the guide's step 2).
+    # The portal goes into the subscription selected with 'az account set' (the guide's step 2). If an
+    # earlier run chose another one (Cloud Shell can come back on its default subscription), ask.
     subscription = args.subscription or account["id"]
+    previous = saved.get(ACA_SUBSCRIPTION, "")
+    if not args.subscription and previous and previous.lower() != account["id"].lower():
+        names = subscription_names()
+        now, before = names.get(account["id"], account["id"]), names.get(previous, previous)
+        if choose(f"The portal was set up in subscription '{before}', but you are now using '{now}'. "
+                  "Which subscription should the portal use?",
+                  [f"{now} (the one you are using now)",
+                   f"{before} (where it was set up before)"], flag="--subscription") == 1:
+            subscription = previous
     group = args.resource_group or saved.get(ACA_RESOURCE_GROUP) or ACA_DEFAULT_RESOURCE_GROUP
     location = args.location or saved.get(ACA_LOCATION) or ""
     if not location:
@@ -533,6 +546,31 @@ def get_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def registry_name(subscription: str, group: str, name: str) -> str:
+    """The registry name build.sh derives: vaportal + 8 hex characters of subscription/group/name."""
+    return "vaportal" + hashlib.sha256(f"{subscription}/{group}/{name}".encode()).hexdigest()[:8]
+
+
+def locate_command(args: argparse.Namespace) -> int:
+    """Print the subscription(s) where build.sh made this portal's registry, one per line."""
+    if "'" in args.resource_group:
+        raise SystemExit("ERROR: Unexpected resource group name.")
+    query = ("resources | where type =~ 'microsoft.containerregistry/registries' and name startswith 'vaportal'"
+             f" and resourceGroup =~ '{args.resource_group}' | project name, subscriptionId")
+    page = az_rest("post", "https://management.azure.com/providers/Microsoft.ResourceGraph/resources"
+                   "?api-version=2021-03-01", {"query": query}) or {}
+    for row in page.get("data") or []:
+        subscription = str(row.get("subscriptionId") or "")
+        if str(row.get("name") or "").lower() == registry_name(subscription, args.resource_group, args.name):
+            print(subscription)
+    return 0
+
+
+def set_command(args: argparse.Namespace) -> int:
+    update_env(dict(pair.split("=", 1) for pair in args.pairs if "=" in pair), Path(args.env_file))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--env-file", default=str(ENV_FILE), help="Settings file (default: portal/.env)")
@@ -565,6 +603,13 @@ def main(argv: list[str] | None = None) -> int:
     g = sub.add_parser("get", help="print one saved setting ('endpoint' = the project endpoint)")
     g.add_argument("key")
     g.set_defaults(handler=get_command)
+    o = sub.add_parser("locate", help="subscription(s) where build.sh made this portal's registry")
+    o.add_argument("--resource-group", required=True)
+    o.add_argument("--name", default=ACA_DEFAULT_NAME)
+    o.set_defaults(handler=locate_command)
+    w = sub.add_parser("set", help="save settings: KEY=VALUE ...")
+    w.add_argument("pairs", nargs="+")
+    w.set_defaults(handler=set_command)
     args = parser.parse_args(argv)
     try:
         return args.handler(args)

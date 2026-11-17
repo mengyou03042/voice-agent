@@ -54,6 +54,7 @@ git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1 || die "$REPO_ROOT is no
 log "Checking Azure sign-in"
 [[ -z "$SUBSCRIPTION" ]] || az account set --subscription "$SUBSCRIPTION"
 SUB_ID="$(az account show --query id -o tsv)" || die "Not signed in: restart Cloud Shell, or run az login on your computer."
+log "Subscription '$(az account show --query name -o tsv)' ($SUB_ID)"
 az provider register --namespace Microsoft.ContainerRegistry --only-show-errors >/dev/null
 
 # deploy.sh derives the same registry name from the same inputs.
