@@ -13,8 +13,9 @@ time zone, and explains its own design in dev mode.
 `agent.json` is exported from the agent that answered real phone calls during the
 event, so the instructions, audio settings, handoff graph, and tool contract are the
 shipped configuration rather than a simplified illustration. Two production
-dependencies are not public and are therefore left for you to supply: the speaker
-lookup tool and the email tool (see [Differences from the production
+dependencies are not public: the speaker lookup tool and the email tool. The [hosted
+tools](#use-the-hosted-tools) cover both, the second with a mock that sends nothing, and
+you can supply your own instead (see [Differences from the production
 agent](#differences-from-the-production-agent)).
 
 It is meant for external attendees, so it uses **only official data**. Where no
@@ -100,7 +101,7 @@ repository. `agent.json` keeps their structure so the shape is visible, and leav
 | Production tool | What it does | How to get it |
 | --- | --- | --- |
 | `conference_find_speaker` | Finds a speaker by how a caller pronounced the name, so an accent or a recognition error still reaches the right person, and returns their title, company, and bio. The instructions call it every time a caller says a person's name | Use the [hosted tools](#use-the-hosted-tools), which include it. To run the pack yourself, implement it or drop it from `allowed_tools` and delete the two instruction paragraphs that call it; speakers stay searchable through the `speaker` filter of `conference_search_sessions` |
-| `ignite_email_sessions` | Sends the one-time email of saved sessions through an Office 365 shared mailbox | Point the `email` subagent at your own email MCP server, or delete the subagent together with the `to_email` and `email_to_*` handoff conditions. The privacy notice and address confirmation live in the subagent's instructions |
+| `ignite_email_sessions` | Sends the one-time email of saved sessions through an Office 365 shared mailbox | The [hosted tools](#use-the-hosted-tools) include a mock that validates the request and delivers nothing, which is enough to hear the stage. To really send, point the `email` subagent at your own email MCP server, or delete the subagent together with the `to_email` and `email_to_*` handoff conditions. The privacy notice and address confirmation live in the subagent's instructions |
 
 Everything else, including every instruction, handoff condition, and audio setting,
 is the configuration that served live calls.
@@ -140,8 +141,10 @@ not the prompt, decides whether the agent answers directly or asks the caller to
 ### Configuring the email tool
 
 The `email` subagent already contains the privacy notice, the address read-back, and the
-handoffs, so what is missing is only a server that exposes one tool. Point the subagent's
-`server_url` at any MCP server of your own that implements:
+handoffs, so what is missing is only a server that exposes one tool. The [hosted
+tools](#use-the-hosted-tools) include a mock of it, so you can hear the stage before you
+write anything. To send real mail, point the subagent's `server_url` at any MCP server of
+your own that implements:
 
 ```jsonc
 // ignite_email_sessions
@@ -181,6 +184,20 @@ Put that in the `conference` tool's `server_url` and the Agent is ready; the
 catalog behind it refreshes from the official source. This is the fastest way to
 hear the Agent, and the only way to get `conference_find_speaker`, which the pack
 in this repository does not implement.
+
+The email stage has a mock at
+
+```
+https://voice-agent-noauth-mcp.lemonsky-36682081.westus2.azurecontainerapps.io/mcp/ignite-email-mock
+```
+
+It takes the same arguments as the production tool and applies the same validation,
+including looking the session codes up in the official catalog, but it never delivers:
+the result says `delivered: false` and tells the Agent to say the request was taken and
+no email went out. **It is a mock on purpose.** The server needs no sign-in, so anyone
+who finds the URL can call it; a route that really sent mail would let anyone make it
+send to any address they chose. Use it to hear the stage end to end, and run your own
+server when you want the mail to arrive.
 
 Run the pack yourself instead when you want to change a tool, use your own event
 data, or keep every call inside your own subscription.
