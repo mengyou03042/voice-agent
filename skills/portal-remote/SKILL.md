@@ -18,6 +18,7 @@ The human guide is [README.md](README.md); follow its order. Three commands, run
 
 ## Running it for the user
 
+- When the user asks whether the portal works, what is missing, or after any of the three steps, run `skills/portal-remote/scripts/status.sh`. It needs no options and changes nothing. It checks each resource, the identity's roles, the access protection, and whether the app answers. It exits 0 when the portal is running, and otherwise ends with `Next:`, the command to run.
 - Never guess values. Without a terminal `prepare.sh` cannot ask, so pass every choice: `--project <endpoint or name> --resource-group <rg> --auth ip --allowed-ip <CIDR,...>` (or `--auth entra`), optionally `--location` and `--name`. List the projects first with `python3 portal/setup_azure.py projects` and let the user choose; ask the user for their office/VPN ranges. Never use the Cloud Shell or agent machine's own IP as the allowlist.
 - Read FAIL and WARN lines to the user as they are: they already say what is missing, where to click, and who can grant it.
 - Granting roles (`deploy.sh` without `--skip-roles`) needs Owner, User Access Administrator or Role Based Access Control Administrator. If the user does not have it, or your environment does not allow you to grant roles, run `deploy.sh --skip-roles`: it stops after creating the identity and writes `~/voice-agent-portal-admin-steps.txt`. Give that to the user for their admin, then run `deploy.sh` again after they confirm.

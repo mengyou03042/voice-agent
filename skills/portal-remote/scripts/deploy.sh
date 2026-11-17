@@ -420,6 +420,7 @@ To change it, from $REPO_ROOT:
   Who can open it : skills/portal-remote/scripts/prepare.sh   (answer n at "Is this right?" and choose again)
                     then skills/portal-remote/scripts/deploy.sh
   Newer portal    : git pull, then skills/portal-remote/scripts/build.sh, then skills/portal-remote/scripts/deploy.sh
+  Is it running?  : skills/portal-remote/scripts/status.sh   (checks everything; changes nothing)
   Logs            : az containerapp logs show -n $NAME -g $RG --follow
   Remove it all   : az group delete -n $RG   (Agents in your Foundry project are kept)
 EOF

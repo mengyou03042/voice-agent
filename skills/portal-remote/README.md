@@ -80,17 +80,20 @@ In Cloud Shell that **403 is the expected result**: Cloud Shell is not on your o
 
 **If it stops and asks for an admin**: your account can create resources but cannot give the portal's identity its access (Contributor cannot grant roles; that is by design in Azure). The script prints the steps and saves them to `~/voice-agent-portal-admin-steps.txt` (in Cloud Shell: **Manage files > Download** to send it). The admin either clicks through the Azure portal as described, or pastes the `az role assignment create` lines into their own Cloud Shell. Only two roles are required; the two optional ones add the live voice list and the project picker. When they are done, run `deploy.sh` again; nothing is rebuilt.
 
+To check the portal at any time, run `skills/portal-remote/scripts/status.sh`.
+
 ## Later
 
 | To | Run |
 |---|---|
+| See whether it is running, and what is missing if not | `status.sh`. It changes nothing: it checks each resource the scripts create, the roles of the portal's identity, who can open it, and whether it answers. It ends with **Running** or the next command to run |
 | Change who can open the portal | `prepare.sh`, answer **n** at **Is this right?** and choose again, then `deploy.sh` (the new address list replaces the old one) |
 | Upgrade to a newer portal | `git pull`, then `build.sh`, then `deploy.sh` (settings and roles are kept; sessions in progress end) |
 | Roll back | `git checkout <older version>`, then `build.sh`, then `deploy.sh` (it always runs the newest image) |
 | See logs | In the Azure portal, open the Container App `voice-agent-portal` > **Monitoring > Log stream** |
 | Remove the portal | In the Azure portal, open the resource group `voice-agent-portal` > **Delete resource group**. Agents in your Foundry project are **not** deleted. Remove the identity's leftover "Identity not found" role entries under **Access control (IAM)** on the project and the Foundry resource |
 
-All three scripts are in `skills/portal-remote/scripts/`; run them from the `voice-agent` folder.
+All scripts are in `skills/portal-remote/scripts/`; run them from the `voice-agent` folder.
 
 ## Who can do what
 
