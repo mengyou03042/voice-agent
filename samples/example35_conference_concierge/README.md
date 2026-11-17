@@ -105,6 +105,36 @@ repository. `agent.json` keeps their structure so the shape is visible, and leav
 Everything else, including every instruction, handoff condition, and audio setting,
 is the configuration that served live calls.
 
+**A missing tool is silent, not an error.** `allowed_tools` filters what the MCP server
+lists; it does not require it. If the server does not expose `conference_find_speaker`,
+the other tools still register, the model never sees it, and the two instruction
+paragraphs that call it cannot be followed. Speaker questions then fall back to the
+`speaker` filter of `conference_search_sessions`, which matches words rather than
+pronunciation, so "Zakia" or "Sathiya" no longer reaches "Satya Nadella", and
+"tell me about &lt;name&gt;" has no biography source.
+
+### Implementing `conference_find_speaker`
+
+The contract is small, and this repository already ships a working phonetic matcher you
+can port: [`samples/ignite_planner/web/name-search.mjs`](../ignite_planner/web/name-search.mjs)
+with its tuning data [`name-search-data.json`](../ignite_planner/data/name-search-data.json)
+(letter-to-sound rules, phoneme confusion costs, nicknames, and the score thresholds).
+
+Input: `spoken_names`, the name as the agent heard it followed by up to two other
+spellings. Never correct the name before calling; the matcher compares sound.
+
+Return:
+
+| Field | Value |
+| --- | --- |
+| `status` | `likely` (one speaker is clearly meant), `choose` (up to three candidates), `no_match`, or `no_name_heard` |
+| `heard` | The readings you matched, so the agent can read a name back |
+| `choices` | Speakers, best first, each with `name`, `job_title`, `company`, `bio`, their sessions, and `profile_note` when the catalog has no details |
+| `next_step` | One sentence telling the model what to do with this status, for example "Ask which speaker the caller meant, naming each choice" |
+
+Keeping `next_step` in the result is what lets the instructions stay short: the tool,
+not the prompt, decides whether the agent answers directly or asks the caller to choose.
+
 ## Run locally
 
 The hosted no-auth MCP does not serve `/mcp/conference` yet, so run the pack
