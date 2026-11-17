@@ -616,6 +616,11 @@ class MockToolCallService:
         ]
         if not matches:
             return self._fail(tool, "ORDER_NOT_FOUND", "No order matches those details.", order=None)
+        if len(matches) > 1:
+            # An email alone can match several orders; never pick one silently.
+            return self._fail(
+                tool, "MULTIPLE_ORDERS", "More than one order uses that email. Ask for the order number.", order=None,
+            )
         order = matches[0]
         # With both values, the email verifies the caller before any order detail is returned.
         if wanted and email.strip() and order["email"].lower() != email.strip().lower():
@@ -688,11 +693,22 @@ class MockToolCallService:
         tool = "product_search"
         if not query.strip() and not category.strip():
             return self._fail(tool, "INVALID_QUERY", "Give search words or a category.", count=0, results=[])
+        wanted_category = category.strip().lower()
+
+        def passes_filters(product: dict[str, Any], view: dict[str, Any]) -> bool:
+            if wanted_category and wanted_category not in product["category"].lower():
+                return False
+            if max_price > 0 and view["price"] > max_price:
+                return False
+            return not (in_stock_only and not view["in_stock"])
+
         exact = self._product(query) if query.strip() else None
         if exact is not None:
-            return self._ok(tool, source="catalog", count=1, total_matches=1, results=[self._product_view(exact)])
+            # An exact product ID still honours category, max_price, and in_stock_only.
+            view = self._product_view(exact)
+            results = [view] if passes_filters(exact, view) else []
+            return self._ok(tool, source="catalog", count=len(results), total_matches=len(results), results=results)
         wanted = self._stems(query)
-        wanted_category = category.strip().lower()
         scored = []
         for product in self._fixtures["products"]:
             if wanted_category and wanted_category not in product["category"].lower():
@@ -705,9 +721,7 @@ class MockToolCallService:
             if wanted and not score:
                 continue
             view = self._product_view(product)
-            if max_price > 0 and view["price"] > max_price:
-                continue
-            if in_stock_only and not view["in_stock"]:
+            if not passes_filters(product, view):
                 continue
             scored.append((score, view))
         scored.sort(key=lambda item: (-item[0], -item[1]["rating"], item[1]["product_id"]))

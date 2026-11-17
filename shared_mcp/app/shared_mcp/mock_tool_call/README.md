@@ -48,7 +48,7 @@ schema validation as MCP errors.
 | `mock_tool_call_zendesk_add_comment` | `zendesk_add_comment` | Tickets 1 to 3, or a four-digit number from `zendesk_create_ticket`; reports the ticket reopened. |
 | `mock_tool_call_zendesk_create_ticket` | `zendesk_create_ticket` | Returns a random four-digit ticket number; the ticket is not stored. |
 | `mock_tool_call_twilio_send_message` | `twilio_send_message` | Any valid E.164 number is `queued`; no text is delivered. |
-| `mock_tool_call_order_lookup` | Order lookup (custom tool) | By order number or account email. With both, the email must match the order (`VERIFICATION_FAILED` otherwise), so no detail is returned to an unverified caller. |
+| `mock_tool_call_order_lookup` | Order lookup (custom tool) | By order number or account email. With both, the email must match the order (`VERIFICATION_FAILED` otherwise), so no detail is returned to an unverified caller. An email shared by several orders returns `MULTIPLE_ORDERS` instead of picking one. |
 | `mock_tool_call_product_search` | Store catalog search (custom tool) | Keywords, category, `max_price`, `in_stock_only`, or an exact product ID; `total_matches` larger than `count` means more matches. |
 | `mock_tool_call_cart_add_item` | Store cart (custom tool) | Checks product, stock, and size and returns the cart line; the cart is not stored. |
 | `mock_tool_call_hotel_check_availability` | Hotel reservation tools (custom) | Rooms, availability, and total before taxes. |

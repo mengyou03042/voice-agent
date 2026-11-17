@@ -627,7 +627,7 @@
       "name": "Example 39: General Receptionist",
       "target_locale": "en-US",
       "category": "Front desk",
-      "summary": "Answer front desk questions from business facts and help-center articles, email a message to the right department, and file a callback request.",
+      "summary": "Answer front desk questions from business facts and help-center articles, email a message to the right department, and file a callback request. The department email addresses are samples; replace them in the instructions before you connect a real mail system.",
       "accent_color": "#0f766e",
       "lock_runtime": true,
       "mcp": {

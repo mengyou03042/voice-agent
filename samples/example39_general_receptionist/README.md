@@ -12,7 +12,7 @@ Foundry Toolbox in your own Project; see [Connect real tools](../../docs/05_conn
 
 ## When to use this example
 
-Answer front desk questions from business facts and help-center articles, email a message to the right department, and file a callback request.
+Answer front desk questions from business facts and help-center articles, email a message to the right department, and file a callback request. The department email addresses are samples; replace them in the instructions before you connect a real mail system.
 
 ## How it works
 

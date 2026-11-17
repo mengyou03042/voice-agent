@@ -292,6 +292,12 @@ class BusinessToolTests(unittest.TestCase):
         sold_out = call(self.mcp, "mock_tool_call_product_search", {"query": "sku-1103"})
         self.assertEqual(sold_out["count"], 1)
         self.assertFalse(sold_out["results"][0]["in_stock"])
+        # Filters apply to an exact product ID too.
+        for filters in ({"in_stock_only": True}, {"max_price": 10}, {"category": "outerwear"}):
+            filtered = call(self.mcp, "mock_tool_call_product_search", {"query": "SKU-1103", **filters})
+            self.assertEqual((filtered["ok"], filtered["count"], filtered["total_matches"], filtered["results"]), (True, 0, 0, []))
+        kept = call(self.mcp, "mock_tool_call_product_search", {"query": "SKU-1001", "category": "outerwear", "in_stock_only": True})
+        self.assertEqual([item["product_id"] for item in kept["results"]], ["SKU-1001"])
         nothing = call(self.mcp, "mock_tool_call_product_search", {"query": "garden hose"})
         self.assertEqual((nothing["ok"], nothing["count"]), (True, 0))
         empty = call(self.mcp, "mock_tool_call_product_search", {})
@@ -318,6 +324,16 @@ class BusinessToolTests(unittest.TestCase):
         self.assertEqual((mismatch["ok"], mismatch["error"]["code"], mismatch["order"]), (False, "VERIFICATION_FAILED", None))
         cancelled = call(self.mcp, "mock_tool_call_order_lookup", {"order_number": "10049"})
         self.assertEqual(cancelled["order"]["status"], "cancelled")
+
+    def test_order_lookup_by_shared_email_asks_for_the_order_number(self) -> None:
+        shared = call(self.mcp, "mock_tool_call_order_lookup", {"email": "dana.test20261020@example.com"})
+        self.assertEqual((shared["ok"], shared["error"]["code"], shared["order"]), (False, "MULTIPLE_ORDERS", None))
+        single = call(self.mcp, "mock_tool_call_order_lookup", {"email": "jordan.lee@example.com"})
+        self.assertEqual(single["order"]["order_number"], "10046")
+        second = call(self.mcp, "mock_tool_call_order_lookup", {
+            "order_number": "10050", "email": "dana.test20261020@example.com",
+        })
+        self.assertEqual(second["order"]["order_number"], "10050")
 
     def test_cart_add_item_checks_product_stock_and_size(self) -> None:
         added = call(self.mcp, "mock_tool_call_cart_add_item", {"product_id": "SKU-1001", "quantity": 2, "size": "m"})

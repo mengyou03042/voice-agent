@@ -303,7 +303,8 @@ def register_tools(mcp: FastMCP, service: MockToolCallService) -> None:
         name="mock_tool_call_order_lookup",
         description=(
             "Look up a mock online store order by order number, or by the account email. With both, the email must "
-            "match the order (VERIFICATION_FAILED otherwise) before any detail is returned. Returns status, items, "
+            "match the order (VERIFICATION_FAILED otherwise) before any detail is returned. An email that matches "
+            "more than one order returns MULTIPLE_ORDERS; ask for the order number. Returns status, items, "
             "carrier, tracking number, and the estimated delivery window." + MOCK_NOTE
         ),
     )

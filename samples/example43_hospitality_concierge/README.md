@@ -6,7 +6,7 @@
 conversation design that the Microsoft Foundry **Hotel concierge** template creates: one prompt, the
 business tools at the top level, and `end_conversation`.
 
-By default its tools run on the shared **mock-tool-call** MCP server with fictional data: guest requests and follow-up notes (Zendesk) and details by text (Twilio SMS).
+By default its tools run on the shared **mock-tool-call** MCP server with fictional data: guest requests (Zendesk) and details by text (Twilio SMS).
 Nothing real is booked or sent. To use real systems, choose **Connect real tools** in the Portal Editor or a
 Foundry Toolbox in your own Project; see [Connect real tools](../../docs/05_connect_real_tools.md).
 
@@ -18,7 +18,7 @@ Help in-house hotel guests with requests and room problems, answer hotel questio
 
 | System | Mock tools |
 | --- | --- |
-| Zendesk | `mock_tool_call_zendesk_create_ticket`, `mock_tool_call_zendesk_add_comment` |
+| Zendesk | `mock_tool_call_zendesk_create_ticket` |
 | Twilio SMS | `mock_tool_call_twilio_send_message` |
 
 Every write (ticket, message, text, booking, or cancellation) runs once, only after the caller says yes to a
@@ -27,7 +27,7 @@ read-back. The agent says a short goodbye before `end_conversation`, and declini
 ## Sample data
 
 - Hotel facts and a local guide in the instructions (sample data): check-out 11 AM, breakfast 6:30 to 10:30 AM, Wi-Fi Contoso-Guest with no password, five nearby places.
-- A new request returns a random four-digit request number; a note can be added to any four-digit number.
+- A new request returns a random four-digit request number. A follow-up on an earlier request becomes a new 
 
 Fixed mock data is listed in the [mock-tool-call README](../../shared_mcp/app/shared_mcp/mock_tool_call/README.md).
 
