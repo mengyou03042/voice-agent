@@ -135,6 +135,38 @@ Return:
 Keeping `next_step` in the result is what lets the instructions stay short: the tool,
 not the prompt, decides whether the agent answers directly or asks the caller to choose.
 
+### Configuring the email tool
+
+The `email` subagent already contains the privacy notice, the address read-back, and the
+handoffs, so what is missing is only a server that exposes one tool. Point the subagent's
+`server_url` at any MCP server of your own that implements:
+
+```jsonc
+// ignite_email_sessions
+{
+  "email": "jane.doe@contoso.com",        // confirmed with the caller first
+  "session_codes": ["BRK244", "TT1663"]   // official codes, at least one
+}
+```
+
+The production server builds the message from the official catalog and attaches a
+calendar file with one-tap Outlook and Google buttons, but the agent only needs a
+success or failure result, so a simpler server works.
+
+Three things to keep in mind when you write it:
+
+- The instructions call the tool **once**, after the caller confirms the spelled-out
+  address, so the server does not need to handle retries or de-duplication.
+- A caller's address is personal data. Keep it out of logs, and send only to the address
+  given on that call.
+- Nothing is sent until this `server_url` is set. The stage still runs, the agent still
+  asks for consent and reads the address back, and the handoff back to the concierge
+  still works, so the conversation is complete even before you add the server.
+
+To remove the feature instead, delete the `email` subagent together with the `to_email`
+handoff on `$entrypoint` and the two `email_to_*` handoffs, and drop the paragraphs about
+emailing from the instructions.
+
 ## Run locally
 
 The hosted no-auth MCP does not serve `/mcp/conference` yet, so run the pack
