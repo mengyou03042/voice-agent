@@ -235,8 +235,8 @@
     },
     {
       "order_number": "10050",
-      "customer_name": "Dana Test",
-      "email": "dana.test20261020@example.com",
+      "customer_name": "Sam Quinn",
+      "email": "sam.quinn@example.com",
       "ordered_days_ago": 1,
       "shipped_days_ago": null,
       "shipping_method": "express",
@@ -245,6 +245,21 @@
       "status": "processing",
       "items": [
         {"name": "Wireless earbuds Pro", "quantity": 1, "final_sale": false}
+      ]
+    },
+    {
+      "order_number": "10051",
+      "customer_name": "Sam Quinn",
+      "email": "sam.quinn@example.com",
+      "ordered_days_ago": 12,
+      "shipped_days_ago": 11,
+      "delivered_days_ago": 8,
+      "shipping_method": "standard",
+      "carrier": "Contoso Express",
+      "tracking_number": "CX100510001",
+      "status": "delivered",
+      "items": [
+        {"name": "Trail running shoes, size 10", "quantity": 1, "final_sale": false}
       ]
     }
   ],

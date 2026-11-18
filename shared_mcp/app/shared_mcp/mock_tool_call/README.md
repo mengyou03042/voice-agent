@@ -130,14 +130,20 @@ A number without a country code also fails.
 | 10047 | Jack Rogers | Delivered 15 days ago | Desk lamp ×2 |
 | 10048 | Rose Gonzalez | Delivered 40 days ago (outside a 30-day return window) | Over-ear headphones |
 | 10049 | Tim Barr | Cancelled, ordered 3 days ago | Personal blender |
-| 10050 | Dana Test | Processing, express, ordered yesterday | Wireless earbuds Pro |
+| 10050 | Sam Quinn | Processing, express, ordered yesterday | Wireless earbuds Pro |
+| 10051 | Sam Quinn | Delivered 8 days ago, standard, Contoso Express `CX100510001` | Trail running shoes, size 10 |
 
 Dates are relative to the day of the call; the estimated delivery window is 3-5
 business days after shipping for standard and 1-2 for express.
 
+Each customer has one order except Sam Quinn: a lookup by `sam.quinn@example.com` alone
+returns `MULTIPLE_ORDERS`, while `dana.test20261020@example.com` alone finds 10045.
+
 ### Product catalog (Contoso Shop)
 
 Prices are in USD. Search matches singular and plural words in the name, category, features, and tags.
+Words of two letters or fewer and common words are ignored, so a query with nothing else (such as "TV") matches
+no product. A category without a query still lists that category, with any filters applied.
 Similar names (three wireless earbuds, two rain jackets, three desk lamps) and `total_matches` larger
 than `count` let a template test product mix-ups and partial results.
 

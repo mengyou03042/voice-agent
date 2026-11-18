@@ -300,6 +300,12 @@ class BusinessToolTests(unittest.TestCase):
         self.assertEqual([item["product_id"] for item in kept["results"]], ["SKU-1001"])
         nothing = call(self.mcp, "mock_tool_call_product_search", {"query": "garden hose"})
         self.assertEqual((nothing["ok"], nothing["count"]), (True, 0))
+        # Only short or stop words: no searchable token, so no match instead of the whole catalog.
+        for query in ("TV", "the TV"):
+            unsearchable = call(self.mcp, "mock_tool_call_product_search", {"query": query})
+            self.assertEqual((unsearchable["ok"], unsearchable["count"], unsearchable["total_matches"]), (True, 0, 0))
+        in_category = call(self.mcp, "mock_tool_call_product_search", {"category": "audio", "in_stock_only": True})
+        self.assertEqual(in_category["total_matches"], 3)
         empty = call(self.mcp, "mock_tool_call_product_search", {})
         self.assertEqual(empty["error"]["code"], "INVALID_QUERY")
         with self.assertRaises(ToolError):
@@ -326,14 +332,17 @@ class BusinessToolTests(unittest.TestCase):
         self.assertEqual(cancelled["order"]["status"], "cancelled")
 
     def test_order_lookup_by_shared_email_asks_for_the_order_number(self) -> None:
-        shared = call(self.mcp, "mock_tool_call_order_lookup", {"email": "dana.test20261020@example.com"})
+        shared = call(self.mcp, "mock_tool_call_order_lookup", {"email": "sam.quinn@example.com"})
         self.assertEqual((shared["ok"], shared["error"]["code"], shared["order"]), (False, "MULTIPLE_ORDERS", None))
-        single = call(self.mcp, "mock_tool_call_order_lookup", {"email": "jordan.lee@example.com"})
-        self.assertEqual(single["order"]["order_number"], "10046")
-        second = call(self.mcp, "mock_tool_call_order_lookup", {
+        for email, order_number in (("jordan.lee@example.com", "10046"), ("dana.test20261020@example.com", "10045")):
+            single = call(self.mcp, "mock_tool_call_order_lookup", {"email": email})
+            self.assertEqual(single["order"]["order_number"], order_number)
+        second = call(self.mcp, "mock_tool_call_order_lookup", {"order_number": "10050", "email": "sam.quinn@example.com"})
+        self.assertEqual(second["order"]["order_number"], "10050")
+        not_dana = call(self.mcp, "mock_tool_call_order_lookup", {
             "order_number": "10050", "email": "dana.test20261020@example.com",
         })
-        self.assertEqual(second["order"]["order_number"], "10050")
+        self.assertEqual(not_dana["error"]["code"], "VERIFICATION_FAILED")
 
     def test_cart_add_item_checks_product_stock_and_size(self) -> None:
         added = call(self.mcp, "mock_tool_call_cart_add_item", {"product_id": "SKU-1001", "quantity": 2, "size": "m"})

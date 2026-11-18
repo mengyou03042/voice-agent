@@ -718,7 +718,8 @@ class MockToolCallService:
                 f"{' '.join(product.get('tags', []))}"
             )
             score = len(wanted & haystack)
-            if wanted and not score:
+            # A query whose words are all too short or stop words (such as "TV") matches nothing.
+            if query.strip() and not score:
                 continue
             view = self._product_view(product)
             if not passes_filters(product, view):
