@@ -221,7 +221,7 @@ async def cloud_session(settings: Settings, socket: web.WebSocketResponse, incom
         )
     logger.info("Using agent %s", settings.agent_name)
     await socket.send_json({"type": "progress", "message": "Opening the voice session…"})
-    async with settings.client.beta.voice_agents.realtime.connect(agent_name=settings.agent_name) as connection:
+    async with settings.client.voice_agents.realtime.connect(agent_name=settings.agent_name) as connection:
         await wait_for_session(connection)
 
         async def send_audio(delta: Any) -> None:

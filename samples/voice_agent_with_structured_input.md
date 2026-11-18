@@ -1,6 +1,6 @@
 # Voice Agent with structured inputs
 
-Use **`azure-ai-projects[voice]>=2.8.0`** to supply application context to a
+Use **`azure-ai-projects[voice]>=2.11.0`** to supply application context to a
 Voice Agent **per session**, rather than putting customer values in its saved
 instructions or creating a new agent version for every caller.
 
@@ -9,9 +9,9 @@ sessions. It does not use the Voice Live SDK or a handwritten WebSocket client.
 
 ## Deployment compatibility
 
-The default `--input-transport query` uses SDK 2.8+'s native
+The default `--input-transport query` uses the SDK's native
 `structured_inputs` argument. Some older service deployments reject its
-`structured_input` query parameter with HTTP 400. For those deployments, choose:
+`structured_inputs` query parameter with HTTP 400. For those deployments, choose:
 
 ```text
 python samples/voice_agent_with_structured_input.py --input-transport header --text "What is my name and support case?"
@@ -58,7 +58,7 @@ definition = VoiceAgentDefinition(
 
 # Publish `definition` once with client.agents.create_version(...).
 # Supply values when opening each session, not when creating the agent.
-async with client.beta.voice_agents.realtime.connect(
+async with client.voice_agents.realtime.connect(
     agent_name=agent_name,
     structured_inputs={"customer_name": "Ada", "case_id": "SAMPLE-1042"},
 ) as connection:
@@ -166,7 +166,7 @@ it refuses incompatible agents rather than modifying them. Keep `--model` and
   The agent definition is retained in Foundry; delete it manually when finished.
 - Runtime values are not saved in the agent definition or printed separately.
   Replies can repeat them, so terminal output can still contain customer data.
-- SDK 2.8.0's native mode transports structured inputs in the `structured_input`
+- SDK 2.11.0's native mode transports structured inputs in the `structured_inputs`
   connection query parameter; compatibility mode puts them in a header.
   URLs, headers, proxies, HTTP debug logs, and telemetry may capture
   context independently of conversation persistence. Use synthetic data;

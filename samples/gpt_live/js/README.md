@@ -16,10 +16,8 @@ audio or Live events pass through a server. A small local Node.js server does th
 or reuses the agents through `AIProjectClient.agents`, serves the page, and gives the page an
 access token from your `az login` session.
 
-The GPT Live APIs are not in an npm release yet, so `package.json` installs the bundled
-preview package `dist/azure-ai-projects-2.11.0.tgz`, built from the SDK's
-`feature/ai-projects/vnext` branch; see [`dist/README.md`](../../../dist/README.md) for its
-source and checksum. The page sends and receives Live messages only through this SDK; it
+`package.json` installs `@azure/ai-projects` 2.11.0 from npm, the first release with the
+GPT Live APIs. The page sends and receives Live messages only through this SDK; it
 does not use the OpenAI SDK.
 Azure Identity is pinned to `4.14.1`, which requires patched MSAL Node `7.1.0`
 or later for [GHSA-xcx6-jx8p-x3h5](https://github.com/AzureAD/microsoft-authentication-library-for-js/security/advisories/GHSA-xcx6-jx8p-x3h5).
@@ -40,7 +38,7 @@ This sample uses Azure CLI authentication rather than the affected authorization
 | `public/local-tools.js` | Runs `get_current_datetime` in the page and returns its results to the prompt agent. |
 | `public/` (other) | `index.html`, `pcm-audio.js` (Web Audio capture and playback), `pcm-capture.js` (AudioWorklet), and `style.css`. |
 | `test/` | Offline agent, session, client-backend, tool, transport, and server tests. |
-| `package.json` / `package-lock.json` | Dependencies, including the bundled preview `@azure/ai-projects` package. |
+| `package.json` / `package-lock.json` | Dependencies, including `@azure/ai-projects` 2.11.0. |
 
 ## How to run
 
@@ -54,8 +52,8 @@ npm ci
 npm start
 ```
 
-`npm ci` installs the bundled package from `../../../dist` (the path is relative to
-`package.json`). The patched Azure Identity and MSAL packages resolve through
+`npm ci` installs `@azure/ai-projects` from the public npm registry. The patched
+Azure Identity and MSAL packages resolve through
 Microsoft's anonymously accessible `npm-public` feed because these versions are
 not yet available on npmjs. Other packages retain their public npm registry URLs;
 npm uses your configured registry for those URLs when you have one.
@@ -207,15 +205,15 @@ requests must still pass the same-origin checks.
 #### Why the sample supplies its own WebSocket transport
 
 Besides signing in, the transport lets the page return local function results and send typed
-messages in managed mode. This preview JS SDK refuses `response.item.create` and
+messages in managed mode. The JS SDK 2.11.0 refuses `response.item.create` and
 `response.create` unless the session uses Responses delegation (`Responses commands require a
 Responses delegation.`), so `sendToolOutput` and `sendResponseItem` cannot be used in a managed
 session. The service accepts these commands in managed mode, and the Python SDK sends them.
 So `openLiveSession` keeps a handle on its transport and sends the two commands on it directly.
 Everything else, including the handshake, the token request, and event parsing, goes through
-the SDK. [Azure/azure-sdk-for-js#40705](https://github.com/Azure/azure-sdk-for-js/pull/40705)
-removes the restriction for Foundry-managed sessions; once a package with it is bundled, the
-page can use the SDK's own methods.
+the SDK. A proposed SDK change to allow these commands in Foundry-managed sessions,
+[Azure/azure-sdk-for-js#40705](https://github.com/Azure/azure-sdk-for-js/pull/40705), was closed
+without merging, so the sample keeps this workaround.
 
 `browser_bundle.mjs` bundles the page with esbuild from the SDK package's browser build. The
 package's entry point also re-exports `AIProjectClient`, which imports the OpenAI SDK for its

@@ -164,7 +164,7 @@ class StructuredInputSDKTests(unittest.IsolatedAsyncioTestCase):
             endpoint=ENDPOINT, credential=credential, allow_preview=True,
         ) as client:
             with patch("aiohttp.ClientSession", return_value=session):
-                async with client.beta.voice_agents.realtime.connect(
+                async with client.voice_agents.realtime.connect(
                     agent_name="voice-structured-test",
                     **sample.connection_options(INPUTS if inputs is None else inputs, transport),
                 ) as connection:
@@ -192,7 +192,7 @@ class StructuredInputSDKTests(unittest.IsolatedAsyncioTestCase):
             handshake.args[0],
             ENDPOINT.replace("https://", "wss://") + "/agents/voice-structured-test/endpoint/protocols/voice",
         )
-        self.assertEqual(json.loads(handshake.kwargs["params"]["structured_input"]), INPUTS)
+        self.assertEqual(json.loads(handshake.kwargs["params"]["structured_inputs"]), INPUTS)
         self.assertEqual(handshake.kwargs["headers"]["Foundry-Features"], "VoiceAgents=V1Preview")
         self.assertEqual(handshake.kwargs["protocols"], ("realtime",))
         self.assertNotIn("x-ms-voice-structured-inputs", handshake.kwargs["headers"])
@@ -207,7 +207,7 @@ class StructuredInputSDKTests(unittest.IsolatedAsyncioTestCase):
             [ready()], sample.wait_until_ready, inputs=values,
         )
         self.assertEqual(
-            json.loads(session.ws_connect.await_args.kwargs["params"]["structured_input"]),
+            json.loads(session.ws_connect.await_args.kwargs["params"]["structured_inputs"]),
             values,
         )
 
@@ -216,7 +216,7 @@ class StructuredInputSDKTests(unittest.IsolatedAsyncioTestCase):
             [ready()], sample.wait_until_ready, transport="header",
         )
         options = session.ws_connect.await_args.kwargs
-        self.assertNotIn("structured_input", options["params"])
+        self.assertNotIn("structured_inputs", options["params"])
         self.assertEqual(
             json.loads(options["headers"]["x-ms-voice-structured-inputs"]), INPUTS,
         )
@@ -358,7 +358,7 @@ class StructuredInputSDKTests(unittest.IsolatedAsyncioTestCase):
             versions=Namespace(latest=Namespace(version="1", definition=definition())),
         )
         connection_manager = MagicMock()
-        client.beta.voice_agents.realtime.connect = MagicMock(return_value=connection_manager)
+        client.voice_agents.realtime.connect = MagicMock(return_value=connection_manager)
         with (
             patch.object(sample, "DefaultAzureCredential", return_value=OfflineCredential()),
             patch.object(sample, "AIProjectClient", return_value=client),
@@ -367,7 +367,7 @@ class StructuredInputSDKTests(unittest.IsolatedAsyncioTestCase):
             redirect_stdout(io.StringIO()),
         ):
             await sample.run(args(agent_name="voice-structured-test"), INPUTS)
-        client.beta.voice_agents.realtime.connect.assert_called_once_with(
+        client.voice_agents.realtime.connect.assert_called_once_with(
             agent_name="voice-structured-test", structured_inputs=INPUTS,
         )
         client.agents.create_version.assert_not_awaited()

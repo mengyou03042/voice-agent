@@ -158,7 +158,7 @@ ordered text and image parts, then one `response.create`:
 With the Projects SDK, the same events go through the realtime connection:
 
 ```python
-async with client.beta.voice_agents.realtime.connect(agent_name=name) as connection:
+async with client.voice_agents.realtime.connect(agent_name=name) as connection:
     # ...wait for session.updated...
     await connection.send({"type": "conversation.item.create", "item": item})
     await connection.response.create()

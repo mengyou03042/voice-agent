@@ -97,7 +97,7 @@ class AzureVoiceAgent(BaseLlm):
                         )
                     )
                     raw = await stack.enter_async_context(
-                        project.beta.voice_agents.realtime.connect(
+                        project.voice_agents.realtime.connect(
                             agent_name=self.agent_name, agent_session_id=agent_session_id,
                             structured_inputs=self.structured_inputs,
                         )

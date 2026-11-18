@@ -5,7 +5,7 @@ from contextlib import closing
 import pyaudio
 from azure.ai.projects import models
 from azure.ai.projects.aio import AIProjectClient
-from azure.ai.projects.aio.operations import AsyncBetaRealtimeConnection
+from azure.ai.projects.aio.operations import AsyncRealtimeConnection
 from azure.identity.aio import DefaultAzureCredential
 
 RATE = 24000
@@ -46,7 +46,7 @@ def observe_handoff(event) -> None:
 
 
 async def wait_until_ready(
-    connection: AsyncBetaRealtimeConnection,
+    connection: AsyncRealtimeConnection,
 ) -> None:
     while True:
         event = await connection.recv()
@@ -58,7 +58,7 @@ async def wait_until_ready(
 
 
 async def send_microphone(
-    connection: AsyncBetaRealtimeConnection, stream: pyaudio.Stream
+    connection: AsyncRealtimeConnection, stream: pyaudio.Stream
 ) -> None:
     while True:
         audio = await asyncio.to_thread(
@@ -70,7 +70,7 @@ async def send_microphone(
 
 
 async def receive_audio(
-    connection: AsyncBetaRealtimeConnection, stream: pyaudio.Stream
+    connection: AsyncRealtimeConnection, stream: pyaudio.Stream
 ) -> None:
     async for event in connection:
         observe_handoff(event)

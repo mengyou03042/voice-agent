@@ -792,7 +792,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
             manager.__aexit__ = AsyncMock(return_value=False)
             return manager
 
-        self.project.beta.voice_agents.realtime.connect.side_effect = connect
+        self.project.voice_agents.realtime.connect.side_effect = connect
 
     async def test_send_error_survives_connection_and_client_cleanup_failures(self):
         error = ConnectionError("original send failure")
@@ -803,7 +803,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         manager = MagicMock()
         manager.__aenter__ = AsyncMock(return_value=raw)
         manager.__aexit__ = AsyncMock(side_effect=RuntimeError("SDK context close failure"))
-        connect = self.project.beta.voice_agents.realtime.connect
+        connect = self.project.voice_agents.realtime.connect
         connect.side_effect = None
         connect.return_value = manager
         self.project.__aexit__.side_effect = RuntimeError("project close failure")
@@ -973,7 +973,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn("azure_conversation_id", second.correlation)
         identifiers = [
             call.kwargs["agent_session_id"]
-            for call in self.project.beta.voice_agents.realtime.connect.call_args_list
+            for call in self.project.voice_agents.realtime.connect.call_args_list
         ]
         self.assertNotEqual(*identifiers)
         self.assertTrue(all(raw.closed for raw in self.transports))
@@ -1121,7 +1121,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
             model = create_model(session_id="adk-one", user_id="user-one")
         async with model.connect(LlmRequest()):
             self.assertEqual(
-                self.project.beta.voice_agents.realtime.connect.call_args.kwargs["structured_inputs"],
+                self.project.voice_agents.realtime.connect.call_args.kwargs["structured_inputs"],
                 {"name": "sample"},
             )
 

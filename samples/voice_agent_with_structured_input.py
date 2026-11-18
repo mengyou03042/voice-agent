@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from azure.ai.projects.aio import AIProjectClient
-from azure.ai.projects.aio.operations import AsyncBetaRealtimeConnection
+from azure.ai.projects.aio.operations import AsyncRealtimeConnection
 from azure.ai.projects.models import (
     RealtimeServerEventType,
     StructuredInputDefinition,
@@ -146,7 +146,7 @@ def validate_definition(
         raise ValueError("This sample requires an agent without a greeting or tools.")
 
 
-async def receive(connection: AsyncBetaRealtimeConnection) -> dict[str, Any]:
+async def receive(connection: AsyncRealtimeConnection) -> dict[str, Any]:
     event = await connection.recv()
     payload = event.as_dict() if hasattr(event, "as_dict") else dict(event)
     if payload.get("type") in {
@@ -159,7 +159,7 @@ async def receive(connection: AsyncBetaRealtimeConnection) -> dict[str, Any]:
     return payload
 
 
-async def wait_until_ready(connection: AsyncBetaRealtimeConnection) -> None:
+async def wait_until_ready(connection: AsyncRealtimeConnection) -> None:
     """Wait for the saved configuration before sending text or opening devices."""
     async with asyncio.timeout(30):
         while True:
@@ -188,7 +188,7 @@ def check_response(event: dict[str, Any], *, text_mode: bool) -> None:
         raise RuntimeError(f"Voice Agent response did not complete ({status}).")
 
 
-async def text_turn(connection: AsyncBetaRealtimeConnection, text: str) -> str:
+async def text_turn(connection: AsyncRealtimeConnection, text: str) -> str:
     """Test prompt substitution without a microphone; do not override instructions."""
     await connection.conversation.item.create(item={
         "type": "message",
@@ -213,7 +213,7 @@ async def text_turn(connection: AsyncBetaRealtimeConnection, text: str) -> str:
             return result
 
 
-async def microphone_chat(connection: AsyncBetaRealtimeConnection) -> None:
+async def microphone_chat(connection: AsyncRealtimeConnection) -> None:
     """Reuse the basic sample's PCM capture, playback, and interruption support."""
     if pyaudio is None:
         raise RuntimeError("Install pyaudio to use the microphone.")
@@ -274,7 +274,7 @@ async def run(args: argparse.Namespace, inputs: dict[str, str]) -> None:
         async def converse() -> None:
             # SDK 2.8+ serializes these values for this session. The stored prompt
             # remains a template; no new agent version or session.update is needed.
-            async with client.beta.voice_agents.realtime.connect(
+            async with client.voice_agents.realtime.connect(
                 agent_name=agent_name,
                 **options,
             ) as connection:

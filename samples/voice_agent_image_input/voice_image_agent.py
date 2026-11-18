@@ -145,7 +145,7 @@ async def run(args: argparse.Namespace) -> int:
         if item is None:
             return 0
         results = []
-        async with client.beta.voice_agents.realtime.connect(agent_name=name) as connection:
+        async with client.voice_agents.realtime.connect(agent_name=name) as connection:
             await wait_for_session(connection)
             for run_index in range(args.repeat):
                 print(f"You: {item['content'][0]['text']}  [+{len(images)} image(s), detail={args.detail}]")

@@ -56,8 +56,8 @@ python -m pip install -r requirements.txt
 If the `adk` environment already exists, skip creation. No changes to another
 environment, such as `voiceagent`, are necessary. Tested SDK versions are
 `google-adk==2.12.0`, `google-genai==2.32.0`, and
-`azure-ai-projects[voice]==2.7.0`. The Azure integration uses the supported async
-Projects Voice SDK `project.beta.voice_agents.realtime.connect()` surface.
+`azure-ai-projects[voice]>=2.11.0`. The Azure integration uses the supported async
+Projects Voice SDK `project.voice_agents.realtime.connect()` surface.
 Direct Voice Live uses `azure-ai-voicelive[aiohttp]==1.3.0b1` and
 `azure.ai.voicelive.aio.connect()`. These are distinct SDK paths, not aliases.
 

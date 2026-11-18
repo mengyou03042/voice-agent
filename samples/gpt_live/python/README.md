@@ -22,10 +22,8 @@ Agents are defined with the SDK's typed `VoiceAgentLiveDefinition` and
 `PromptAgentDefinition` models and created, read back, and deleted through
 `AIProjectClient.agents`. Audio sessions use the SDK's Live WebSocket client,
 `AIProjectClient.beta.voice_agents.live.connect(...)`, with the same credential.
-These GPT Live APIs are not in a PyPI release yet, so `requirements.txt` installs the
-bundled preview wheel `dist/azure_ai_projects-2.11.0-py3-none-any.whl`, built from the
-SDK's `feature/azure-ai-projects/vnext` branch with the GPT Live WebSocket client; see
-[`dist/README.md`](../../../dist/README.md) for its source and checksum.
+`requirements.txt` installs `azure-ai-projects[voice]` 2.11.0 or later from PyPI, the
+first release with these GPT Live APIs.
 
 The samples send and receive Live messages only through the SDK; they do not use the
 OpenAI SDK. The SDK returns generated models for known Live events and plain dicts for
@@ -46,7 +44,7 @@ delegation's final status.
 | `audio_common.py` | Captures microphone audio and plays the agent's response. |
 | `transcript_common.py` | Independently scrollable GPT Live, Delegation, and User terminal panes. |
 | `../../download_conversation_artifacts.py` | Existing separate downloader for conversation JSON, per-item audio, and merged audio. |
-| `requirements.txt` | Required Python packages and versions, including the bundled preview Projects SDK wheel. |
+| `requirements.txt` | Required Python packages and versions, including the Projects SDK 2.11.0 or later. |
 | `../.env.example` | Configuration template, shared with the [JavaScript sample](../js/README.md). |
 | `../.env` | Your local project, agent, deployment, and subscription settings; git-ignored and shared with the JavaScript sample. |
 
@@ -56,11 +54,9 @@ Requires Python 3.11+, Azure CLI, a microphone/headset, and a Foundry project wi
 Voice Agents / GPT Live preview, a GPT Live deployment, and a Responses deployment.
 On Linux, install the PortAudio runtime (`libportaudio2` on Ubuntu/Debian).
 
-These samples use their own virtual environment, `samples/gpt_live/python/.venv`, not the
-shared repository-root `.venv`. The preview 2.11.0 build changes some APIs that other
-samples use with the PyPI release (for example, `VoiceAgentSubagentConfig` no longer takes
-`subagents`, and realtime structured inputs are sent as `structured_inputs`), so keep it out
-of the shared environment. From the repository root, in PowerShell:
+These samples use their own virtual environment, `samples/gpt_live/python/.venv`, with
+pinned packages, not the shared repository-root `.venv`. From the repository root, in
+PowerShell:
 
 ```powershell
 az login
@@ -70,8 +66,7 @@ $py = "samples\gpt_live\python\.venv\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath samples\gpt_live\.env)) { Copy-Item samples\gpt_live\.env.example samples\gpt_live\.env }
 ```
 
-Run the install from the repository root: pip resolves the wheel path in
-`requirements.txt` from the current directory. The commands below use `$py` from this block.
+The commands below use `$py` from this block.
 
 In `samples/gpt_live/.env`, set `FOUNDRY_PROJECT_ENDPOINT`. Authentication uses
 your `az login` account through `AzureCliCredential`, with automatically refreshed

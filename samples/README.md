@@ -282,14 +282,12 @@ this voice-first Agent sample.
 The Voice Live migration, Finance, Elevator, language-learning, vehicle-local-tools, image-input, long-tool-wait, and documentation-generated voice web
 samples use their own `requirements.txt` files. The voice web sample uses a standalone HTTP/WebSocket
 backend and does not require the Projects SDK; follow its README for setup.
-The common Python SDK samples require `azure-ai-projects>=2.7.0` from PyPI.
+The common Python SDK samples require `azure-ai-projects>=2.11.0` from PyPI.
 
 The GPT Live samples in `gpt_live/` share one `.env`. The Python terminal samples in
-`gpt_live/python/` use their own `samples/gpt_live/python/.venv` with pinned packages and a
-bundled preview `azure-ai-projects` 2.11.0 wheel from `dist/` for the GPT Live agent models
-and Live WebSocket client; that preview changes APIs other samples use, so keep it out of the
-shared `.venv`. The browser sample in `gpt_live/js/` uses Node.js 22+ and
-the bundled preview `@azure/ai-projects` package from `dist/` instead. Follow their READMEs
+`gpt_live/python/` use their own `samples/gpt_live/python/.venv` with pinned packages and
+`azure-ai-projects[voice]>=2.11.0` from PyPI. The browser sample in `gpt_live/js/` uses
+Node.js 22+ and `@azure/ai-projects` 2.11.0 from npm. Follow their READMEs
 for configuration and installation.
 
 The SIP sample in `sip_voice_agent/` is standalone and uses its own
@@ -303,7 +301,7 @@ it does not open a local microphone or require the Projects SDK or PortAudio.
   `https://<account>.services.ai.azure.com/api/projects/<project>`.
 - Azure CLI sign-in (`az login`) or another `DefaultAzureCredential` identity.
 - A microphone, speakers or headset, and PortAudio for the audio samples.
-- Azure AI Projects SDK 2.7.0 or later, installed by the requirements below.
+- Azure AI Projects SDK 2.11.0 or later, installed by the requirements below.
 
 ## Common Python sample setup
 
@@ -327,7 +325,7 @@ python3 -m venv .venv
 ```
 
 The single `pip install` command installs every common Python sample
-dependency, including Projects SDK 2.7.0 or later with its `[voice]`
+dependency, including Projects SDK 2.11.0 or later with its `[voice]`
 dependencies. No Azure SDK source checkout or Voice Live SDK is required.
 
 For an existing preview or source installation, rerun the requirements install
@@ -399,7 +397,7 @@ Retrieve an existing Agent with `client.agents.get(agent_name=agent_name)`.
 The same Projects client opens the Voice Agent realtime session:
 
 ```python
-async with client.beta.voice_agents.realtime.connect(agent_name=agent_name) as connection:
+async with client.voice_agents.realtime.connect(agent_name=agent_name) as connection:
     await connection.input_audio_buffer.append(audio=pcm_bytes)
     async for event in connection:
         # Handle transcripts, audio, and tool events.
@@ -584,7 +582,7 @@ The related workflows are under [`../skills/`](../skills/):
 - [`debug-local-session`](../skills/debug-local-session/) resolves and analyzes
   recordings created by the portal.
 - [`voice-agent-preview`](../skills/voice-agent-preview/) creates and tests
-  Voice Agents with Projects SDK 2.7.0 and its preview voice APIs.
+  Voice Agents with Projects SDK 2.11.0 and its voice APIs.
 - `provision-foundry-iq` creates a Foundry IQ knowledge base from local files.
 - `provision-foundry-toolbox` creates an Azure AI Search index and Foundry
   Toolbox.

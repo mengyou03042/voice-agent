@@ -316,7 +316,7 @@ async def _session(connection: Any, audio: Audio, options: Options, identity: tu
 async def _connect(client: Any, audio: Audio, options: Options, identity: tuple[str, str]) -> STTResult:
     """Keep the session deadline outside the SDK connection lifetime."""
     async with asyncio.timeout(SESSION_TIMEOUT_SECONDS):
-        async with client.beta.voice_agents.realtime.connect(agent_name=identity[0]) as connection:
+        async with client.voice_agents.realtime.connect(agent_name=identity[0]) as connection:
             return await _session(connection, audio, options, identity)
 
 
