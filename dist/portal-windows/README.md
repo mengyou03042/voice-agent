@@ -4,6 +4,8 @@
 
 This guide is the complete reference for the package: setup, identity, networks that inspect HTTPS, the command-line tool, upgrade and troubleshooting.
 
+If you only need what to put in `portal.env`, read [auth_settings.md](auth_settings.md).
+
 ```text
 your computer --remote desktop--> Windows VM: browser -> portal on 127.0.0.1:9527 --HTTPS/WSS--> Foundry project
                                                (signs in as a managed identity or a service principal)
