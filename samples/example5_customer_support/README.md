@@ -83,7 +83,7 @@ tools, choose **Connect my tools** and enter a public HTTPS MCP server for each
 system (Salesforce, Zendesk); the Agent calls it without credentials, so point
 it at sandbox data. There is nothing to start locally.
 
-The example uses `gpt-realtime` with `azure_semantic_vad`, `profile: normal`,
+The example uses `gpt-realtime-2.1` with `azure_semantic_vad`, `profile: normal`,
 `silence_duration_ms: 600`, Smart Turn end-of-utterance detection off
 (`end_of_utterance_detection: null`), explicit barge-in thresholds, and no server
 echo cancellation, matching Example 1's turn detection apart from the silence.
