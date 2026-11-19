@@ -93,7 +93,7 @@ The Microsoft 365 (Work IQ) presence and mail tools act as the signed-in user,
 so they cannot be connected in the shared Playground and stay on mock data
 there; use a Work IQ Toolbox in your own Foundry Project instead.
 
-The example uses `gpt-realtime` with `azure_semantic_vad`, `profile: normal`,
+The example uses `gpt-realtime-2.1` with `azure_semantic_vad`, `profile: normal`,
 `silence_duration_ms: 600`, Smart Turn end-of-utterance detection off
 (`end_of_utterance_detection: null`), explicit barge-in thresholds, and no server
 echo cancellation, matching Example 1's turn detection apart from the silence.

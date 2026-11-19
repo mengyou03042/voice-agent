@@ -233,6 +233,9 @@ class TemplateVersionCatalogTests(TemplateVersionFixture, unittest.TestCase):
             model = {
                 "finance-example-cascade-luna": "gpt-4.1-mini",
                 "finance-example-realtime": "gpt-realtime-regional",
+                "customer-support-example": "gpt-realtime-2.1",
+                "appointment-setter-example": "gpt-realtime-2.1",
+                "receptionist-messaging-example": "gpt-realtime-2.1",
             }.get(card["id"], "gpt-realtime")
             for version in card["versions"]:
                 with self.subTest(template_id=card["id"], version=version["id"]):
