@@ -12,6 +12,10 @@ const int = n => Math.round(n).toLocaleString('en-US');
 const REALTIME_NODE_LIMIT = 16384;
 const BYOM_WHY = 'On BYOM this changes only the model bill on your own deployment, which is not priced here; the voice-agent cost (STT and TTS) stays the same.';
 const cascade = scheme => scheme.mode === 'speech';
+// The realtime measurements (and the node limit) are on the GPT Realtime family; Azure Realtime and Microsoft
+// Realtime Flash are priced by the model only until calls on them are measured.
+const unmeasured = scheme => scheme.mode === 'realtime' && !scheme.model.startsWith('gpt-realtime');
+const UNMEASURED_WHY = scheme => `Not measured on ${scheme.name}: the team's measured calls are on GPT Realtime 2.1 and the Cascade pipeline, so this is the model's estimate only.`;
 
 function handoffTip(p, scheme) {
   const removed = p.logicTokens - callDrivers({...p, promptDesign: 'stage'}, scheme).logicPerResponse;
@@ -20,6 +24,9 @@ function handoffTip(p, scheme) {
   if (scheme.hosting === 'byom') {
     verdict = 'model';
     evidence = BYOM_WHY;
+  } else if (unmeasured(scheme)) {
+    verdict = 'model';
+    evidence = UNMEASURED_WHY(scheme);
   } else if (scheme.mode === 'realtime') {
     if (p.systemPromptTokens + p.logicTokens > REALTIME_NODE_LIMIT) {
       verdict = 'saves';
@@ -55,6 +62,9 @@ function splitCompactTip(p, scheme) {
   if (scheme.hosting === 'byom') {
     verdict = 'model';
     evidence = BYOM_WHY;
+  } else if (unmeasured(scheme)) {
+    verdict = 'model';
+    evidence = UNMEASURED_WHY(scheme);
   } else if (scheme.mode === 'realtime') {
     const short = p.logicTokens < 5000;
     verdict = short ? 'depends' : 'saves';
@@ -80,6 +90,9 @@ function compactionTip(p, scheme) {
   if (scheme.hosting === 'byom') {
     verdict = 'model';
     evidence = BYOM_WHY;
+  } else if (unmeasured(scheme)) {
+    verdict = 'model';
+    evidence = UNMEASURED_WHY(scheme);
   } else if (scheme.mode === 'realtime') {
     if (split) {
       verdict = 'saves';
@@ -137,8 +150,11 @@ function optionTips(p, scheme) {
   if (scheme.mode === 'realtime') picks.unshift(cheapest(SCHEMES.filter(item => item.mode === 'realtime')));
   return [...new Map(picks.map(item => [item.id, item])).values()].filter(item => item.id !== scheme.id).map(item => ({
     id: `option:${item.id}`, title: `Switch to ${item.name} (${item.tier})`, active: false, option: item.id, verdict: 'model',
-    evidence: item.mode === scheme.mode ? 'Same pipeline, different model or hosting: check answer quality and latency on your calls.'
-      : 'Different pipeline: STT in front of a text model hears the caller as text; check quality and latency on your calls.',
+    evidence: (item.pipeline === scheme.pipeline ? 'Same pipeline, different model or hosting: check answer quality and latency on your calls.'
+      : item.mode === 'speech' ? 'Different pipeline: STT in front of a text model hears the caller as text; check quality and latency on your calls.'
+      : item.nativeVoice ? 'Different pipeline: the model hears the caller and speaks itself, with its own voice instead of an Azure HD voice; check quality, voice and latency on your calls.'
+      : 'Different pipeline: the model hears the caller as audio and an Azure HD voice reads its replies; check quality and latency on your calls.')
+      + (unmeasured(item) ? ` ${item.name} is priced by the model only; it is not calibrated on measured calls yet.` : ''),
     how: `${item.pipeline} · ${item.subtitle}`}));
 }
 

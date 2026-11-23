@@ -85,7 +85,7 @@ export function renderBill(container, r) {
   }));
 }
 
-// What to compare by default: the three standard options, the current one and the three cheapest managed options.
+// What to compare by default: the standard options, the current one and the three cheapest managed options.
 // BYOM is left out of "cheapest": its price leaves the model out, so it is not like for like.
 export function comparisonIds(params, currentId) {
   const cheapest = SCHEMES.filter(scheme => scheme.hosting === 'managed').map(scheme => ({id: scheme.id, value: priceCall(params, scheme).perMinute}))
@@ -216,4 +216,53 @@ export function renderSavings(container, params, scheme, onApply) {
     return card;
   }));
   return tips;
+}
+
+// What the guide's cost tools (cost_savings_tips, cost_recommend_setup on the cost advisor MCP) returned, in the same
+// panel, so the panel shows what the guide says: tips checked against measured calls, and the layouts that measured
+// calls contradicted listed with why.
+const measuredVerdict = text => (/cost more/.test(text) ? 'costs-more' : /only under some/.test(text) ? 'depends'
+  : /measured to save/.test(text) ? 'saves' : 'model');
+const capital = text => text.charAt(0).toUpperCase() + text.slice(1);
+
+function adviceCard(title, verdict, lines) {
+  const [icon, label, tone] = VERDICT[verdict];
+  const card = node('article', `saving-card ${tone}`);
+  const head = node('div', 'saving-head');
+  head.append(node('strong', 'saving-title', title), node('span', `verdict-chip ${tone}`, `${icon} ${label}`));
+  card.append(head, ...lines.filter(line => line && line[1]).map(([className, text]) => node('p', className, text)));
+  return card;
+}
+
+export function renderAdvice(container, tool, payload) {
+  const cards = [];
+  if (tool === 'cost_recommend_setup') {
+    const picks = [['Best setup', payload.best], ['Best on your current pipeline', payload.best_on_current_pipeline],
+      ...(payload.runners_up ?? []).map(item => ['Also cheap', item])];
+    for (const [label, item] of picks) {
+      if (!item) continue;
+      cards.push(adviceCard(`${label}: ${item.option}`, measuredVerdict(item.measured), [
+        ['saving-figure', `${item.price_per_minute}${item.saving ? `, saves ${item.saving}` : ''}`],
+        ['saving-evidence', `${capital(item.layout)}.`],
+        ['saving-how', `${capital((item.changes ?? []).join('; '))}.`],
+      ]));
+    }
+    for (const note of payload.notes ?? []) cards.push(node('p', 'saving-note', note));
+  } else {
+    for (const tip of payload.tips ?? []) {
+      cards.push(adviceCard(capital(tip.change), measuredVerdict(tip.measured), [
+        ['saving-figure', tip.model_saving ? `Saves ${tip.model_saving}${tip.recommended ? '' : ' in the planning model'}`
+          : tip.planning_model ? `Planning model: ${tip.planning_model}` : ''],
+        ['saving-note', tip.why_now], ['saving-evidence', tip.evidence], ['saving-how', tip.how],
+      ]));
+    }
+    for (const row of payload.not_recommended ?? []) {
+      cards.push(adviceCard(`Not recommended: ${row.layout}`, /costing more/.test(row.why_not) ? 'costs-more' : 'depends', [
+        ['saving-figure', `Planning model saves ${row.model_saving}`], ['saving-evidence', row.why_not],
+      ]));
+    }
+  }
+  if (!cards.length) cards.push(node('p', 'savings-empty', 'The cost advisor found nothing that lowers the price for these inputs.'));
+  container.replaceChildren(...cards);
+  return cards.length;
 }

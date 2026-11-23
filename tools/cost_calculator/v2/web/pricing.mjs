@@ -16,6 +16,8 @@ export const LINES = Object.freeze([
   {key: 'model_input', label: 'Model input', series: 's3'},
   {key: 'model_output', label: 'Model output', series: 's4'},
 ]);
+// The TTS line's label on a model that speaks itself (nativeVoice: Azure Realtime); such a model has no STT line.
+export const VOICE_LABEL = 'Voice (model audio)';
 // What a BYOM price leaves out, wherever the page or the Agent states that price.
 export const BYOM_EXTRA = 'model on your deployment';
 
@@ -26,10 +28,11 @@ const tokens = group => Object.values(group).reduce((sum, part) => sum + part.to
 
 // The walk's inputs from the page's inputs. A prompt split by stage has one node per stage; compaction is S1 (at
 // each handoff) with a split prompt and periodic (every compactEveryTurns caller turns, 10 by default, keep 2) with one prompt.
-export function walkProfile(d) {
+export function walkProfile(d, scheme = null) {
   const p = d.params;
   const split = p.promptDesign === 'stage';
   return {
+    ...(scheme?.audioTokensPerSecond ? {modelAudioRate: scheme.audioTokensPerSecond} : {}),
     pipeline: d.mode === 'realtime' ? 'realtime' : 'cascade', minutes: p.minutes, respPerMin: d.responsesPerMinute,
     userTalk: p.callerTalkPercent / 100, agentTalk: p.agentTalkPercent / 100, stages: p.stages, nodes: split ? p.stages : 1,
     sysTokens: p.systemPromptTokens, stageTokens: p.logicTokens / p.stages, logicTokens: p.logicTokens, branchNodes: p.branchNodes, periodicEvery: p.compactEveryTurns, outTextPerResp: d.outputPerResponse,
@@ -44,11 +47,12 @@ export function walkProfile(d) {
 function breakdown(d, scheme) {
   const p = d.params, s = scheme.rates;
   const realtime = d.mode === 'realtime', byom = d.mode === 'byom';
-  const t = simulate(walkProfile(d));
+  const t = simulate(walkProfile(d, scheme));
   const K = t.kTotal;
   const b = {
     walk: t, responses: K, handoffs: t.handoffs,
-    speechIn: item(t.callerAudioTokens, realtime ? s.sttInput : s.audioInput),
+    // A model that speaks itself bills no STT; its voice is the model's audio output, in speechOut at that rate.
+    speechIn: scheme.nativeVoice ? none() : item(t.callerAudioTokens, realtime ? s.sttInput : s.audioInput),
     speechOut: item(t.agentAudioTokens, s.audioOutput),
     firstTime: {audio: none(), text: none()},
     miss: {instructions: none(), history: none(), audio: none()},
@@ -85,8 +89,8 @@ export function priceCall(params, scheme) {
   const modelOnDeployment = d.mode === 'byom';
   const values = {stt: b.speechIn.usd, tts: b.speechOut.usd,
     model_input: total(b.firstTime) + total(b.miss) + total(b.cached), model_output: total(b.output) + b.summaries.usd};
-  const lines = LINES.map(line => ({...line, value: values[line.key]}))
-    .filter(line => !(modelOnDeployment && line.key.startsWith('model_')));
+  const lines = LINES.map(line => ({...line, value: values[line.key], ...(scheme.nativeVoice && line.key === 'tts' ? {label: VOICE_LABEL} : {})}))
+    .filter(line => !(modelOnDeployment && line.key.startsWith('model_')) && !(scheme.nativeVoice && line.key === 'stt'));
   const perCall = lines.reduce((sum, line) => sum + line.value, 0);
   const audio = b.speechIn.usd + b.speechOut.usd + b.firstTime.audio.usd + b.miss.audio.usd + b.cached.audio.usd;
   const inputTokens = tokens(b.firstTime) + tokens(b.miss) + tokens(b.cached);

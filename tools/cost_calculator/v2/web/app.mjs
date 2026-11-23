@@ -10,7 +10,7 @@ import {costWorkbook, exportFileName} from './export.mjs';
 import {allNodes, buildCostTree, findNode} from './cost-tree.mjs';
 import {CONCEPT_TEXT} from './concepts.mjs';
 import {Stage, motionAllowed} from './stage.mjs';
-import {assumptions, attachTooltip, comparisonIds, rankOptions, rankingSummary, renderBill, renderCompare, renderCurve, renderSavings, renderTiles} from './result.mjs';
+import {assumptions, attachTooltip, comparisonIds, rankOptions, rankingSummary, renderAdvice, renderBill, renderCompare, renderCurve, renderSavings, renderTiles} from './result.mjs';
 import {PageTools} from './page-tools.mjs';
 import {VoiceGuide} from './voice.mjs';
 import {WireOrb} from './wireframe.mjs';
@@ -72,14 +72,14 @@ function orbAnchor() {
   return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
 }
 
-// ---- Pricing options: three standard cards and a Custom card for any model and hosting ----------------
+// ---- Pricing options: the standard cards and a Custom card for any model and hosting ----------------
 function fillCard(card, scheme) {
   const s = scheme.rates;
   const ratio = scheme.mode === 'realtime' ? s.audioInput / s.textCached : null;
   card.querySelector('.scheme-chips').textContent = `${scheme.pipeline} · ${scheme.tier}`;
   card.querySelector('.scheme-sub').textContent = scheme.subtitle;
   card.querySelector('.scheme-rates').textContent = scheme.hosting === 'byom' ? `STT ${rate(s.audioInput)} / TTS ${rate(s.audioOutput)} per 1M · model on your deployment`
-    : `${scheme.mode === 'realtime' ? `Audio in ${rate(s.audioInput)} · STT ${rate(s.sttInput)}` : `STT ${rate(s.audioInput)}`} · text ${rate(s.textInput)} / cached ${rate(s.textCached)} per 1M${ratio ? ` · ${int(ratio)}× gap` : ''}`;
+    : `${scheme.nativeVoice ? `Audio in ${rate(s.audioInput)} · voice ${rate(s.audioOutput)}` : scheme.mode === 'realtime' ? `Audio in ${rate(s.audioInput)} · STT ${rate(s.sttInput)}` : `STT ${rate(s.audioInput)}`} · text ${rate(s.textInput)} / cached ${rate(s.textCached)} per 1M${ratio ? ` · ${int(ratio)}× gap` : ''}`;
   card.querySelector('.scheme-price').textContent = `${cents(priceCall(state.params, scheme).perMinute)}/min${scheme.hosting === 'byom' ? ' + model' : ''}`;
 }
 
@@ -160,6 +160,7 @@ function syncSchemes() {
 
 // One line under the hosting buttons: who bills the model, and what the price shown includes.
 function hostingNote(scheme) {
+  if (scheme.hosting === 'managed' && scheme.nativeVoice) return `${scheme.tier}: the model hears the caller and speaks itself, so there is no STT or TTS; its voice is model audio output, on one bill. The price is the whole cost.`;
   if (scheme.hosting === 'managed') return `${scheme.tier}: model, STT and TTS on one bill; the price is the whole cost.`;
   return 'The voice agent bills only STT and TTS (BYO rate, the same for every model). Your model is extra, on your own deployment: pay-as-you-go or PTU, not priced here.';
 }
@@ -407,12 +408,28 @@ function refreshSavings() {
 function placeSavings() {
   $('savings').style.top = `${Math.ceil(document.querySelector('.site-header').getBoundingClientRect().bottom)}px`;
 }
-function openSavings(show = $('savings').hidden) {
+function openSavings(show = $('savings').hidden, focus = true) {
   if (show) placeSavings();
   $('savings').hidden = !show;
   $('savings-toggle').setAttribute('aria-expanded', String(show));
   $('nav-savings').setAttribute('aria-expanded', String(show));
-  if (show) $('savings-close').focus({preventScroll: true});
+  if (show && focus) $('savings-close').focus({preventScroll: true});
+}
+
+// The guide's cost tools return what the panel shows next, until the settings change and the page's own list
+// comes back. The panel opens without taking the focus, so a visitor who is typing keeps typing.
+function showAdvice(item) {
+  const tool = (item.name || '').match(/cost_(recommend_setup|savings_tips)$/)?.[0];
+  if (!tool || item.error) return;
+  let payload;
+  try { payload = typeof item.output === 'string' ? JSON.parse(item.output) : item.output; } catch { return; }
+  if (!payload?.ok) return;
+  later(() => {
+    renderAdvice($('savings-list'), tool, payload);
+    $('savings-context').textContent = `${tool === 'cost_recommend_setup' ? 'Best setup' : 'Ways to pay less'} from the cost advisor, for: ${settingsLine()}`;
+    openSavings(true, false);
+    fx.pulseAttribute($('savings'), 'data-flash', 1200);
+  });
 }
 
 function userChange(patch, description) {
@@ -683,7 +700,7 @@ const page = {
   },
 };
 const tools = new PageTools(page);
-const ACTION_TARGET = {start_walkthrough: 'price-now', show_cost_node: 'cost-tree', show_concept: 'stage', show_result: 'tiles', compare_options: 'compare', show_savings: 'savings-toggle'};
+const ACTION_TARGET = {start_walkthrough: 'price-now', show_cost_node: 'cost-tree', show_concept: 'stage', show_result: 'tiles', compare_options: 'compare'};
 
 function wireControls() {
   for (const button of document.querySelectorAll('[data-minutes]'))
@@ -711,7 +728,7 @@ function wireControls() {
 
 function wireGuide(config) {
   guide = new VoiceGuide({config, onTranscript: narrate, onResponseDone: finishNarration, onInterrupted: () => { narration = null; },
-    execute: (name, args) => tools.execute(name, args), onAction: name => {
+    onMcpResult: showAdvice, execute: (name, args) => tools.execute(name, args), onAction: name => {
     const target = $(ACTION_TARGET[name]);
     if (target) guide.whenSpoken(() => fx.beam(orbAnchor(), target));
   }});

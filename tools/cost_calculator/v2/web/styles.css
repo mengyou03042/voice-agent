@@ -57,7 +57,7 @@ footer { display: flex; justify-content: space-between; gap: 16px; padding: 24px
 .hero-description { color: var(--ink-2); font-size: 16px; max-width: 640px; }
 .live-dot { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--c1); box-shadow: 0 0 10px var(--c1); }
 .section-label { margin: 32px 0 12px; font: 600 11px var(--mono); letter-spacing: .12em; color: var(--muted); text-transform: uppercase; }
-.scheme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+.scheme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
 .scheme-card { position: relative; display: grid; gap: 6px; align-content: start; min-height: 168px; padding: 16px; text-align: left;
   border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(160deg, var(--surface-1), var(--surface-2));
   transition: transform .2s, border-color .2s, box-shadow .2s; }

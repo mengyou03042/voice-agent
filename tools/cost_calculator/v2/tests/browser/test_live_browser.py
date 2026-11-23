@@ -5,7 +5,8 @@
 Types four requests to the cost guide and checks what it did on the page and what it said:
 1. a walkthrough of the cost tree: start_walkthrough, every node in the returned order with show_cost_node,
    the request concept, then show_result; 2. a what-if change of call length; 3. a question about handoffs;
-4. a comparison of all options.
+4. a comparison of all options; 5. the best setup and 6. ways to pay less, which come from the cost advisor
+(MCP) and show in the ways-to-pay-less panel instead of the page's own tips.
 The transcript and function calls are written to artifacts/live_run.json.
 """
 from __future__ import annotations
@@ -97,35 +98,43 @@ def main() -> None:
         say(page, "Which option is the cheapest for that call?")
         calls_4 = page.evaluate("costDemo.calls()")[len(calls) + len(calls_2) + len(calls_3):]
 
+        done = len(calls) + len(calls_2) + len(calls_3) + len(calls_4)
+        say(page, "What's the best setup for this call?")
+        calls_best = page.evaluate("costDemo.calls()")[done:]
+        best_panel = page.locator("#savings-context").inner_text()
+        best_cards = page.locator("#savings-list .saving-card").count()
+        page.locator("#savings").screenshot(path=str(ARTIFACTS / "live_4b_best_setup.png"))
+
+        done += len(calls_best)
         say(page, "How could I make this call cheaper?")
-        calls_5 = page.evaluate("costDemo.calls()")[len(calls) + len(calls_2) + len(calls_3) + len(calls_4):]
+        calls_5 = page.evaluate("costDemo.calls()")[done:]
+        savings_panel = page.locator("#savings-context").inner_text()
+        savings_cards = page.locator("#savings-list .saving-card").count()
         transcript = page.locator("#transcript").inner_text()
-        last_reply = transcript.split("How could I make this call cheaper?")[-1]
         page.locator("#savings").screenshot(path=str(ARTIFACTS / "live_5_savings.png"))
         page.click("#close-guide")
         browser.close()
 
     strip = lambda items: [{k: v for k, v in c.items() if k != "result"} for c in items]
     report = {"walkthrough_calls": strip(calls), "what_if_calls": strip(calls_2), "handoff_calls": strip(calls_3),
-              "compare_calls": strip(calls_4), "savings_calls": strip(calls_5), "narration": narrated,
+              "compare_calls": strip(calls_4), "best_calls": strip(calls_best), "savings_calls": strip(calls_5), "narration": narrated,
               "transcript": transcript, "errors": errors}
     (ARTIFACTS / "live_run.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-    savings = next((c.get("result") or {} for c in calls_5 if c["name"] == "show_savings"), {})
-    costs_more = [tip["title"] for tip in savings.get("tips", []) if tip.get("measured") == "measured to cost more under these inputs"]
     checks = {
         "walkthrough started": bool(start),
         "no function call during the narration": names[-1] == "start_walkthrough" if names else False,
         "narration opened every part in order": narrated["shown"] == narrated["expected"],
         "request concept shown during narration": "concept:request" in narrated["shown"],
         "bill in view after the narration": bill_1,
-        "every call ok": all(c["ok"] for c in calls + calls_2 + calls_3 + calls_4 + calls_5),
+        "every call ok": all(c["ok"] for c in calls + calls_2 + calls_3 + calls_4 + calls_best + calls_5),
         "said the price on the page": price_1 in transcript_1,
         "what-if set 30 minutes": state_2["params"]["minutes"] == 30 and any(c["name"] == "set_parameters" for c in calls_2),
         "said the new price on the page": price_2 != price_1 and price_2 in transcript_2.split("What if the call lasts 30 minutes instead?")[-1],
         "handoff concept shown": any(c["name"] == "show_concept" and c["args"].get("concept") == "handoff" for c in calls_3),
         "compared options": any(c["name"] == "compare_options" for c in calls_4),
-        "savings shown": any(c["name"] == "show_savings" for c in calls_5),
-        "did not recommend a tip measured to cost more": all(title.lower() not in last_reply.lower() or "cost" in last_reply.lower() for title in costs_more),
+        "best setup from the cost advisor": best_panel.startswith("Best setup from the cost advisor") and best_cards > 0,
+        "ways to pay less from the cost advisor": savings_panel.startswith("Ways to pay less from the cost advisor") and savings_cards > 0,
+        "the page's own tips were not used": not any(c["name"] == "show_savings" for c in calls_best + calls_5),
         "no page errors": not errors,
     }
     print(json.dumps(checks, indent=1))

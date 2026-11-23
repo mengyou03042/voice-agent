@@ -120,8 +120,10 @@ export class Stage {
   new_audio(r) {
     label(this.svg, 60, 60, 'NEW AUDIO PER MINUTE', 'st-eyebrow');
     const walk = r.breakdown.walk;
-    const rows = [['s1', r.callerSeconds, walk.callerAudioTokens, r.params.inputAudioRate, 'caller', 'L'],
-      ['s2', r.agentSeconds, walk.agentAudioTokens, r.params.outputAudioRate, 'agent voice', 'M']];
+    // A model that counts its own audio tokens (Flash) hears the caller at that rate; STT beside it stays at the input rate.
+    const modelRate = r.scheme?.audioTokensPerSecond, native = r.scheme?.nativeVoice;
+    const rows = [['s1', r.callerSeconds, walk.callerAudioTokens, r.params.inputAudioRate, modelRate ? `caller (STT; the model counts ${num(modelRate)}/s)` : 'caller', 'L'],
+      ['s2', r.agentSeconds, walk.agentAudioTokens, r.params.outputAudioRate, native ? 'model voice' : 'agent voice', 'M']];
     rows.forEach(([cls, seconds, tokens, perSecond, who, symbol], row) => {
       const y = 130 + row * 150;
       const bars = [];

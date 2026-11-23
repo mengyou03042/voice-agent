@@ -13,8 +13,9 @@ const STATE_LABELS = {offline: 'OFFLINE', connecting: 'CONNECTING', listening: '
 export class VoiceGuide {
   // execute(name, args) runs one page function and returns its JSON result; onAction(name, args) lets
   // the page draw a beam; config is /api/config.
-  constructor({config, execute, onAction = () => {}, onTranscript = () => {}, onResponseDone = () => {}, onInterrupted = () => {}}) {
-    Object.assign(this, {config, execute, onAction, onTranscript, onResponseDone, onInterrupted});
+  constructor({config, execute, onAction = () => {}, onTranscript = () => {}, onResponseDone = () => {}, onInterrupted = () => {},
+    onMcpResult = () => {}}) {
+    Object.assign(this, {config, execute, onAction, onTranscript, onResponseDone, onInterrupted, onMcpResult});
     this.socket = this.session = this.audio = this.stream = this.conversation = null;
     this.ready = this.connecting = this.responding = this.speaking = this.userSpeaking = false;
     this.generation = 0;
@@ -164,6 +165,15 @@ export class VoiceGuide {
         this.caption(this.captionText);
         this.onTranscript(event.delta || '');
       }
+    } else if (event.type === 'response.output_item.added' && event.item?.type === 'mcp_call') {
+      // A cost tool runs on the server; the page waits for it (VoiceSession.mcpPending).
+      $('last-action').textContent = '▸ asking the cost advisor';
+      $('last-action').hidden = false;
+      this.actingUntil = Date.now() + 900;
+      this.status();
+    } else if (event.type === 'response.output_item.done' && event.item?.type === 'mcp_call') {
+      this.conversation?.record('mcp.result', {name: event.item.name, error: event.item.error ?? null});
+      this.onMcpResult(event.item);
     } else if (event.type === 'playback.interrupted') {
       this.onInterrupted();
       this.flush();

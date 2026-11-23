@@ -28,11 +28,17 @@ export function agentInstructions() {
     `\n\nRATES\nList prices in USD as of ${RATES_AS_OF}. The page holds the rate card; ask it, never quote rates from memory.`;
 }
 
-export function agentDefinition({model = 'gpt-realtime', voice = 'en-US-AvaNeural'} = {}) {
+// The cost advisor on the public no-auth MCP: the recommendation and the ways to pay less, with each tip checked
+// against measured calls. The page prices and compares on its own, so only these two tools are offered.
+export const COST_MCP_URL = 'https://voice-agent-noauth-mcp.lemonsky-36682081.westus2.azurecontainerapps.io/mcp/cost-advisor';
+export const COST_TOOLS = Object.freeze(['cost_recommend_setup', 'cost_savings_tips']);
+
+export function agentDefinition({model = 'gpt-realtime', voice = 'en-US-AvaNeural', mcpUrl = COST_MCP_URL} = {}) {
   return {
     kind: 'voice', model_type: 'managed', model,
     instructions: agentInstructions(),
-    tools: JSON.parse(readFileSync(new URL('tools.json', HERE), 'utf8')),
+    tools: [...JSON.parse(readFileSync(new URL('tools.json', HERE), 'utf8')),
+      ...(mcpUrl ? [{type: 'mcp', server_label: 'cost', server_url: mcpUrl, allowed_tools: [...COST_TOOLS], require_approval: 'never'}] : [])],
     parallel_tool_calls: false, store: false,
     audio: {
       input: {

@@ -91,7 +91,8 @@ export function simulate(input = {}) {
   const kTotal = Math.max(1, pyRound(p.respPerMin * p.minutes));
   const userS = p.userTalk * 60 * p.minutes, agentS = p.agentTalk * 60 * p.minutes;
   const realtime = p.pipeline === 'realtime';
-  const newAud = realtime ? userS * p.inAudioRate / kTotal : 0;
+  // The model may bill the caller's audio at its own rate (Flash: one token per 80 ms); STT beside it stays at inAudioRate.
+  const newAud = realtime ? userS * (p.modelAudioRate ?? p.inAudioRate) / kTotal : 0;
   const newTxt = p.userFraming + (realtime ? 0 : userS * p.transcriptTokPerS / kTotal);
   const perNode = p.stages / p.nodes;
   const evenNodeOf = k => Math.trunc(pyFloorDiv(Math.min(p.stages - 1, Math.floor(k * p.stages / kTotal)), perNode));

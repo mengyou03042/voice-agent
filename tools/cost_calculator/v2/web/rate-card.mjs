@@ -14,6 +14,9 @@
 export const RATES_AS_OF = '2026-10-22';
 
 export const MODELS = Object.freeze([
+  // Microsoft-hosted realtime models: managed only (no BYOM deployment of them exists).
+  {"id":"azure-realtime","name":"Azure Realtime","realtime":true,"byom":false},
+  {"id":"microsoft-realtime-flash-1","name":"Microsoft Realtime Flash","realtime":true,"byom":false},
   {"id":"gpt-realtime-2.1","name":"GPT Realtime 2.1","realtime":true},
   {"id":"gpt-realtime-2.1-mini","name":"GPT Realtime 2.1 mini","realtime":true},
   {"id":"gpt-realtime","name":"GPT Realtime 1.0 (gpt-realtime)","realtime":true},
@@ -35,7 +38,14 @@ export const MODELS = Object.freeze([
 // BYO Standard Speech Audio Input / Output Tokens: the same for every BYOM model.
 export const BYO_SPEECH = Object.freeze({audioInput: 12.5, audioOutput: 23});
 
+// azure-realtime and microsoft-realtime-flash-1: tiers from Voice Live configs/model-config.json model_tiers (pro and
+// lite) and their meters from configs/meter-config.yaml (voice-agent-orchestrator main, 2026-11-20), priced at the
+// Voice Live API Pro / Lite meters. Flash bills the caller's audio at one token per 80 ms (12.5 a second) and speaks
+// with an Azure HD voice (Standard Speech output), with STT beside it. Azure Realtime speaks itself: no STT is
+// billed and the agent's voice is LLM Audio Output (nativeVoice).
 const MANAGED = [
+  {"model":"azure-realtime","mode":"realtime","tier":"Pro tier","nativeVoice":true,"rates":{"textInput":4,"textCached":0.4,"textOutput":16,"audioInput":32,"audioOutput":64,"sttInput":0,"audioCached":0.4}},
+  {"model":"microsoft-realtime-flash-1","mode":"realtime","tier":"Lite tier","audioTokensPerSecond":12.5,"rates":{"textInput":0.11,"textCached":0.04,"textOutput":0.44,"audioInput":4,"audioOutput":25,"sttInput":15,"audioCached":0.04}},
   {"model":"gpt-realtime-2.1","mode":"realtime","tier":"Pro tier","rates":{"textInput":4,"textCached":0.4,"textOutput":24,"audioInput":32,"audioOutput":31,"sttInput":17,"audioCached":0.4}},
   {"model":"gpt-realtime-2.1-mini","mode":"realtime","tier":"Standard tier","rates":{"textInput":0.66,"textCached":0.33,"textOutput":2.64,"audioInput":11,"audioOutput":26,"sttInput":15,"audioCached":0.33}},
   {"model":"gpt-realtime","mode":"realtime","tier":"Pro tier","rates":{"textInput":4,"textCached":0.4,"textOutput":16,"audioInput":32,"audioOutput":31,"sttInput":17,"audioCached":0.4}},
@@ -54,7 +64,7 @@ const MANAGED = [
 // Each model's managed option (where the voice agent hosts it), then its BYOM option.
 export const COMBOS = Object.freeze(MODELS.flatMap(model => [
   ...MANAGED.filter(combo => combo.model === model.id).map(combo => ({...combo, hosting: 'managed'})),
-  {model: model.id, hosting: 'byom', mode: 'byom', tier: 'BYO speech', rates: BYO_SPEECH},
+  ...(model.byom === false ? [] : [{model: model.id, hosting: 'byom', mode: 'byom', tier: 'BYO speech', rates: BYO_SPEECH}]),
 ]));
 
 function toScheme(combo) {
@@ -64,14 +74,18 @@ function toScheme(combo) {
     id: `${combo.model}@${combo.hosting}`, model: combo.model, hosting: combo.hosting, mode: combo.mode, tier: combo.tier,
     name: model.name + (byom ? ', BYOM' : ''),
     subtitle: byom ? 'STT · TTS (Azure HD voice) · model billed on your deployment'
+      : combo.nativeVoice ? 'Native audio in · the model speaks itself (native voice)'
       : combo.mode === 'realtime' ? 'Native audio in · STT for barge-in · TTS (Azure HD voice)' : 'STT · TTS (Azure HD voice)',
-    pipeline: model.realtime ? 'Hybrid' : 'Cascade', rates: combo.rates,
+    pipeline: combo.nativeVoice ? 'Native' : model.realtime ? 'Hybrid' : 'Cascade', rates: combo.rates,
+    // The model's audio input tokens per second, when not the page's input; and whether the model speaks itself.
+    audioTokensPerSecond: combo.audioTokensPerSecond ?? null, nativeVoice: Boolean(combo.nativeVoice),
   });
 }
 
 export const SCHEMES = Object.freeze(COMBOS.map(toScheme));
-// The three standard options on the page; every other combination is under Custom.
-export const PRESETS = Object.freeze(['gpt-realtime-2.1@managed', 'gpt-realtime-2.1-mini@managed', 'gpt-6-luna@managed']);
+// The standard options on the page, Azure Realtime first (the page opens on it); every other combination is under Custom.
+export const PRESETS = Object.freeze(['azure-realtime@managed', 'microsoft-realtime-flash-1@managed', 'gpt-realtime-2.1@managed',
+  'gpt-realtime-2.1-mini@managed', 'gpt-6-luna@managed']);
 // Short option names, kept for the tests and the Agent.
 const ALIASES = Object.freeze({
   'rt21-pro': 'gpt-realtime-2.1@managed', 'rt21-mini-std': 'gpt-realtime-2.1-mini@managed', 'pro-speech': 'gpt-4.1@managed',

@@ -9,11 +9,11 @@ import {format} from './steps.mjs';
 import {buildCostTree, findNode, narrationOrder, spokenCpm} from './cost-tree.mjs';
 import {CONCEPT_TEXT} from './concepts.mjs';
 import {comparisonIds} from './result.mjs';
-import {savingsTips} from './savings.mjs';
+import {settingsQuery} from './share.mjs';
 
 const {usd, pct} = format;
 export const PAGE_TOOLS = new Set(['get_calculator_state', 'set_parameters', 'start_walkthrough', 'show_cost_node', 'show_concept',
-  'show_result', 'compare_options', 'show_savings']);
+  'show_result', 'compare_options']);
 
 // Agent argument -> model parameter. The option is chosen with model and hosting.
 export const ARGUMENTS = Object.freeze({
@@ -78,6 +78,7 @@ export class PageTools {
     const {option, params, walkthrough} = this.page.state();
     const {scheme, result, tree} = this.model(option, params);
     return {ok: true, option: {model: scheme.model, hosting: scheme.hosting, name: scheme.name, tier: scheme.tier},
+      share_link: `?${settingsQuery(option, params)}`,
       standard_options: PRESETS.map(id => schemeById(id).name),
       models: MODELS.map(model => ({id: model.id, name: model.name, hostings: hostingsFor(model.id)})),
       inputs: inputsFor(params, option), ranges: RANGES, price: price(result), cached_input_share: pct(result.cacheShare),
@@ -109,7 +110,8 @@ export class PageTools {
     const {scheme, result} = this.model(option, next);
     const changed = Object.keys(args);
     this.page.apply(option, next, changed);
-    return {ok: true, changed, option: `${scheme.name} (${scheme.tier})`, inputs: inputsFor(next, option), price: price(result),
+    return {ok: true, changed, option: `${scheme.name} (${scheme.tier})`, inputs: inputsFor(next, option),
+      share_link: `?${settingsQuery(option, next)}`, price: price(result),
       previous_price: price(before),
       change: `${result.perMinute >= before.perMinute ? 'up' : 'down'} from ${spokenCpm(before.perMinute * 100)} to ${spokenCpm(result.perMinute * 100)}`};
   }
@@ -166,17 +168,6 @@ export class PageTools {
     return {ok: true, current: option, cheapest_first: ranking};
   }
 
-  show_savings() {
-    const {option, params} = this.page.state();
-    const {result} = this.model(option, params);
-    const tips = savingsTips(params, schemeById(option));
-    this.page.savings();
-    const MEANING = {saves: 'measured to save under these inputs', depends: 'measured to save only under some conditions',
-      'costs-more': 'measured to cost more under these inputs', model: 'not measured; planning model only'};
-    return {ok: true, price_per_minute: spokenCpm(result.perMinute * 100) + plus(result),
-      tips: tips.map(tip => ({title: tip.title, already_on: tip.active, model_saving: `${spokenCpm(-tip.delta)} (${pct(-tip.share, 1)})`,
-        measured: MEANING[tip.verdict], evidence: tip.evidence, how: tip.how, ...(tip.note ? {note: tip.note} : {})}))};
-  }
 }
 
 export {DEFAULTS};

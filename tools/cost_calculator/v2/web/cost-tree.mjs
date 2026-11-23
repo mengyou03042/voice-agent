@@ -9,6 +9,7 @@
 // worked out for the whole call, then divided by its length. A node is the sum of its cost children (op 'sum'),
 // its factors multiplied by a constant (op 'product'), or a stated formula (op 'formula'). The page draws this
 // tree and the Agent's functions read it, so both use the same numbers.
+import {VOICE_LABEL} from './pricing.mjs';
 import {RATES_AS_OF} from './rate-card.mjs';
 import {PROFILE, SUMMARY_USD} from './response-model.mjs';
 import {format} from './steps.mjs';
@@ -71,6 +72,8 @@ export function buildCostTree(q, scheme) {
       explain: 'One second of audio is billed as this many tokens.'})],
     {formula: '60 s × talk share × tokens per second', visual: 'new_audio', explain: 'Talk time is a share of the call, so it grows with call length.'});
   const callerAudio = () => talk('Caller', p.callerTalkPercent, p.inputAudioRate, 'caller');
+  // The caller's audio as the model bills it: some models count their own tokens per second (Flash: one per 80 ms).
+  const modelAudio = () => (scheme.audioTokensPerSecond ? talk('Caller', p.callerTalkPercent, scheme.audioTokensPerSecond, 'caller') : callerAudio());
   const system = () => leaf('system_prompt', 'input', 'System prompt', p.systemPromptTokens, `${int(p.systemPromptTokens)} tokens`, {visual: 'handoff',
     explain: 'Shared rules sent first with every response in every stage: persona, tone, consent wording, safety rules and stage routing. It never changes, so it stays cached across a handoff.'});
   const planResponses = split ? q.plan.reduce((total, node) => total + node.length, 0) : 0;
@@ -110,7 +113,7 @@ export function buildCostTree(q, scheme) {
   // ---- Cached input: the start of each request that matches the previous one, from the walk ----
   // [label, diagram, what sets its size]. Audio history sits under Audio, so it is just "History" there.
   const WHAT = {instructions: ['Instructions', split ? 'handoff' : 'instructions', instructionsPerResponse],
-    history: ['History', 'text_history', perTurn], audio: ['History', 'audio_reread', callerAudio]};
+    history: ['History', 'text_history', perTurn], audio: ['History', 'audio_reread', modelAudio]};
   const walked = (key, label, tokens, visual, explain, drivers) => ({key, kind: 'tokens', label, value: tokens / T, display: tpm(tokens / T),
     op: 'formula', formula: 'tokens in the call, added up response by response ÷ call length', numbers: `${int(tokens)} ÷ ${num(T)} min`,
     visual, explain, children: drivers});
@@ -131,8 +134,8 @@ export function buildCostTree(q, scheme) {
     const m = b.missBy;
     const rows = audio ? [
       ['rounding', 'Cache rounding', m.roundingAudio, 'audio_reread', `${ROUNDING} In a realtime call that tail is the caller audio of the previous turn.`, []],
-      ['handoff', 'After handoff', m.handoffAudio, 'handoff', 'Earlier caller audio behind a handoff: the new node changes the start of the request, so it is billed at the full rate once.', [callerAudio()]],
-      ['compaction', 'After compaction', m.compactionAudio, 'compaction', 'Caller audio kept after a compaction: the history is rewritten, so it is billed at the full rate once.', [callerAudio()]],
+      ['handoff', 'After handoff', m.handoffAudio, 'handoff', 'Earlier caller audio behind a handoff: the new node changes the start of the request, so it is billed at the full rate once.', [modelAudio()]],
+      ['compaction', 'After compaction', m.compactionAudio, 'compaction', 'Caller audio kept after a compaction: the history is rewritten, so it is billed at the full rate once.', [modelAudio()]],
     ] : [
       ['instructions', 'Instructions', m.instructions, split ? 'handoff' : 'instructions', split
         ? 'Sent for the first time: the whole prompt in the first request, and the logic of each node when that node takes over. After that it is cached.'
@@ -152,14 +155,19 @@ export function buildCostTree(q, scheme) {
 
   // ---- The four lines ----
   const lines = [];
-  lines.push(product('stt', 'cost', 'STT', CENTS, [callerAudio(), perMillion('stt_rate', 'STT rate', b.speechIn.rate, {visual: 'new_audio'})],
+  // A model that speaks itself (nativeVoice) bills no STT; the page has no STT line for it.
+  if (!scheme.nativeVoice) lines.push(product('stt', 'cost', 'STT', CENTS, [callerAudio(), perMillion('stt_rate', 'STT rate', b.speechIn.rate, {visual: 'new_audio'})],
     {formula: 'caller audio per minute × STT rate', visual: 'new_audio', explain: byom
       ? 'A BYOM session always transcribes the caller, on realtime models too: STT at the BYO rate.'
       : realtime ? "A realtime model hears the caller's audio itself (model input), and STT runs beside it so barge-in works: the caller can talk over the agent and stop it at once. Billed at the tier's STT rate."
       : 'STT turns each second of the caller into text once.'}));
-  lines.push(product('tts', 'cost', 'TTS', CENTS,
-    [talk('Agent', p.agentTalkPercent, p.outputAudioRate, 'agent'), perMillion('voice_rate', 'TTS rate', s.audioOutput, {visual: 'new_audio'})],
-    {formula: 'agent audio per minute × TTS rate', visual: 'new_audio', explain: 'TTS reads every reply aloud with an Azure HD voice.'}));
+  lines.push(scheme.nativeVoice
+    ? product('tts', 'cost', VOICE_LABEL, CENTS,
+      [talk('Agent', p.agentTalkPercent, p.outputAudioRate, 'agent'), perMillion('voice_rate', 'Model audio output rate', s.audioOutput, {visual: 'new_audio'})],
+      {formula: 'agent audio per minute × model audio output rate', visual: 'new_audio', explain: 'The model speaks every reply itself (native voice), billed as model audio output. There is no separate TTS or STT.'})
+    : product('tts', 'cost', 'TTS', CENTS,
+      [talk('Agent', p.agentTalkPercent, p.outputAudioRate, 'agent'), perMillion('voice_rate', 'TTS rate', s.audioOutput, {visual: 'new_audio'})],
+      {formula: 'agent audio per minute × TTS rate', visual: 'new_audio', explain: 'TTS reads every reply aloud with an Azure HD voice.'}));
 
   const summaries = b.summaries.count > 0 ? leaf('summaries', 'cost', 'Compaction', b.summaries.usd / T * 100, cpm(b.summaries.usd / T * 100), {
     op: 'formula', formula: 'summaries per call × cost of one summary ÷ call length', numbers: `${int(b.summaries.count)} × ${usd(SUMMARY_USD, 5)} ÷ ${num(T)} min`,
@@ -170,7 +178,7 @@ export function buildCostTree(q, scheme) {
     // order: instructions, history, then the new audio (its transcript on Cascade). Text models take no audio, so on Cascade the parts sit
     // directly under uncached and cached.
     const newAudio = b.firstTime.audio.tokens > 0 ? product('new', 'cost', 'New audio', CENTS,
-      [callerAudio(), perMillion('input_rate', 'Audio input rate', s.audioInput, {visual: 'new_audio'})],
+      [modelAudio(), perMillion('input_rate', 'Audio input rate', s.audioInput, {visual: 'new_audio'})],
       {formula: 'caller audio × audio input rate', visual: 'new_audio', explain: "What the caller has just said. A realtime model hears it as audio, so it is billed at the audio input rate. Nothing sent before matches it, so it is never cached."}) : null;
     const newText = b.firstTime.text.tokens > 0 ? product('new', 'cost', realtime ? 'New audio framing' : 'New transcript', CENTS, [
       walked('tokens', realtime ? 'Framing tokens' : 'Transcript tokens', b.firstTime.text.tokens, 'new_audio', realtime

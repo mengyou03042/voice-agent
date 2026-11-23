@@ -39,7 +39,22 @@ def main() -> None:
         state = lambda: page.evaluate("costDemo.state()")
         price = lambda: page.locator("#price-now").inner_text()
 
-        assert page.locator(".scheme-card").count() == 4  # three standard options and Custom
+        # Five standard options and Custom; the page opens on Azure Realtime, the first.
+        cards = page.locator(".scheme-card")
+        assert cards.count() == 6
+        assert cards.first.get_attribute("data-scheme") == "azure-realtime@managed"
+        assert cards.nth(1).get_attribute("data-scheme") == "microsoft-realtime-flash-1@managed"
+        assert state()["option"] == "azure-realtime@managed", state()
+        assert price() == "6.66 ¢/min"
+        # Azure Realtime speaks itself: no STT line, and its voice is the model's audio output.
+        assert row("price.stt").count() == 0
+        assert "Voice (model audio)" in row("price.tts").inner_text()
+        page.screenshot(path=str(ARTIFACTS / "00_default_azure_realtime.png"))
+
+        # The rest of the walk-through is on GPT Realtime 2.1, opened from a link.
+        page.goto(f"{args.url}/?option=gpt-realtime-2.1%40managed")
+        page.wait_for_selector('.tree-row[data-node="price"]')
+        assert state()["option"] == "gpt-realtime-2.1@managed", state()
         assert "6.15" in page.locator("#preview-price").inner_text()
         assert price() == "6.15 ¢/min"
         # One algorithm and no play buttons: a big COST readout, the tree and the bill are live from the start.
@@ -188,13 +203,14 @@ def main() -> None:
         assert result["ok"] and result["per_minute"] == byom_price, result
         ranking = call("compare_options")
         assert ranking["ok"] and 4 <= len(ranking["cheapest_first"]) <= 7, ranking
-        savings = call("show_savings")
-        assert savings["ok"] and savings["tips"] == [], savings  # on BYOM nothing on the page moves the voice-agent cost
+        # The page has no savings function any more: the Agent's cost tools (cost_savings_tips) fill the panel.
+        removed = call("show_savings")
+        assert not removed["ok"] and removed["error"]["code"] == "unsupported_tool", removed
         assert call("set_parameters", {"hosting": "managed"})["ok"]
-        savings = call("show_savings")
-        assert savings["ok"] and savings["tips"], savings
-        page.wait_for_timeout(1500)
-        assert page.locator("#savings").is_visible()
+        page.wait_for_timeout(600)
+        page.click("#savings-toggle")
+        page.wait_for_timeout(600)
+        assert page.locator("#savings").is_visible() and page.locator("#savings-list > *").count() > 0
         page.keyboard.press("Escape")
         page.screenshot(path=str(ARTIFACTS / "05_full_page.png"), full_page=True)
         # The address bar always holds the settings, so it can be shared as it is.

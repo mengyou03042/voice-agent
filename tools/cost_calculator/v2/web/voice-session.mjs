@@ -1,5 +1,7 @@
 // Copied from samples/ignite_planner/web/voice-session.mjs (voice-agent 885c1e6); keep the two copies in step.
-// Differs only in GREETING and the maxToolRounds option (a walkthrough needs 12 page actions in one turn).
+// Differs only in GREETING and the maxToolRounds option (a walkthrough needs 12 page actions in one turn). Also has
+// the planner's MCP and handoff waits (mcpPending, handoffPending, allowedFunctions): the cost advisor calls
+// server-side MCP tools, and the page must not ask for a response while one runs.
 // Browser port of the Python prototype's voice_session.py: client-owned turn scheduling with immediate,
 // position-accurate barge-in. The page now owns the Foundry socket, playback and every tool,
 // so the playback acknowledgement that crossed the Python bridge is a synchronous call here.
@@ -30,6 +32,18 @@ export class VoiceSession {
     this.cancelSent = false;
     this.cancelled = new Set();
     this.cancelRequests = new Set();
+    this.handoffPending = false;
+    this.mcpPending = new Set();
+    this.allowedFunctions = null;
+  }
+
+  syncTools(session) {
+    if (!session || !Array.isArray(session.tools)) return;
+    this.allowedFunctions = new Set(
+      session.tools
+        .filter(tool => tool && tool.type === 'function' && typeof tool.name === 'string' && tool.name !== 'handoff')
+        .map(tool => tool.name),
+    );
   }
 
   expired() {
@@ -46,7 +60,7 @@ export class VoiceSession {
   }
 
   advance() {
-    if (this.responding || this.speaking) return;
+    if (this.responding || this.speaking || this.handoffPending || this.mcpPending.size > 0) return;
     if (this.pendingTurns) {
       this.pendingTurns--;
       this.continuation = false;
@@ -123,6 +137,7 @@ export class VoiceSession {
         const session = event.session || {};
         const vad = session.audio?.input?.turn_detection ?? session.turn_detection;
         if (!vad || vad.create_response !== false) throw new Error('Client-owned turn scheduling was not configured.');
+        this.syncTools(session);
         this.ready = true;
         this.emit(event);
         this.emit({type: 'session.ready'});
@@ -130,6 +145,28 @@ export class VoiceSession {
         return;
       }
       if (kind === 'error') throw new Error(`Azure rejected the voice session: ${event.error?.message || 'unknown error'}`);
+      this.emit(event);
+      return;
+    }
+    if (kind === 'session.updated') {
+      this.syncTools(event.session || {});
+      this.emit(event);
+      return;
+    } else if (kind === 'session.handoff.started') {
+      this.handoffPending = true;
+      this.emit(event);
+      return;
+    } else if (kind === 'session.handoff.completed' || kind === 'session.handoff.aborted') {
+      this.handoffPending = false;
+      this.emit(event);
+      if (kind === 'session.handoff.aborted') this.advance();
+      return;
+    } else if (kind === 'response.mcp_call.in_progress') {
+      if (event.item_id) this.mcpPending.add(event.item_id);
+      this.emit(event);
+      return;
+    } else if (kind === 'response.mcp_call.completed' || kind === 'response.mcp_call.failed') {
+      if (event.item_id) this.mcpPending.delete(event.item_id);
       this.emit(event);
       return;
     }
@@ -168,7 +205,9 @@ export class VoiceSession {
   responseDone(event) {
     const response = event.response || {};
     if (this.cancelled.has(response.id) && !this.cancelPending) return;
-    const calls = (response.output || []).filter(item => item.type === 'function_call');
+    const isClientCall = item => item.type === 'function_call' && item.name !== 'handoff' &&
+      (!this.allowedFunctions || this.allowedFunctions.has(item.name));
+    const calls = (response.output || []).filter(isClientCall);
     if (this.cancelPending) {
       if (response.status === 'completed') {
         for (const call of calls) this.toolOutput(call, {ok: false, error: {

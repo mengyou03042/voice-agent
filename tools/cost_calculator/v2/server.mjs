@@ -7,7 +7,7 @@ import {existsSync, readFileSync} from 'node:fs';
 import {createServer} from 'node:http';
 import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
-import {AzureCliToken, agentDefinition, agentName, ensureAgent, validateEndpoint, websocketUrl} from './agent/agent.mjs';
+import {AzureCliToken, COST_MCP_URL, agentDefinition, agentName, ensureAgent, validateEndpoint, websocketUrl} from './agent/agent.mjs';
 
 const HERE = new URL('./', import.meta.url);
 const TYPES = {'.html': 'text/html; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -28,6 +28,7 @@ export function settingsFromEnv(env = process.env, preview = false) {
     endpoint: endpoint && validateEndpoint(endpoint),
     model: env.AZURE_VOICE_AGENTS_MODEL || 'gpt-realtime',
     voice: env.AZURE_VOICE_AGENTS_VOICE || 'en-US-AvaNeural',
+    mcpUrl: (env.COST_ADVISOR_MCP_URL || '').trim() || COST_MCP_URL,
   };
 }
 

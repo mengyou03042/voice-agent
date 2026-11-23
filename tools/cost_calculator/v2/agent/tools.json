@@ -2,7 +2,7 @@
   {
     "type": "function",
     "name": "get_calculator_state",
-    "description": "Read the page: the current pricing option, the models with the hostings each supports, every input with its value and range, the price per minute and the cost lines. Call it before answering questions about what is selected.",
+    "description": "Read the page: the current pricing option, the models with the hostings each supports, every input with its value and range, the price per minute and the cost lines. Call it before answering questions about what is selected. Also returns share_link, the page settings to pass whole to the cost tools (cost_recommend_setup, cost_savings_tips).",
     "parameters": {
       "type": "object",
       "properties": {},
@@ -12,13 +12,15 @@
   {
     "type": "function",
     "name": "set_parameters",
-    "description": "Change one or more inputs on the page; only the given fields change. Choose the pricing option with model and hosting (managed = the voice agent hosts the model and bills it at the tier rate, with STT and TTS; byom = the customer's own Foundry deployment: the voice agent bills only STT and TTS, and the model is billed on that deployment, pay-as-you-go or PTU, and is not priced here); the three standard options are gpt-realtime-2.1, gpt-realtime-2.1-mini and gpt-6-luna, managed. The page animates each changed control. Prices are worked out response by response, calibrated on the team's live calls. Returns the validated inputs and the new and previous price per minute, or ok:false with the reason and no change.",
+    "description": "Change one or more inputs on the page; only the given fields change. Choose the pricing option with model and hosting (managed = the voice agent hosts the model and bills it at the tier rate, with STT and TTS; byom = the customer's own Foundry deployment: the voice agent bills only STT and TTS, and the model is billed on that deployment, pay-as-you-go or PTU, and is not priced here); the five standard options are azure-realtime, microsoft-realtime-flash-1, gpt-realtime-2.1, gpt-realtime-2.1-mini and gpt-6-luna, managed (azure-realtime and microsoft-realtime-flash-1 are managed only). The page animates each changed control. Prices are worked out response by response, calibrated on the team's live calls. Returns the validated inputs and the new and previous price per minute, or ok:false with the reason and no change.",
     "parameters": {
       "type": "object",
       "properties": {
         "model": {
           "type": "string",
           "enum": [
+            "azure-realtime",
+            "microsoft-realtime-flash-1",
             "gpt-realtime-2.1",
             "gpt-realtime-2.1-mini",
             "gpt-realtime",
@@ -195,7 +197,7 @@
   {
     "type": "function",
     "name": "compare_options",
-    "description": "Show the price per minute of several pricing options under the current inputs, cheapest first, with the current option highlighted. Omit option_ids to compare the three standard options, the current one and the three cheapest of all combinations.",
+    "description": "Show the price per minute of several pricing options under the current inputs, cheapest first, with the current option highlighted. Omit option_ids to compare the standard options, the current one and the three cheapest of all combinations.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -211,16 +213,6 @@
           }
         }
       },
-      "additionalProperties": false
-    }
-  },
-  {
-    "type": "function",
-    "name": "show_savings",
-    "description": "Open the ways-to-pay-less panel on the right edge of the page, worked out for the current inputs. Returns each tip with the saving the planning model calculates, what the team measured on real calls about it, and how to apply it.",
-    "parameters": {
-      "type": "object",
-      "properties": {},
       "additionalProperties": false
     }
   }

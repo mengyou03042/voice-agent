@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {DEFAULTS} from '../web/inputs.mjs';
 import {ARGUMENTS, PAGE_TOOLS, PageTools} from '../web/page-tools.mjs';
+import {settingsFromQuery} from '../web/share.mjs';
 import {MODELS} from '../web/rate-card.mjs';
 
 const schemas = JSON.parse(readFileSync(new URL('../agent/tools.json', import.meta.url), 'utf8'));
@@ -101,8 +102,8 @@ test('the walkthrough starts with the price per minute and every node is explain
   assert.equal(tools.execute('show_concept', {concept: 'magic'}).error.code, 'unknown_concept');
 });
 
-test('show_result, compare_options and show_savings return what the page shows', () => {
-  const {page, tools} = fakePage();
+test('show_result and compare_options return what the page shows', () => {
+  const {tools} = fakePage();
   const result = tools.execute('show_result', {});
   assert.equal(result.per_call, '$0.9225');
   assert.equal('formula' in result, false);
@@ -110,11 +111,18 @@ test('show_result, compare_options and show_savings return what the page shows',
   const compared = tools.execute('compare_options', {});
   assert.ok(compared.cheapest_first.length >= 4 && compared.cheapest_first.length <= 7, compared.cheapest_first.length);
   assert.equal(tools.execute('compare_options', {option_ids: ['gpt-realtime-2.1@managed', 'nope']}).ok, false);
-  const savings = tools.execute('show_savings', {});
-  assert.ok(!savings.tips.some(tip => tip.title === 'Split the prompt by stage (handoff)'), 'splitting a 4k prompt costs more');
-  const periodic = savings.tips.find(tip => tip.title.startsWith('Compact the history every 10'));
-  assert.equal(periodic.measured, 'measured to cost more under these inputs');
-  assert.equal(savings.tips[0].title, 'Compact the history every 10 caller turns, keeping the last 2');
-  assert.ok(savings.tips.some(tip => tip.title === 'Call tools (MCP) half as often'));
-  assert.deepEqual(page.calls.at(-1), ['savings']);
+});
+
+test('ways to pay less come from the cost advisor: the page passes its settings as a share link', () => {
+  const {tools} = fakePage();
+  // The page's own tips list changes measured to cost more first, so the guide does not get them.
+  assert.equal(tools.execute('show_savings', {}).error.code, 'unsupported_tool');
+  const state = tools.execute('get_calculator_state', {});
+  const back = settingsFromQuery(state.share_link, 'gpt-6-luna@managed');
+  assert.deepEqual(back.ignored, []);
+  assert.equal(back.option, `${state.inputs.model}@${state.inputs.hosting}`);
+  const changed = tools.execute('set_parameters', {minutes: 30, compaction: true});
+  const after = settingsFromQuery(changed.share_link, 'gpt-6-luna@managed');
+  assert.equal(after.params.minutes, 30);
+  assert.equal(after.params.summarise, true);
 });
