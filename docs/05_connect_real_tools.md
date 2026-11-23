@@ -101,7 +101,7 @@ fields, with `ok` and `error` on every result so the Agent can report failures.
 | `zendesk_add_comment` | Zendesk tickets | `ticket_id`, `comment`, `public` | `ticket_id`, `status` |
 | `zendesk_create_ticket` | Zendesk tickets | `subject`, `description`, `requester_name`, `requester_email`, `priority` | `ticket_id`, `status`, `priority` |
 | `twilio_send_message` | Twilio SMS | `to` (E.164), `body` (300 characters or fewer) | `message_sid`, `status` |
-| `order_lookup`, `hotel_*`, `quiz_record_result`, `training_record_session`, `research_save_interview_notes` | Your order, reservation, learning, or research system | See the mock schemas | See the mock schemas |
+| `order_lookup`, `product_search`, `hotel_*`, `restaurant_*`, `quiz_record_result`, `training_record_session`, `research_save_interview_notes` | Your order, product catalog, reservation, learning, or research system | See the mock schemas | See the mock schemas |
 
 The exact JSON Schemas are the mock server's `tools/list` response at
 `https://voice-agent-noauth-mcp.lemonsky-36682081.westus2.azurecontainerapps.io/mcp/mock-tool-call`.

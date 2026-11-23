@@ -24,13 +24,13 @@ for (const width of [1440, 390, 320]) {
     const english = page.locator('details[data-locale-group="en-*"]');
     await expect(hindi).toHaveJSProperty("open", true);
     await expect(english).toHaveJSProperty("open", true);
-    await expect(page.locator(".template-choice:visible")).toHaveCount(37);
+    await expect(page.locator(".template-choice:visible")).toHaveCount(45);
     await expect(hindi.locator(".template-choice-locale")).toHaveText(["hi-IN", "hi-IN"]);
     const summary = hindi.locator(":scope > summary");
     await summary.focus();
     await page.keyboard.press("Enter");
     await expect(hindi).toHaveJSProperty("open", false);
-    await expect(page.locator(".template-choice:visible")).toHaveCount(35);
+    await expect(page.locator(".template-choice:visible")).toHaveCount(43);
     await page.keyboard.press("Space");
     await expect(hindi).toHaveJSProperty("open", true);
     await english.locator(":scope > summary").click();
@@ -39,7 +39,7 @@ for (const width of [1440, 390, 320]) {
     await english.locator(":scope > summary").click();
     await expect(english).toHaveJSProperty("open", true);
     await expect(hindi).toHaveJSProperty("open", true);
-    await expect(page.locator(".template-choice:visible")).toHaveCount(37);
+    await expect(page.locator(".template-choice:visible")).toHaveCount(45);
     const bounds = await grouping.boundingBox();
     const shell = page.locator("#template-picker .template-picker-shell");
     const shellBounds = await shell.boundingBox();
@@ -51,7 +51,7 @@ for (const width of [1440, 390, 320]) {
 test("Template accordion search opens matching categories and clearing it restores the prior state", async ({ page }) => {
   await page.locator('details[data-locale-group="en-*"] > summary').click();
   const search = page.getByRole("searchbox", { name: "Search templates" });
-  for (const [query, count] of [["Hindi", 2], ["hi-*", 2], ["English", 35], ["en-*", 35], ["en-IN", 2], ["en-US", 33]]) {
+  for (const [query, count] of [["Hindi", 2], ["hi-*", 2], ["English", 43], ["en-*", 43], ["en-IN", 2], ["en-US", 41]]) {
     await search.fill(query);
     await expect(page.locator(".template-choice:visible")).toHaveCount(count);
   }
@@ -78,9 +78,9 @@ test("Template accordion remembers independent expansion choices for locale and 
   await expect(page.locator("[data-domain-group] h3").nth(1)).toHaveText("Financial services");
   const remaining = (await page.locator("[data-domain-group] h3").allTextContents()).slice(2);
   expect(remaining).toEqual([...remaining].sort((left, right) => left.localeCompare(right)));
-  await expect(page.locator(".template-choice:visible")).toHaveCount(37);
+  await expect(page.locator(".template-choice:visible")).toHaveCount(45);
   const finance = page.locator('details[data-domain-group="Financial services"]');
-  await expect(finance.locator(".template-choice")).toHaveCount(5);
+  await expect(finance.locator(".template-choice")).toHaveCount(6);
   await finance.locator(":scope > summary").click();
   await expect(finance).toHaveJSProperty("open", false);
   await expect(page.locator('details[data-domain-group="Customer support"]')).toHaveJSProperty("open", true);
@@ -157,5 +157,5 @@ test("Template accordion reload removes missing categories without hiding the re
   await expect(page.locator("details[data-locale-group]")).toHaveCount(1);
   const english = page.locator('details[data-locale-group="en-*"]');
   await expandTemplateGroup(english);
-  await expect(page.locator(".template-choice:visible")).toHaveCount(35);
+  await expect(page.locator(".template-choice:visible")).toHaveCount(43);
 });

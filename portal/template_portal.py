@@ -348,8 +348,9 @@ TOOL_GROUPS = (
         connectable=False,
         note=WORK_IQ_NOTE,
     ),
+    ToolGroup("catalog", "Product catalog", re.compile(r"^mock_tool_call_(product|cart)_")),
     ToolGroup("orders", "Order system", re.compile(r"^mock_tool_call_order_")),
-    ToolGroup("reservations", "Reservation system", re.compile(r"^mock_tool_call_hotel_")),
+    ToolGroup("reservations", "Reservation system", re.compile(r"^mock_tool_call_(hotel|restaurant)_")),
     ToolGroup("records", "Learning and research records", re.compile(r"^mock_tool_call_(quiz|training|research)_")),
 )
 OTHER_TOOL_GROUP = ToolGroup("other", "Other tools", re.compile(""))
