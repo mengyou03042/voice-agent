@@ -177,7 +177,6 @@ curl -fsS http://127.0.0.1:9527/healthz
 | Run the Finance CLI workflow | [`docs/README.md`](docs/README.md) | Ordered subscription, customer-owned MCP, CLI sample, and debugging guides |
 | Work on or deploy the Finance MCP (optional; not needed for the Portal or its Templates) | [`shared_mcp/README.md`](shared_mcp/README.md) | Customer-owned MCP source for the Finance CLI samples, local Dev Tunnel hosting, and Azure Container Apps deployment |
 | Create an IQ + voice + avatar Agent | [`samples/create_agent_with_iq_avatar_voice/README.md`](samples/create_agent_with_iq_avatar_voice/README.md) | Portal-first Andrew Dragon HD, Harry Business, Knowledge IQ, and optional Python creation |
-| Inspect SDK package information | [`dist/README.md`](dist/README.md) | Public Python, JavaScript, and .NET SDK dependencies and a historical .NET preview build record |
 | Use the coding-agent workflows | [`skills/`](skills/) | Voice Agent creation, handoff graph design with command-line publish, test, and one-change iteration ([`voice-agent-making`](skills/voice-agent-making/SKILL.md)), IQ/Toolbox provisioning, and local-session debugging |
 
 ### Instructions for coding agents
@@ -249,7 +248,6 @@ Bash/Unix tooling or equivalent PowerShell commands.
 | [`docs/`](docs/) | Finance architecture, setup, operation, and debugging guides |
 | [`shared_mcp/`](shared_mcp/) | Optional customer-owned MCP for the Finance CLI samples: source, native runtime, container, IaC, and deployment scripts. The Portal does not use it |
 | [`scripts/`](scripts/) | Finance CLI setup and authentication helpers |
-| [`dist/`](dist/) | Public SDK package information and historical preview build records |
 | [`skills/`](skills/) | Reusable coding-agent workflows |
 | [`tests/`](tests/) | Offline contracts for the common Projects SDK samples |
 
