@@ -7,9 +7,9 @@ Use the requirements and `package.json` files under `samples/` to install the pu
 packages. The record below describes an earlier bundled .NET preview build.
 
 The .NET sample installs the published
-[`Azure.AI.Projects`](https://www.nuget.org/packages/Azure.AI.Projects/3.0.0-beta.3)
-and [`Azure.AI.Projects.Agents`](https://www.nuget.org/packages/Azure.AI.Projects.Agents/3.0.0-beta.3)
-3.0.0-beta.3 preview SDK packages from NuGet.org. No .NET packages are bundled. See the
+[`Azure.AI.Projects`](https://www.nuget.org/packages/Azure.AI.Projects/3.0.0)
+and [`Azure.AI.Projects.Agents`](https://www.nuget.org/packages/Azure.AI.Projects.Agents/3.0.0)
+3.0.0 SDK packages from NuGet.org. No .NET packages are bundled. See the
 [C# setup instructions](../samples/CSharp/README.md) for package and restore details.
 
 ## Historical .NET preview build record
